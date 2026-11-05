@@ -1179,7 +1179,7 @@ function createSim(opts) {
     $('howto').hidden = !o.rules;
     if (o.rules) {
       const met = new Set(readStore().cameos || []);
-      $('guestList').innerHTML = CFG.cameos.map((c) => '<div class="guest"><img src="' + ART + 'cameo-' + c + '.webp" alt="" width="48" height="48"' + (met.has(c) ? '' : ' style="opacity:.55"') + '><span><b>' + CAMEO_INFO[c][0] + '</b>Gives ' + CAMEO_INFO[c][1] + '</span></div>').join('');
+      $('guestList').innerHTML = CFG.cameos.map((c) => '<div class="guest"><img src="' + ART + 'cameo-' + c + '.webp" alt="" width="48" height="48" onerror="this.style.visibility=\'hidden\'"' + (met.has(c) ? '' : ' style="opacity:.55"') + '><span><b>' + CAMEO_INFO[c][0] + '</b>Gives ' + CAMEO_INFO[c][1] + '</span></div>').join('');
     }
     $('settings').hidden = !o.toggles;
     if (!o.rules) $('howto').open = false;
