@@ -595,4 +595,72 @@ final class GameTests: XCTestCase {
     let again = try JSONDecoder().decode(GameProgress.self, from: JSONEncoder().encode(chosen))
     XCTAssertTrue(again.sound)
   }
+
+  // MARK: Snap the Hinge
+
+  private func nearLine(_ g: Game, size: Int = 0) -> Bubble {
+    let b = g.add(.basic, size: size, x: g.vertical ? g.hinge - 40 : 100, y: g.vertical ? 300 : g.hinge - 40, angle: 0, speed: 0)
+    return b
+  }
+
+  func testSnapFlingsNearbyBubblesAwayFromTheLine() {
+    let g = sandbox()
+    let b = nearLine(g)
+    XCTAssertTrue(g.snap(along: 100))
+    XCTAssertLessThan(g.vertical ? b.vx : b.vy, -100)
+    XCTAssertEqual(g.players[0].snaps, 1)
+    XCTAssertEqual(g.players[0].meter, 0)
+  }
+
+  func testSnapHasACooldownThenTellsYouItsBack() {
+    let g = sandbox()
+    XCTAssertTrue(g.snap(along: 100))
+    XCTAssertFalse(g.snap(along: 100))
+    XCTAssertEqual(g.players[0].snaps, 1)
+    for _ in 0..<(60 * 8) { g.step(1.0 / 60) }
+    XCTAssertTrue(g.events.contains { if case .snapReady = $0 { true } else { false } })
+    XCTAssertTrue(g.snap(along: 100))
+  }
+
+  func testLighterBubblesFlyHarderAndTinyOnesAreLeftForTheLine() {
+    let g = sandbox()
+    let big = nearLine(g, size: 0), mid = nearLine(g, size: 2), tiny = nearLine(g, size: 3)
+    g.snap(along: 100)
+    let v = { (b: Bubble) in abs(g.vertical ? b.vx : b.vy) }
+    XCTAssertGreaterThan(v(mid), v(big))
+    XCTAssertEqual(v(tiny), 0)
+  }
+
+  func testBossesShrugOffASnap() {
+    let g = Game(mode: .campaign(10), width: 390, height: 760, top: 70)
+    g.ready = 0
+    let boss = g.bubbles.first { $0.kind == .boss }!
+    let before = (boss.vx, boss.vy)
+    g.snap(along: 100)
+    XCTAssertEqual(boss.vx, before.0); XCTAssertEqual(boss.vy, before.1)
+  }
+
+  func testVersusSnapOnlyMovesYourOwnSide() {
+    let g = duel()
+    for b in g.bubbles { b.vx = 0; b.vy = 0; b.x = g.hinge + Double(b.side) * 30 }
+    g.snap(along: 200, owner: 0)
+    XCTAssertTrue(g.bubbles.filter { $0.side < 0 }.allSatisfy { $0.vx < -100 })
+    XCTAssertTrue(g.bubbles.filter { $0.side > 0 }.allSatisfy { $0.vx == 0 })
+    XCTAssertEqual(g.players[1].snapLeft, 0)
+  }
+
+  func testATouchOnTheLineCountsOnlyNearIt() {
+    let g = sandbox()
+    let on = g.vertical ? (g.hinge + 5, 300.0) : (100.0, g.hinge + 5)
+    let off = g.vertical ? (g.hinge + 120, 300.0) : (100.0, g.hinge + 120)
+    XCTAssertTrue(g.onHinge(x: on.0, y: on.1))
+    XCTAssertFalse(g.onHinge(x: off.0, y: off.1))
+  }
+
+  func testSnappingDoesNotLetALevelWinItself() {
+    let g = Game(mode: .campaign(1), width: 390, height: 760, top: 70)
+    g.ready = 0
+    while g.status == .playing && g.time < 120 { g.snap(along: 100); g.step(1.0 / 30); g.events.removeAll() }
+    XCTAssertNotEqual(g.status, .won)
+  }
 }

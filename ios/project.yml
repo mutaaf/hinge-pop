@@ -41,3 +41,24 @@ targets:
         INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad: "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight"
         INFOPLIST_KEY_ITSAppUsesNonExemptEncryption: NO
         ENABLE_PREVIEWS: YES
+  HingePopUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources: [HingePopUITests]
+    dependencies:
+      - { target: HingePop }
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
+schemes:
+  HingePop:
+    build:
+      targets:
+        HingePop: all
+    run:
+      config: Debug
+    test:
+      config: Debug
+      targets: [HingePopUITests]
+    archive:
+      config: Release

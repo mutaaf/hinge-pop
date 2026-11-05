@@ -3,7 +3,7 @@
   "slug": "hinge-pop",
   "name": "Hinge Pop",
   "category": "Games \u203a Arcade",
-  "tagline": "Pop. Split. Chain. Clear.",
+  "tagline": "Snap the hinge. Save the day.",
   "audience": "general",
   "stores": [
     "appstore",
@@ -64,64 +64,64 @@
   "shots": [
     {
       "id": "hook",
-      "raw": "home",
+      "raw": "snap",
       "layout": "cover",
-      "kicker": "ONE HINGE. EIGHT BUBBLES.",
-      "title": "Keep them off *the line*",
-      "sub": "Split, slice and chain before the big ones cross."
+      "kicker": "THE LINE IS ALIVE",
+      "title": "Snap *the hinge*",
+      "sub": "Drag off the line and it cracks like a whip."
     },
     {
       "id": "swipe",
-      "raw": "swarm",
+      "raw": "guest",
       "layout": "bleed",
-      "kicker": "SWIPE TO SLICE",
-      "title": "One stroke, *every bubble*",
-      "sub": "Then pop one tiny bubble and watch the rest go."
+      "kicker": "GUEST STARS",
+      "title": "Eight visitors. *One gift each.*",
+      "sub": "Each moves its own way. Catch them if you can."
     },
     {
       "id": "physics",
-      "raw": "gates",
+      "raw": "boss",
       "layout": "tilt",
-      "kicker": "REAL PHYSICS",
-      "title": "Every bubble has *its own weight*",
-      "sub": "Big ones shove. Small ones bounce. Gates let you through."
+      "kicker": "BOSSES FIGHT BACK",
+      "title": "When it glows red, *hit it*",
+      "sub": "Or its dash takes a whole shield."
     },
     {
       "id": "boss",
-      "raw": "boss",
-      "layout": "hero",
-      "kicker": "FIVE CHAPTERS",
-      "title": "Bosses too big to *cross*",
-      "sub": "Wear them down, phase by phase."
-    },
-    {
-      "id": "versus",
       "raw": "versus",
       "layout": "hero",
-      "kicker": "TWO PLAYERS, ONE SCREEN",
+      "kicker": "ONE ARENA, TWO PLAYERS",
       "title": "What you miss lands *on them*",
       "sub": "One side each. On iPhone Duo, one panel each."
     },
     {
+      "id": "versus",
+      "raw": "swarm",
+      "layout": "hero",
+      "kicker": "SWIPE AND CHAIN",
+      "title": "One stroke, *every bubble*",
+      "sub": "Then pop one tiny bubble and watch the rest go."
+    },
+    {
       "id": "map",
-      "raw": "map",
+      "raw": "howto",
       "layout": "tilt",
-      "kicker": "THEN IT KEEPS GOING",
-      "title": "Starts with *one bubble*",
-      "sub": "50 authored levels, then Infinity, Arcade and a new Daily."
+      "kicker": "EASY TO LEARN",
+      "title": "Three pictures, *then play*",
+      "sub": "It starts with a single slow bubble."
     },
     {
       "id": "guide",
-      "raw": "guide",
+      "raw": "map",
       "layout": "bleed",
-      "kicker": "MEET THE CAST",
-      "title": "Eight bubbles, *five power-ups*",
-      "sub": "No ads. No accounts. Nothing leaves your device."
+      "kicker": "THEN IT KEEPS GOING",
+      "title": "50 levels, *then Infinity*",
+      "sub": "Plus Arcade and a new Daily. No ads or accounts."
     }
   ],
   "feature": {
-    "title": "Keep them off the line",
-    "sub": "Pop. Split. Chain. Clear."
+    "title": "Snap the hinge",
+    "sub": "Drag off the line. Fling them back."
   },
   "avoid": [
     "Fruit Ninja"

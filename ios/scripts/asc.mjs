@@ -309,18 +309,30 @@ async function call(method, path, body) { console.log(JSON.stringify(await api(m
 /** The listing. Kid-safe, fun but clear, never financial advice. Limits: name/subtitle 30, promo 170, keywords 100. */
 export const STORE = {
   name: "Hinge Pop",
-  subtitle: "Pop. Split. Chain. Clear.",
-  promotionalText: "One hinge. Eight bubbles with attitude. Swipe through them, chain the tiny ones and keep the big ones off the line. Solo or two players on one screen.",
-  keywords: "bubble,pop,arcade,swipe,slice,casual,family,two player,foldable,physics,chain,levels,boss,offline",
-  description: `An electric hinge runs through the screen. Bubbles drift toward it. Split them, slice them and chain them before the big ones get across.
+  subtitle: "Snap the hinge. Save the day.",
+  promotionalText: "The line is alive. Drag off it and it cracks like a whip, flinging bubbles back. Time your snaps, catch the guest stars, and don't let the big ones through.",
+  keywords: "hinge,snap,whip,arcade,two player,foldable,bubble,swipe,chain,boss,family,offline,physics,cameo",
+  description: `The line across the screen is alive, and it's your best weapon.
+
+SNAP THE HINGE
+Drag your finger off the glowing line and it cracks like a whip, flinging every nearby bubble back the way it came. Lighter bubbles fly furthest. Then it dims and recharges, so the whole game is choosing your moment.
+
+GUARD THE LINE
+Weight decides what a mistake costs. Let a big bubble through and it takes a whole shield. A medium one costs less, a small one less again, and the tiny ones pop on the line for free, so you can steer them straight at it. Ignore a bubble completely and it will beat you.
+
+GUEST STARS
+Eight original visitors wander through your levels, and each moves its own way. Captain Fizz swoops, Doc Flux jumps through time, The Chosen Fizz dodges your first tap, Big Burp stomps along the floor. Catch them for a gift, and tick them off in the guide.
+
+BOSSES THAT FIGHT BACK
+Bosses shrug off button mashing and a snap won't move them. When one glows red, it's about to dash at the line. Hit it first for double damage, or lose a shield.
+
+ONE ARENA, TWO PLAYERS
+Share one screen, one side each. Whatever you let through lands on your rival. On iPhone Duo, the line sits on the real fold and each player gets a panel.
 
 TAP, SWIPE, CHAIN
-Tap a bubble to split it into two smaller ones. Swipe to slice every bubble in a line and aim the pieces. Pop one tiny bubble and every tiny bubble close to it goes too.
+Tap to split a bubble. Swipe to slice a whole line of them and aim the pieces. Pop one tiny bubble and its neighbours go too.
 
-THE HINGE BITES, AND SOMETIMES HELPS
-A larger bubble that crosses the hinge splits for free, but it charges your overload meter, and a full meter costs a shield. The smallest bubbles pop on the hinge for nothing, so you can steer them straight at it. String taps together with no crossings to win a shield back.
-
-EIGHT BUBBLES WITH THEIR OWN PHYSICS
+A CAST WITH ITS OWN PHYSICS
 Every size has its own weight and bounce, so a big bubble shoves a little one aside. Meet Fast, Armored, Magnetic, Repel, Golden, Frozen and the Bosses, each with its own idea of how the level should go.
 
 POWER-UPS
@@ -328,9 +340,6 @@ Overcharge, Freeze, Focus, Shield and Chain Burst drop as you play. Grab them be
 
 CHAPTERS, ARCADE AND A DAILY LEVEL
 Five chapters of levels end in boss fights, then Infinity keeps generating more. It starts with a single slow bubble and teaches you as it goes. Arcade runs until your shields are gone, and the Daily is one new level every day.
-
-TWO PLAYERS, ONE HINGE
-Share one screen, one side each. Anything you let through lands on your rival.
 
 MADE FOR IPHONE DUO, IPAD AND IPHONE
 On iPhone Duo the game's hinge sits right on the real fold, and it glows as you fold it. Each player can take a panel. iPad and iPhone get their own layouts, in every orientation.
@@ -346,13 +355,15 @@ No ads, no accounts, no in-app purchases and no tracking. Your progress stays on
   contentRights: "DOES_NOT_USE_THIRD_PARTY_CONTENT",
   reviewNotes: `Hinge Pop is a single-device arcade game. No sign-in, accounts, ads, analytics, in-app purchases or network use. Progress stays on the device.
 
-First launch: tap Play. A short guided tour teaches the moves with real bubbles; "Skip tour" is at the top of the card. The first levels are deliberately easy.
+CHANGES SINCE THE PREVIOUS SUBMISSION (guideline 4.3 feedback)
+1. New core mechanic, Snap the Hinge. Drag a finger off the glowing line and it cracks like a whip, flinging nearby bubbles away, with a 7 second recharge. The guided tour teaches it.
+2. Consequences now follow weight: a big bubble that crosses costs a whole shield, a medium costs half a meter, a small one a quarter, and tiny ones pop free. An untouched level can no longer be won.
+3. Eight original guest characters with their own movement and gifts, from level 2.
+4. Bosses reworked: they guard after each hit, ignore snaps, and telegraph a dash you can interrupt for double damage.
+5. Busy levels now arrive in stages. The aurora sky reacts to play. How to Play was rebuilt as pictures and folding sections.
 
-To try other features: Level map shows chapters; the Bubble Guide lists every bubble and power-up; Arcade and Daily are from the home screen; 2 Players splits the screen left and right with the hinge between.
-
-iPhone Duo: the app reads the fold from the division reserved region and places the game's hinge on it in book and tabletop poses. The hinge angle only changes its glow. Closed, it uses the phone layout.
-
-To see later content without playing through: nothing is locked behind payment. Levels open one at a time as you clear them.`,
+TO SEE IT QUICKLY
+Tap Play and follow the tour, which takes about a minute. Skip tour is at the top of the card. Sound is off by default and can be turned on in Settings. Two Players is on the home screen and works on one device. On iPhone Duo the line sits on the fold.`,
 };
 
 /** Required screenshot sets: display type → [width, height] (portrait) and the folder `make store-shots` fills. */
@@ -700,8 +711,8 @@ async function submit() {
   const a = await app();
   const { sv } = await storeVersion(a.id);
   if (!sv) throw new Error("No editable App Store version");
-  // Reuse an open (unsubmitted) review submission, or start one.
-  const open = (await api("GET", `/v1/reviewSubmissions?filter[app]=${a.id}&filter[platform]=IOS&filter[state]=READY_FOR_REVIEW&limit=5`)).data[0];
+  // Reuse an open review submission, including one a rejection left unresolved, or start one.
+  const open = (await api("GET", `/v1/reviewSubmissions?filter[app]=${a.id}&filter[platform]=IOS&filter[state]=READY_FOR_REVIEW,UNRESOLVED_ISSUES&limit=5`)).data[0];
   const subm = open ?? (await api("POST", "/v1/reviewSubmissions", { data: { type: "reviewSubmissions", attributes: { platform: "IOS" }, relationships: { app: { data: { type: "apps", id: a.id } } } } })).data;
   const items = (await api("GET", `/v1/reviewSubmissions/${subm.id}/items?include=appStoreVersion`)).data;
   if (!items.some((i) => i.relationships?.appStoreVersion?.data?.id === sv.id))

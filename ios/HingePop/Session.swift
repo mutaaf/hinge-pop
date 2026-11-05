@@ -270,6 +270,8 @@ final class Session {
       case .bossWindup: teach("windup", "It's winding up! Hit it now for double damage.")
       case .bossStagger: teach("stagger", "Staggered! Double damage.")
       case .bossPhase: teach("phase", "Next phase: faster, with friends.")
+      case .hingeSnap(_, _, let flung):
+        if flung > 0 { teach("snapped", "Snapped! It recharges in \(Int(game.tuning.snapCooldown)) seconds. The line dims until it's ready.") }
       case .cameoArrived(let c, _, _):
         show("\(c.title)! Catch for \(c.gift)", seconds: 3)
       case .cameoCaught(let c, _, _, _, _):
@@ -342,6 +344,10 @@ final class Session {
 
   #if DEBUG
   @ObservationIgnored private var demoClock = 0.0
+  /// Live game state for UI tests, which touch the screen the way a person does.
+  var probe = ""
+  @ObservationIgnored var debugLeft = 0.0
+  @ObservationIgnored var debugTop = 0.0
   private func demoTick(_ dt: Double) {
     if Debug.has("-win"), game.status == .playing, game.time > 0.6 {
       var guardCount = 0
@@ -350,6 +356,16 @@ final class Session {
     if Debug.has("-lose"), game.status == .playing, game.time > 0.6 {
       game.players[0].shields = 1; game.players[0].meter = game.meterMax - 1
       if let b = game.bubbles.first(where: { $0.size < 3 }) { if game.vertical { b.x = game.hinge - Double(b.side); b.vx = -Double(b.side) * 400 } else { b.y = game.hinge - Double(b.side); b.vy = -Double(b.side) * 400 }; b.grace = 0 }
+    }
+    if Debug.has("-still") {
+      for b in game.bubbles { b.vx = 0; b.vy = 0 }
+      game.visitorsHeld = true
+      if let name = Debug.string("-cameo"), let c = Cameo(rawValue: name), game.visitors.isEmpty, game.players[0].cameos == 0, game.time > 0.3 { game.summon(c) }
+    }
+    if Debug.has("-probe") {
+      let b = game.bubbles.first, v = game.visitors.first, p = game.players[0]
+      let line = "bx=\(b?.x ?? -1);by=\(b?.y ?? -1);vx=\(v?.x ?? -1);vy=\(v?.y ?? -1);taps=\(p.taps);flicks=\(p.flicks);cameos=\(p.cameos);snaps=\(p.snaps);left=\(debugLeft);top=\(debugTop);hinge=\(game.hinge);vertical=\(game.vertical);w=\(game.w);h=\(game.h)"
+      if line != probe { probe = line }
     }
     guard Debug.has("-demo"), game.status == .playing else { return }
     // Store captures hold the action on screen: nobody loses while the camera is rolling.

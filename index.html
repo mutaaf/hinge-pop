@@ -118,7 +118,7 @@ h1 { margin: 0; font: 400 clamp(28px, 9vw, 36px)/1.05 var(--display); letter-spa
 .more { display: flex; flex-direction: column; }
 /* Bright aurora behind what matters. Three drifting curtains, painted once and moved, so it costs almost nothing. */
 .spots { display: grid; gap: 8px; padding-bottom: 10px; }
-@media (min-width: 620px) { .spots { grid-template-columns: repeat(3, 1fr); } .spot { flex-direction: column; align-items: stretch; } .spot .say { text-align: center; } .spot .pic { justify-content: center; width: auto; } }
+@media (min-width: 620px) { .spots { grid-template-columns: repeat(4, 1fr); } .spot { flex-direction: column; align-items: stretch; } .spot .say { text-align: center; } .spot .pic { justify-content: center; width: auto; } }
 .spot, .sheet.result #finalScore { position: relative; overflow: hidden; isolation: isolate; border-radius: 16px; border: 1px solid rgba(255,255,255,.26); background: #120a2c; }
 .spot::before, .sheet.result #finalScore::before { content: ""; position: absolute; inset: -50% -30%; z-index: -1; background:
   radial-gradient(38% 42% at 24% 50%, var(--a1, #3ce8ff) 0, transparent 72%),
@@ -127,10 +127,11 @@ h1 { margin: 0; font: 400 clamp(28px, 9vw, 36px)/1.05 var(--display); letter-spa
   animation: drift 9s ease-in-out infinite alternate; will-change: transform; }
 @keyframes drift { from { transform: translate3d(-9%, -5%, 0) scale(1); } to { transform: translate3d(9%, 5%, 0) scale(1.14); } }
 .spot { display: flex; align-items: center; gap: 10px; padding: 8px; min-height: 72px; }
-.spot.b2 { --a1: #ff4cdc; --a2: #6a5cff; --a3: #ff5c9c; } .spot.c { --a1: #4cff8c; --a2: #2cd8d0; --a3: #d0ff4c; }
+.spot.b2 { --a1: #ff4cdc; --a2: #6a5cff; --a3: #ff5c9c; } .spot.d { --a1: #b070ff; --a2: #3c8cff; --a3: #ffb04c; } .spot.c { --a1: #4cff8c; --a2: #2cd8d0; --a3: #d0ff4c; }
 .spot .pic { position: relative; display: flex; align-items: center; justify-content: center; gap: 4px; width: 104px; min-height: 56px; flex: none; }
 .spot .pic em { font: 700 15px var(--body); font-style: normal; color: #fff; }
 .spot .pic.line::before { content: ""; position: absolute; inset-inline: 2px; top: 50%; height: 3px; margin-top: -1.5px; border-radius: 2px; background: #fff; box-shadow: 0 0 10px #4fd8ff, 0 0 20px #4fd8ff; }
+.spot .pic.gold::before { box-shadow: 0 0 10px #ffc84c, 0 0 20px #ffc84c; }
 .spot .pic.hot::before { box-shadow: 0 0 10px #ff4c6c, 0 0 20px #ff4c6c; }
 .b { display: block; flex: none; position: relative; border-radius: 50%; background: radial-gradient(circle at 34% 30%, #d8fbff, #39c6ff 42%, #1464d8 100%); box-shadow: 0 0 10px rgba(79,216,255,.7); }
 .b.lg { width: 44px; height: 44px; } .b.md { width: 25px; height: 25px; } .b.sm { width: 18px; height: 18px; }
@@ -349,6 +350,7 @@ details[open] > summary::after { content: "\2212"; }
           <div class="spots">
             <div class="spot a"><span class="pic"><i class="b lg"></i><em>&rarr;</em><i class="b md"></i><i class="b md"></i></span><span class="say"><b>Tap or swipe</b>Split them all</span></div>
             <div class="spot b2"><span class="pic line hot"><i class="b lg"></i></span><span class="say"><b>Guard the line</b>A big one costs a shield</span></div>
+            <div class="spot d"><span class="pic line gold"><i class="b md"></i><em>&uarr;</em><i class="b md"></i></span><span class="say"><b>Snap the hinge</b>Drag off the line to fling them back</span></div>
             <div class="spot c"><span class="pic line"><i class="b sm"></i><i class="b sm"></i><i class="b sm"></i></span><span class="say"><b>Tiny = free</b>The line pops them for you</span></div>
           </div>
           <details class="fold" name="learn"><summary>Sizes and scoring</summary>
@@ -444,6 +446,11 @@ const CFG = {
   focusEvery: 0.14,
   overchargeTime: 8,
   burstRadius: 130,
+  // Snap the Hinge: drag off the line and it cracks like a whip, flinging nearby bubbles away from it.
+  snapCooldown: 7,
+  snapReach: 120,
+  snapForce: 620,
+  snapTouch: 26,
 };
 
 function sizesForWork(budget) {
@@ -472,7 +479,7 @@ function createSim(opts) {
   const versus = !!opts.versus;
   const level = opts.level || 1;
   const conf = versus ? { sizes: Array(CFG.versusPerSide).fill(0), speed: CFG.versusSpeed } : levelConfig(level);
-  const newPlayer = (score) => ({ score, combo: 1, overcharge: 0, cameos: 0, comboT: 0, bestCombo: 1, meter: 0, shields: CFG.shields, streak: 0, recharges: 0, taps: 0, flicks: 0, crossings: 0, zaps: 0, chained: 0 });
+  const newPlayer = (score) => ({ score, combo: 1, overcharge: 0, cameos: 0, snaps: 0, snapLeft: 0, comboT: 0, bestCombo: 1, meter: 0, shields: CFG.shields, streak: 0, recharges: 0, taps: 0, flicks: 0, crossings: 0, zaps: 0, chained: 0 });
   const s = {
     w: opts.w, h: opts.h, top: opts.top || 0,
     versus, level, speedMul: conf.speed,
@@ -585,6 +592,28 @@ function createSim(opts) {
         p.bestCombo = Math.max(p.bestCombo, p.combo);
         p.comboT = CFG.comboWindow * 2;
     }
+  }
+  const onHinge = (x, y) => y >= s.top && Math.abs((s.vertical ? x : y) - line()) <= CFG.snapTouch * Math.max(1, scale());
+  // The line cracks like a whip and flings what's near it back, lighter bubbles hardest. Tiny ones are left
+  // alone, since the line pops those for free. In two players it only moves your own side.
+  function snap(along, owner) {
+    const p = s.players[owner || 0];
+    if (s.status !== 'playing' || s.ready > 0 || p.snapLeft > 0) return false;
+    p.snapLeft = CFG.snapCooldown;
+    p.snaps++;
+    const reach = CFG.snapReach * scale();
+    let flung = 0;
+    for (const b of s.bubbles) {
+      if (b.g >= 3 || (versus && ownerIndex(b) !== (owner || 0))) continue;
+      const gap = across(b) - line();
+      if (Math.abs(gap) > reach) continue;
+      const dir = gap >= 0 ? 1 : -1, push = (CFG.snapForce * scale() * (1 - (Math.abs(gap) / reach) * 0.5)) / Math.sqrt(CFG.matter[b.g].mass / 2);
+      if (s.vertical) b.vx = dir * Math.max(Math.abs(b.vx), push); else b.vy = dir * Math.max(Math.abs(b.vy), push);
+      impact(b, s.vertical ? 0 : Math.PI / 2, push);
+      flung++;
+    }
+    s.events.push({ type: 'snap', along, flung });
+    return true;
   }
   function hitVisitor(x, y) {
     return s.visitors.find((v) => v.presence > 0.35 && Math.hypot(v.x - x, v.y - y) <= visitorRadius() + 12) || null;
@@ -861,6 +890,7 @@ function createSim(opts) {
     for (const p of s.players) {
       if (p.comboT > 0) { p.comboT -= real; if (p.comboT <= 0) p.combo = 1; }
       if (p.overcharge > 0) p.overcharge = Math.max(0, p.overcharge - real);
+      if (p.snapLeft > 0) p.snapLeft = Math.max(0, p.snapLeft - real);
     }
     if (s.focus > 0) {
       s.focus = Math.max(0, s.focus - real);
@@ -961,7 +991,7 @@ function createSim(opts) {
   }
 
   spawnLevel();
-  return Object.assign(s, { step, tap, hit, resize, line, add, slice, hitVisitor, catchVisitor, summon, crossingCost });
+  return Object.assign(s, { step, tap, hit, resize, line, add, slice, hitVisitor, catchVisitor, summon, crossingCost, snap, onHinge });
 }
 // SIM END
 
@@ -1217,7 +1247,7 @@ function createSim(opts) {
     const actions = [{ id: 'two', label: '2 Players', run: playVersus }];
     if (level > 1) actions.push({ id: 'levelOne', label: 'Back to level 1', run: () => { level = 1; writeStore({ level: 1 }); playLevel(); } });
     actions.push({ id: 'play', label: level > 1 ? 'Play level ' + level : 'Play', primary: true, run: playLevel });
-    showPanel({ heading: 'Hinge Pop', sub: 'Split the bubbles. Keep them off the hinge.', rules: true, toggles: true, actions, logo: true });
+    showPanel({ heading: 'Hinge Pop', sub: 'Split the bubbles. Snap the hinge. Save your shields.', rules: true, toggles: true, actions, logo: true });
   }
 
   function pause() {
@@ -1423,6 +1453,11 @@ function createSim(opts) {
       todo: 'Watch the bubble.',
       done: 'Free points, no cost.',
       scene: () => { put(3, 0.5, 0.36, 70, 0.5); put(0, 0.2, 0.14, 35, 0); } },
+    { title: 'Snap the hinge', target: 'hinge', input: true, waits: () => P0().snaps >= 1,
+      body: 'Your secret weapon. Drag off the line and it cracks like a whip.',
+      todo: 'Drag your finger off the glowing line.',
+      done: 'Bubbles near the line go flying. It dims while it recharges, so pick your moment.',
+      scene: () => { put(0, 0.25, 0.4, 35, 0); put(1, 0.75, 0.4, 35, 0); } },
     { title: 'Win shields back', target: '#p0 .charge', before: () => { P0().shields = 2; P0().streak = 5; },
       body: R + ' taps with no crossing wins a shield back.',
       scene: () => {} },
@@ -1572,6 +1607,13 @@ function createSim(opts) {
   function drainEvents() {
     for (const e of sim.events) {
       if (e.x !== undefined && (e.type === 'split' || e.type === 'pop' || e.type === 'cross' || e.type === 'zap' || e.type === 'cameoCaught' || e.type === 'cameoBlink')) addRipple(e.x, e.y);
+      if (e.type === 'snap') {
+        snapFlare = 1; hingePulse = 1.6; shake = 0.5;
+        addRipple(sim.vertical ? sim.line() : e.along, sim.vertical ? e.along : sim.line());
+        blip(190, 0.2, 'sawtooth', 0.13); blip(1400, 0.12, 'square', 0.06);
+        if (e.flung) teach('snapped', 'Snapped! The line dims while it recharges.');
+        continue;
+      }
       if (e.type === 'won') { skyBloom = 1.6; addRipple(W / 2, H / 2); }
       if (e.type === 'cameoArrive') {
         const info = CAMEO_INFO[e.cameo];
@@ -1647,6 +1689,8 @@ function createSim(opts) {
     ctx.fillStyle = 'rgba(0,0,0,.26)';
     if (sim.vertical) ctx.fillRect(pos - 9, sim.top, 18, H - sim.top);
     else ctx.fillRect(0, pos - 9, W, 18);
+    snapFlare = Math.max(0, snapFlare - 1 / 30);
+    const cooling = sim.players.every((p) => p.snapLeft > 0) ? 0.55 : 1;
     const steps = 40, amp = reduced ? 0 : 1 + hingePulse * 5 + meter * 0.45;
     ctx.beginPath();
     for (let i = 0; i <= steps; i++) {
@@ -1659,8 +1703,8 @@ function createSim(opts) {
     ctx.lineJoin = 'round';
     ctx.strokeStyle = col;
     ctx.globalCompositeOperation = 'lighter';
-    for (const [width, alpha] of [[22 + hingePulse * 22, 0.1], [11 + hingePulse * 10, 0.18], [5 + hingePulse * 4, 0.4]]) {
-      ctx.globalAlpha = alpha; ctx.lineWidth = width; ctx.stroke();
+    for (const [width, alpha] of [[22 + hingePulse * 22 + snapFlare * 70, 0.1], [11 + hingePulse * 10 + snapFlare * 30, 0.18], [5 + hingePulse * 4, 0.4]]) {
+      ctx.globalAlpha = Math.min(1, alpha * cooling + snapFlare * 0.2); ctx.lineWidth = width; ctx.stroke();
     }
     ctx.globalCompositeOperation = 'source-over';
     ctx.globalAlpha = 1;
@@ -1674,6 +1718,7 @@ function createSim(opts) {
   skyCanvas.width = skyW; skyCanvas.height = skyH;
   const skyCtx = skyCanvas.getContext('2d'), skyImage = skyCtx.createImageData(skyW, skyH);
   const skyWaves = [];
+  let snapFlare = 0;
   let skyEnergy = 0, skyBloom = 0, skyClock = 1;
   const skyTints = [[60, 225, 255], [110, 110, 255], [70, 255, 190]];
   const addRipple = (x, y) => { if (reduced || W <= 0) return; if (skyWaves.length >= 3) skyWaves.shift(); skyWaves.push({ u: x / W, v: y / H, t: 0 }); };
@@ -1950,13 +1995,19 @@ function createSim(opts) {
     const b = sim.hit(p.x, p.y);
     if (!sim.flick && mode !== 'tour') { if (b) sim.tap(b); return; }
     try { canvas.setPointerCapture(e.pointerId); } catch (err) { /* capture optional */ }
-    active.set(e.pointerId, { b, x0: p.x, y0: p.y, lastX: p.x, lastY: p.y, slicing: false, skip: new Set() });
+    active.set(e.pointerId, { b, x0: p.x, y0: p.y, lastX: p.x, lastY: p.y, slicing: false, skip: new Set(), onLine: !b && sim.onHinge(p.x, p.y) });
   });
   canvas.addEventListener('pointermove', (e) => {
     const a = active.get(e.pointerId);
     if (!a) return;
     const p = point(e);
     if (!a.slicing && Math.hypot(p.x - a.x0, p.y - a.y0) < FLICK_PX) return;
+    if (a.onLine) {
+      // Dragging off the line snaps it. If it's still recharging, the same drag is an ordinary swipe.
+      a.onLine = false;
+      const across = sim.vertical ? a.x0 : a.y0;
+      sim.snap(sim.vertical ? a.y0 : a.x0, sim.versus && across >= sim.line() ? 1 : 0);
+    }
     a.slicing = true;
     sim.slice(a.lastX, a.lastY, p.x, p.y, a.skip);
     trails.push({ x0: a.lastX, y0: a.lastY, x1: p.x, y1: p.y, t: 0 });

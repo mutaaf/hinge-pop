@@ -63,6 +63,11 @@ public struct Tuning: Sendable {
   public var arrivalWork = 12
   public var arrivalOpening = 22
   public var arrivalGap = 9.0
+  /// Snap the Hinge: drag off the line and it cracks like a whip, flinging nearby bubbles away from it.
+  public var snapCooldown = 7.0
+  public var snapReach = 120.0
+  public var snapForce = 620.0
+  public var snapTouch = 26.0
   public var gateWidth = 150.0
   public var gateSpeed = 70.0
   public init() {}

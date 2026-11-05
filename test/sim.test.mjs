@@ -418,3 +418,36 @@ test('guests never block a clear, and they leave by themselves', () => {
   for (let i = 0; i < 60 * 6; i++) { t.step(1 / 60); t.players[0].meter = 0; t.players[0].shields = CFG.shields; if (!t.visitors.length) break; }
   assert.equal(t.visitors.length, 0);
 });
+
+// ---- Snap the Hinge
+
+test('a snap flings nearby bubbles away, then has to recharge', () => {
+  const s = solo(1), b = s.bubbles[0];
+  b.y = s.line() - 40; b.vx = 0; b.vy = 0;
+  assert.ok(s.snap(100, 0));
+  assert.ok(b.vy < -100);
+  assert.equal(s.players[0].snaps, 1);
+  assert.equal(s.snap(100, 0), false);
+  s.players[0].snapLeft = 0.01;
+  s.step(1 / 60);
+  assert.ok(s.snap(100, 0));
+});
+
+test('tiny bubbles are left for the line, and lighter ones fly harder', () => {
+  const s = solo(1), big = s.bubbles[0];
+  const mid = s.add(2, 300, s.line() - 40, 0, 0), tiny = s.add(3, 200, s.line() - 40, 0, 0);
+  big.y = s.line() - 40;
+  for (const b of [big, mid, tiny]) { b.vx = 0; b.vy = 0; }
+  s.snap(100, 0);
+  assert.ok(Math.abs(mid.vy) > Math.abs(big.vy));
+  assert.equal(tiny.vy, 0);
+});
+
+test('in two players a snap only moves your own side', () => {
+  const s = versus();
+  for (const b of s.bubbles) { b.vx = 0; b.vy = 0; b.x = s.line() + b.side * 30; }
+  s.snap(200, 0);
+  assert.ok(s.bubbles.filter((b) => b.side < 0).every((b) => b.vx < -100));
+  assert.ok(s.bubbles.filter((b) => b.side > 0).every((b) => b.vx === 0));
+});
+

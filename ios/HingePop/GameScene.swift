@@ -52,6 +52,7 @@ final class GameScene: SKScene {
   private let dashLine = SKSpriteNode(color: .white, size: CGSize(width: 10, height: 10))
   private var lastChain: CGPoint?
   private var lastChainClock = 0.0
+  private var snapFlare = 0.0
   private var lastTime: TimeInterval = 0
   private var pulse = 0.0
   private var shake = 0.0
@@ -60,7 +61,7 @@ final class GameScene: SKScene {
   private var generation = -1
   private var prewarmedFor = -1.0
   /// One finger on the screen: what it landed on, where it last was, and what this stroke has already hit.
-  private struct Stroke { var bubble: Bubble?; var start: CGPoint; var last: CGPoint; var slicing = false; var skip = Set<Int>() }
+  private struct Stroke { var bubble: Bubble?; var start: CGPoint; var last: CGPoint; var slicing = false; var skip = Set<Int>(); var onLine = false }
   private var active: [ObjectIdentifier: Stroke] = [:]
   private let displayScale: CGFloat
 
@@ -200,6 +201,7 @@ final class GameScene: SKScene {
     clock += dt
     #if DEBUG
     demoSwipe(game)
+    demoSnap(game)
     #endif
     if session.generation != generation {
       generation = session.generation
@@ -329,8 +331,11 @@ final class GameScene: SKScene {
     color.getRed(&r, green: &g, blue: &b, alpha: nil)
     ribbonColor.vectorFloat3Value = .init(Float(r), Float(g), Float(b))
     ribbonTime.floatValue = reduceMotion ? 0 : Float(clock.truncatingRemainder(dividingBy: 1000))
-    ribbonGlow.floatValue = Float(0.85 + pulse * 0.7 + meter * 0.12 + glow * 0.4)
-    let width = (84 + CGFloat(pulse) * 60 + CGFloat(glow) * 34) * CGFloat(max(1, min(1.6, game.scale)))
+    // A recharging snap dims the line, so you can see at a glance whether it's ready.
+    let cooling = game.players.allSatisfy { $0.snapLeft > 0 } ? 0.62 : 1
+    ribbonGlow.floatValue = Float((0.85 + pulse * 0.7 + meter * 0.12 + glow * 0.4) * cooling + snapFlare * 1.6)
+    snapFlare = max(0, snapFlare - 1.0 / 30)
+    let width = (84 + CGFloat(pulse) * 60 + CGFloat(glow) * 34 + CGFloat(snapFlare) * 150) * CGFloat(max(1, min(1.6, game.scale)))
     // The light runs edge to edge, past the safe area. Only play stops there.
     let length = game.vertical ? area.height - CGFloat(game.top) + insets.bottom : size.width
     ribbon.size = CGSize(width: width, height: length)
@@ -603,6 +608,14 @@ final class GameScene: SKScene {
     Debug.ready(String(format: "perf frames=900 p50=%.1f p95=%.1f p99=%.1f max=%.1f over25ms=%d nodes=%d", at(0.5), at(0.95), at(0.99), sorted.last ?? 0, long, world.children.count))
   }
 
+  /// Store captures: the line mid-snap, flare held on, with real snaps going off.
+  private func demoSnap(_ game: Game) {
+    guard Debug.has("-demoSnap"), game.status == .playing else { return }
+    snapFlare = max(snapFlare, 0.75)
+    game.players[0].snapLeft = 0
+    if clock > demoSliceClock { demoSliceClock = clock + 2.2; game.snap(along: Double(area.width / 2)) }
+  }
+
   /// Store captures: a held stroke across the arena that really slices, so the swipe shot shows a swipe.
   private var demoStroke: SKNode?
   private var demoSliceClock = 0.0
@@ -732,6 +745,22 @@ final class GameScene: SKScene {
       pulse = 1.4; shake = 0.6
       sound.blip(90, 0.25, .square, gain: 0.18)
       haptic.hit()
+    case let .hingeSnap(along, _, _):
+      snapFlare = 1
+      pulse = 1.6
+      shake = 0.5
+      if let game = session?.game {
+        let spots = stride(from: 0.1, through: 0.9, by: 0.2)
+        for u in spots {
+          let at = game.vertical ? CGPoint(x: CGFloat(game.hinge), y: area.height * CGFloat(u)) : CGPoint(x: area.width * CGFloat(u), y: y(game.hinge))
+          sparks(at: at, r: 46, count: 18)
+        }
+        ripple(game.vertical ? CGPoint(x: CGFloat(game.hinge), y: y(along)) : CGPoint(x: CGFloat(along), y: y(game.hinge)))
+      }
+      sound.blip(190, 0.2, .saw, gain: 0.18); sound.blip(1400, 0.12, .square, gain: 0.08)
+      haptic.good()
+    case .snapReady:
+      sound.blip(880, 0.08, .sine, gain: 0.08)
     case let .bossWindup(x, gy, r):
       shockwave(at: CGPoint(x: x, y: y(gy)), r: CGFloat(r))
       sound.blip(140, 0.5, .saw, gain: 0.14)
@@ -818,7 +847,7 @@ final class GameScene: SKScene {
       if !game.flick && session.overlay != .tour {
         if let b { game.tap(b) }
       } else {
-        active[ObjectIdentifier(touch)] = Stroke(bubble: b, start: p, last: p)
+        active[ObjectIdentifier(touch)] = Stroke(bubble: b, start: p, last: p, onLine: b == nil && game.onHinge(x: p.x, y: p.y))
       }
     }
   }
@@ -832,6 +861,11 @@ final class GameScene: SKScene {
       for sample in event?.coalescedTouches(for: touch) ?? [touch] {
         let p = gamePoint(sample, in: view)
         if !stroke.slicing, hypot(p.x - stroke.start.x, p.y - stroke.start.y) < 18 { continue }
+        if stroke.onLine {
+          // Dragging off the line snaps it. If it's still recharging, the same drag is an ordinary swipe.
+          stroke.onLine = false
+          game.snap(along: game.vertical ? Double(stroke.start.y) : Double(stroke.start.x), owner: game.versus && (game.vertical ? Double(stroke.start.x) : Double(stroke.start.y)) >= game.hinge ? 1 : 0)
+        }
         if !stroke.slicing {
           // The first stroke of a swipe also takes in whatever the finger started on.
           stroke.slicing = true

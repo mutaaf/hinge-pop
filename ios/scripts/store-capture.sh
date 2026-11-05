@@ -27,15 +27,13 @@ capture() { # folder simulator [--display=N]
     for _ in $(seq 1 60); do [ -s "$ready" ] && break; sleep 0.25; done
     sleep "$settle"
     xcrun simctl io "$id" screenshot $display "$dir/$name.png" >/dev/null 2>&1 && echo "$folder $name"; }
-  shot home 2 -fresh -toured
-  shot swarm 5 -fresh -toured -level 29 -demo -demoSwipe
-  shot gates 5 -fresh -toured -level 37 -demo
-  shot boss 5 -fresh -toured -level 40 -demo
+  shot snap 4 -fresh -toured -level 29 -demo -demoSnap
+  shot guest 4 -fresh -toured -level 29 -demo -cameo discoDot
+  shot boss 6.5 -fresh -toured -level 40 -demo
   shot versus 5 -fresh -toured -versus -demo -demoMeter 1
+  shot swarm 5 -fresh -toured -level 29 -demo -demoSwipe
+  shot howto 2 -fresh -toured -screen guide -fold guests
   shot map 2 -fresh -toured -unlock 14 -screen map
-  shot guide 2 -fresh -toured -screen guide
-  shot tour 2 -fresh -level 1 -tourStep 4
-  shot won 5 -fresh -toured -level 3 -win
 }
 capture iphone "iPhone 17 Pro Max"
 capture ipad "iPad Pro 13-inch (M5)"

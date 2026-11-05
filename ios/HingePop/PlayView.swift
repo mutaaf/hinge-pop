@@ -29,6 +29,9 @@ struct PlayView: View {
   private func applyInsets(_ proxy: GeometryProxy) {
     let i = proxy.safeAreaInsets
     scene?.insets = UIEdgeInsets(top: i.top, left: i.leading, bottom: i.bottom, right: i.trailing)
+    #if DEBUG
+    session.debugLeft = i.leading; session.debugTop = i.top
+    #endif
   }
 
   var body: some View {
@@ -48,6 +51,13 @@ struct PlayView: View {
         ToastView(toast: session.toast)
           .padding(.top, session.hudHeight + (session.bossLeft == nil ? 16 : 44))
         overlays(size: proxy.size, fold: fold)
+        #if DEBUG
+        if Debug.has("-probe") {
+          Text(session.probe).font(.system(size: 1)).opacity(0.02).allowsHitTesting(false)
+            .accessibilityIdentifier("probe").accessibilityLabel(session.probe)
+            .frame(width: 2, height: 2).position(x: 1, y: 1)
+        }
+        #endif
       }
       .coordinateSpace(name: "play")
       .onPreferenceChange(SpotFrames.self) { spots = $0 }

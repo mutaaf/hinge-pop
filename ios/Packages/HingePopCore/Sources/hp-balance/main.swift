@@ -22,6 +22,8 @@ func play(_ n: Int, kind: String, rate: Double, seed: UInt64, w: Double = 390, h
     // A person sees a guest about half the time, and sees a boss winding up about half the time.
     if let v = g.visitors.first(where: { $0.presence > 0.35 && $0.x > 0 && $0.x < g.w }), r.unit() < 0.25 { g.catchVisitor(v.id); continue }
     if let boss = g.bubbles.first(where: { $0.bossWindup > 0 }), r.unit() < 0.5 { g.tap(boss); continue }
+    // Once it's ready, they snap about a third of the time a big bubble is close to the line.
+    if g.players[0].snapLeft <= 0, r.unit() < 0.33, g.bubbles.contains(where: { $0.size == 0 && $0.kind != .boss && abs((g.vertical ? $0.x : $0.y) - g.hinge) < 100 }) { g.snap(along: 100); continue }
     guard !g.bubbles.isEmpty else { continue }
     let target: Bubble = r.unit() < 0.33 ? g.bubbles[r.int(g.bubbles.count)] : g.bubbles.min { timeToHinge(g, $0) < timeToHinge(g, $1) }!
     if kind == "slicer" {

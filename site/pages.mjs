@@ -152,7 +152,7 @@ export function landing(links) {
   <div class="front hero-in">
     <h1 class="l hero-logo" style="--d:26vh"><img src="art/logo.webp" alt="Hinge Pop" width="1000" height="860" fetchpriority="high"></h1>
     <p class="tag"><span class="l" style="--d:12vh">POP</span><i>·</i><span class="l" style="--d:22vh">SPLIT</span><i>·</i><span class="l" style="--d:16vh">CHAIN</span><i>·</i><span class="l" style="--d:30vh">CLEAR</span></p>
-    <p class="lede l" style="--d:8vh">One finger, one electric line, and a lot of bubbles that want to cross it.</p>
+    <p class="lede l" style="--d:8vh">The line across the screen is alive. Drag off it and it cracks like a whip.</p>
     <p class="cue l" style="--d:4vh"><a href="#play" data-jump>Keep scrolling. The game is at the end of this page.</a></p>
   </div>
 </section>
@@ -173,7 +173,10 @@ export function landing(links) {
 
 <section class="sec moves" aria-labelledby="h-moves">
   ${sparkles(6, 23)}
-  <div class="front blk moves-title">${stk('h2', 'Three moves', 'go l', 'id="h-moves" style="--d:10vh"')}</div>
+  <div class="front blk moves-title">${stk('h2', 'Four moves', 'go l', 'id="h-moves" style="--d:10vh"')}</div>
+  <div class="own move m0">
+    <div class="front l o" style="--y0:10vh"><h3 class="word" style="color:var(--sun)">Snap the hinge</h3><p>Drag off the line and it cracks like a whip, flinging every nearby bubble back. Then it recharges, so pick your moment.</p></div>
+  </div>
   <div class="own move m1" data-shape="burst">
     <div class="l o art" style="--x0:-40vw;--r0:-40deg" aria-hidden="true"><img class="move-art" src="art/bubble-basic.webp" alt="" width="384" height="384" loading="lazy"></div>
     <div class="front l o" style="--x0:30vw"><h3 class="word">Tap</h3><p>Touch a bubble and it splits into two smaller ones. Tap the smallest and it pops for good.</p></div>
@@ -404,6 +407,7 @@ export const support = () => docPage({
   body: `<h2>How to play</h2>
 <ul>
   <li><strong>Tap</strong> a bubble to split it into two smaller ones. Tap the smallest size and it pops for good.</li>
+  <li><strong>Snap the hinge.</strong> Drag off the line and it flings nearby bubbles back. It dims while it recharges.</li>
   <li><strong>Swipe</strong> to slice. One stroke hits every bubble it crosses, and the pieces fly the way you swiped.</li>
   <li><strong>Chain pops.</strong> Popping a tiny bubble sets off every tiny bubble close to it.</li>
   <li><strong>Watch the hinge.</strong> A bubble that crosses it charges your meter, and bigger ones charge more. A big one fills it outright. The smallest bubbles pop on it at no cost.</li>

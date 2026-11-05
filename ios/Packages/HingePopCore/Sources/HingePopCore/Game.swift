@@ -85,6 +85,8 @@ public struct Player: Sendable {
   public var overcharge = 0.0
   public var pickups = 0
   public var cameos = 0
+  public var snaps = 0
+  public var snapLeft = 0.0
 }
 
 public enum GameEvent: Equatable, Sendable {
@@ -101,6 +103,8 @@ public enum GameEvent: Equatable, Sendable {
   case bossWindup(x: Double, y: Double, r: Double)
   case bossStagger(x: Double, y: Double, r: Double, points: Int)
   case bossBlocked(x: Double, y: Double, r: Double)
+  case hingeSnap(along: Double, player: Int, flung: Int)
+  case snapReady(player: Int)
   case cameoArrived(Cameo, x: Double, y: Double)
   case cameoCaught(Cameo, x: Double, y: Double, points: Int, player: Int)
   case cameoDodged(Cameo, x: Double, y: Double)
@@ -152,6 +156,8 @@ public final class Game {
   private var arrivalClock = 0.0
   public var bubblesToCome: Int { arrivals.count }
   private var cameoClock = 0.0
+  /// Holds guests where they are, for automated touch tests.
+  public var visitorsHeld = false
   private var cameoRng = SplitMix(seed: 1)
   private var cameoTurn = 0
   private var nextId = 1
@@ -540,6 +546,36 @@ public final class Game {
 
   // MARK: Hinge
 
+  /// True when a touch landed on the line itself.
+  public func onHinge(x: Double, y: Double) -> Bool {
+    guard y >= top else { return false }
+    return abs((vertical ? x : y) - hinge) <= tuning.snapTouch * max(1, scale)
+  }
+
+  /// Snap the Hinge. The line cracks like a whip and flings what's near it back, lighter bubbles hardest.
+  /// Bosses are too heavy to care, and tiny bubbles are left alone since the line pops those for free.
+  /// In versus it only moves your own side. Returns false while it's recharging.
+  @discardableResult
+  public func snap(along: Double, owner: Int = 0) -> Bool {
+    guard status == .playing, ready <= 0, players[owner].snapLeft <= 0 else { return false }
+    players[owner].snapLeft = tuning.snapCooldown
+    players[owner].snaps += 1
+    let reach = tuning.snapReach * scale
+    var flung = 0
+    for b in bubbles where b.kind != .boss && b.size < 3 {
+      if isVersus && playerIndex(of: b) != owner { continue }
+      let gap = across(b) - hinge
+      guard abs(gap) <= reach else { continue }
+      let dir = gap >= 0 ? 1.0 : -1.0
+      let push = tuning.snapForce * scale * (1 - abs(gap) / reach * 0.5) / (mass(b) / 2).squareRoot()
+      if vertical { b.vx = dir * max(abs(b.vx), push) } else { b.vy = dir * max(abs(b.vy), push) }
+      impact(b, vertical ? 0 : .pi / 2, push)
+      flung += 1
+    }
+    events.append(.hingeSnap(along: along, player: owner, flung: flung))
+    return true
+  }
+
   private func inGate(_ b: Bubble) -> Bool {
     let pos = along(b)
     return gates.contains { abs(pos - $0.at) <= $0.width / 2 }
@@ -654,6 +690,10 @@ public final class Game {
         if players[i].comboT <= 0 { players[i].combo = 1 }
       }
       if players[i].overcharge > 0 { players[i].overcharge = max(0, players[i].overcharge - real) }
+      if players[i].snapLeft > 0 {
+        players[i].snapLeft -= real
+        if players[i].snapLeft <= 0 { players[i].snapLeft = 0; events.append(.snapReady(player: i)) }
+      }
     }
     stepFocus(real)
     stepPickups(real)
@@ -767,6 +807,8 @@ public final class Game {
     if let i = visitors.indices.last {
       visitors[i].age = tuning.cameoLife * 0.42
       visitors[i].life = tuning.cameoLife * 0.58
+      visitors[i].x = visitors[i].startX + (w + 120 * scale) * 0.42 * visitors[i].dir
+      visitors[i].prevX = visitors[i].x
     }
   }
 
@@ -799,6 +841,7 @@ public final class Game {
         }
       }
     }
+    if visitorsHeld { for i in visitors.indices { visitors[i].prevX = visitors[i].x; visitors[i].prevY = visitors[i].y }; return }
     for i in visitors.indices.reversed() {
       visitors[i].prevX = visitors[i].x; visitors[i].prevY = visitors[i].y
       visitors[i].age += real

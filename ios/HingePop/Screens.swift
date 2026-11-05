@@ -359,6 +359,14 @@ struct GuideView: View {
         ArtImage(item: .glyph(.shieldOff), size: 30).offset(x: 54, y: 24)
       }
     }
+    HeroCard(arena: .space, title: "Snap the hinge", caption: "Drag off the line to fling them back") {
+      ZStack {
+        HingeLine(color: Theme.sun)
+        ArtImage(item: .bubble(.basic), size: 46).offset(x: -40, y: -24)
+        ArtImage(item: .bubble(.basic), size: 34).offset(x: 42, y: 24)
+        Image(systemName: "hand.point.up.left.fill").font(.system(size: 28)).foregroundStyle(.white).offset(x: 6, y: 12)
+      }
+    }
     HeroCard(arena: .forest, title: "Tiny = free", caption: "The line pops them for you") {
       ZStack {
         HingeLine(color: Theme.cyan)
@@ -416,7 +424,7 @@ private struct HeroCard<Art: View>: View {
             art.frame(height: 104).frame(maxWidth: .infinity)
             words(alignment: .center)
           }
-          .frame(minWidth: 210, maxWidth: .infinity)
+          .frame(minWidth: 165, maxWidth: .infinity)
         }
       }
       .padding(10)
