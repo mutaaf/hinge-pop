@@ -1,0 +1,786 @@
+<title>Hinge Pop Prototype</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Rubik+Mono+One&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+<style>
+/* Layout: one full-bleed canvas split by the hinge; a thin HUD on top; one panel for menu, pause and results. */
+:root {
+  --ink: #0d1117;
+  --ink-raised: #171d27;
+  --line: #2b3442;
+  --fg: #e6edf5;
+  --muted: #94a2b5;
+  --hinge: #4fd8ff;
+  --charged: #b183ff;
+  --overload: #ff4d5e;
+  --p2: #ffb27a;
+  --display: "Rubik Mono One", ui-monospace, Menlo, monospace;
+  --mono: "IBM Plex Mono", ui-monospace, Menlo, monospace;
+  color-scheme: dark;
+}
+[hidden] { display: none !important; }
+* { box-sizing: border-box; }
+html, body { height: 100%; margin: 0; overflow: hidden; overscroll-behavior: none; }
+body { background: var(--ink); color: var(--fg); font-family: var(--mono); touch-action: manipulation; -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color: transparent; }
+#stage { position: relative; height: 100%; overflow: hidden; }
+canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; }
+
+#hud {
+  position: absolute; inset: 0 0 auto; z-index: 2; pointer-events: none;
+  display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 12px;
+  padding-block: 10px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  border-bottom: 1px solid var(--line);
+  background: var(--ink);
+}
+#hud.versus { grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); gap: 8px; padding-left: max(8px, env(safe-area-inset-left, 0px)); padding-right: max(8px, env(safe-area-inset-right, 0px)); }
+.phud { --player: var(--hinge); display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 12px; min-width: 0; }
+.versus .phud { gap: 6px; }
+#p1 { --player: var(--p2); direction: rtl; }
+.pips { display: flex; gap: 4px; }
+.shield { width: 14px; height: 18px; background: var(--player); clip-path: polygon(0 0, 100% 0, 100% 62%, 50% 100%, 0 62%); }
+.shield.gone { background: var(--line); }
+.versus .shield { width: 10px; height: 14px; }
+.versus .pips { gap: 2px; }
+.shieldbox { display: grid; gap: 4px; }
+.charge { height: 4px; background: var(--line); }
+.charge i { display: block; height: 100%; width: 0; background: var(--player); transition: width .12s linear; }
+.meter { display: grid; gap: 3px; min-width: 0; max-width: 150px; }
+.meter small { font-size: 10px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); white-space: nowrap; }
+.versus .meter small { display: none; }
+.tick { flex: 1; height: 8px; background: var(--line); }
+.tick.on { background: var(--tick-color, var(--hinge)); }
+.readout { direction: ltr; text-align: right; font-variant-numeric: tabular-nums; line-height: 1.15; }
+#p1 .readout { text-align: left; }
+.score { font-weight: 600; font-size: 18px; }
+.versus .score { font-size: 14px; }
+.combo { font-size: 11px; color: var(--muted); }
+.combo.hot { color: var(--player); }
+#pause {
+  pointer-events: auto; width: 44px; height: 44px; border: 1px solid var(--line); border-radius: 4px;
+  background: var(--ink-raised); color: var(--fg); font: 600 14px var(--mono); cursor: pointer;
+}
+
+#panel {
+  position: absolute; inset: 0; z-index: 3; overflow-y: auto; display: grid; grid-template-columns: minmax(0, 1fr); place-items: center;
+  padding-block: 24px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  background: rgba(13, 17, 23, .78);
+}
+.sheet { width: 100%; max-width: 400px; display: grid; gap: 14px; background: var(--ink-raised); border: 1px solid var(--line); padding: 20px; }
+h1 { margin: 0; font: 400 clamp(22px, 8vw, 36px)/1.05 var(--display); letter-spacing: -.02em; }
+.sub { margin: 6px 0 0; font-size: 12px; line-height: 1.45; color: var(--hinge); }
+.rules { margin: 0; font-size: 13px; line-height: 1.5; color: var(--fg); }
+.rules + .rules { margin-top: -6px; color: var(--muted); font-size: 12px; }
+.toggle { display: grid; grid-template-columns: 1fr auto; gap: 2px 12px; align-items: center; padding-block: 7px; border-top: 1px solid var(--line); font-size: 13px; font-weight: 500; cursor: pointer; }
+.toggle small { grid-column: 1; font-size: 11px; font-weight: 400; color: var(--muted); line-height: 1.4; }
+.toggle input { grid-column: 2; grid-row: 1 / span 2; width: 22px; height: 22px; accent-color: var(--hinge); }
+.stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px 8px; margin: 0; font-variant-numeric: tabular-nums; }
+.stats.two { grid-template-columns: repeat(2, 1fr); }
+.stats div { display: grid; gap: 2px; min-width: 0; }
+.stats dt { font-size: 10px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+.stats dd { margin: 0; font-size: 18px; font-weight: 600; }
+#finalScore { font-size: 14px; color: var(--muted); margin: 6px 0 0; font-variant-numeric: tabular-nums; }
+.actions { display: flex; flex-wrap: wrap; gap: 10px; }
+.actions button { flex: 1 1 120px; min-height: 48px; font: 600 15px var(--mono); border-radius: 4px; cursor: pointer; }
+.actions .primary { background: var(--hinge); color: var(--ink); border: 0; }
+.actions .secondary { background: transparent; color: var(--fg); border: 1px solid var(--line); }
+:focus-visible { outline: 2px solid var(--fg); outline-offset: 2px; }
+@media (max-height: 560px) {
+  #panel { padding-block: 10px; }
+  .sheet { gap: 8px; padding: 12px 16px; max-width: 620px; }
+  .rules, .sub, .toggle small { display: none; }
+  .toggle { padding-block: 4px; }
+  .stats, .stats.two { grid-template-columns: repeat(6, 1fr); }
+  .stats dd { font-size: 14px; }
+  .stats dt { font-size: 9px; letter-spacing: 0; }
+}
+</style>
+
+<div id="stage">
+  <canvas id="game" aria-label="Game arena. Tap bubbles to split them."></canvas>
+  <div id="hud">
+    <div class="phud" id="p0">
+      <div class="shieldbox">
+        <div class="pips shields" aria-label="Left player shields"></div>
+        <div class="charge" aria-label="Shield recharge progress"><i></i></div>
+      </div>
+      <div class="meter"><small id="levelLabel">Level 1 · Overload</small><div class="pips ticks"></div></div>
+      <div class="readout"><div class="score">0</div><div class="combo">x1</div></div>
+    </div>
+    <button id="pause" type="button" aria-label="Pause">II</button>
+    <div class="phud" id="p1" hidden>
+      <div class="shieldbox">
+        <div class="pips shields" aria-label="Right player shields"></div>
+        <div class="charge" aria-label="Shield recharge progress"><i></i></div>
+      </div>
+      <div class="meter"><div class="pips ticks"></div></div>
+      <div class="readout"><div class="score">0</div><div class="combo">x1</div></div>
+    </div>
+  </div>
+  <div id="panel">
+    <div class="sheet">
+      <div>
+        <h1 id="heading">Hinge Pop</h1>
+        <p class="sub" id="sub"></p>
+        <p id="finalScore" hidden></p>
+      </div>
+      <dl class="stats" id="stats" hidden></dl>
+      <p class="rules" id="rules1">Tap a bubble to split it. Tap the smallest size to pop it. A bubble that crosses the hinge splits for free, but charges the overload meter. The smallest size just pops on the hinge, at no cost. Fill the meter and you lose a shield. Tap <span id="streakCount">8</span> times in a row with no crossing to win a shield back. Clear every bubble to win.</p>
+      <p class="rules" id="rules2">2 Players: each player owns one side of the hinge. A crossing charges the player who let it through and lands on the other side.</p>
+      <div id="toggles">
+        <label class="toggle">Flick to aim<small>Swipe off a bubble to choose where its pieces fly.</small><input type="checkbox" id="optFlick" checked></label>
+        <label class="toggle">Hinge grace<small>Pieces from a hinge split get pushed clear of the line.</small><input type="checkbox" id="optGrace" checked></label>
+        <label class="toggle">Sound<small>Short synth blips.</small><input type="checkbox" id="optSound" checked></label>
+      </div>
+      <div class="actions" id="actions"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+// SIM START
+const CFG = {
+  radii: [44, 31, 21, 14],
+  speeds: [110, 152, 200, 250],
+  points: [100, 200, 300, 500],
+  meterMax: 4,
+  rechargeStreak: 8,
+  shields: 3,
+  comboStep: 0.5,
+  comboMax: 10,
+  comboWindow: 1.6,
+  graceHinge: 0.6,
+  graceTap: 0.2,
+  readyTime: 0.8,
+  cleanBonus: 1.25,
+  // Level n has n large bubbles up to maxBubbles. Speed keeps rising after that.
+  maxBubbles: 6,
+  baseSpeed: 0.6,
+  speedStep: 0.08,
+  maxSpeed: 1.5,
+  versusPerSide: 3,
+  versusSpeed: 0.85,
+};
+
+function levelConfig(n) {
+  return { count: Math.min(n, CFG.maxBubbles), speed: Math.min(CFG.maxSpeed, CFG.baseSpeed + CFG.speedStep * (n - 1)) };
+}
+
+function createSim(opts) {
+  const versus = !!opts.versus;
+  const level = opts.level || 1;
+  const conf = versus ? { count: CFG.versusPerSide, speed: CFG.versusSpeed } : levelConfig(level);
+  const newPlayer = (score) => ({ score, combo: 1, comboT: 0, bestCombo: 1, meter: 0, shields: CFG.shields, streak: 0, recharges: 0, taps: 0, flicks: 0, crossings: 0, zaps: 0 });
+  const s = {
+    w: opts.w, h: opts.h, top: opts.top || 0,
+    versus, level, speedMul: conf.speed,
+    vertical: versus || opts.w > opts.h,
+    flick: opts.flick !== false, grace: opts.grace !== false,
+    players: versus ? [newPlayer(0), newPlayer(0)] : [newPlayer(opts.score || 0)],
+    bubbles: [], events: [],
+    status: 'playing', winner: null,
+    t: 0, ready: CFG.readyTime, cleanBonus: false,
+  };
+  let nextId = 1;
+
+  const scale = () => Math.max(0.85, Math.min(1.6, Math.min(s.w, s.h - s.top) / 400));
+  const line = () => (s.vertical ? s.w / 2 : s.top + (s.h - s.top) / 2);
+  const across = (b) => (s.vertical ? b.x : b.y);
+  const sideOf = (b) => (across(b) < line() ? -1 : 1);
+  const ownerIndex = (b) => (versus && b.side > 0 ? 1 : 0);
+
+  function add(g, x, y, angle, grace) {
+    const sp = CFG.speeds[g] * scale() * s.speedMul;
+    const b = { id: nextId++, g, x, y, r: CFG.radii[g] * scale(), vx: Math.cos(angle) * sp, vy: Math.sin(angle) * sp, grace, side: 0 };
+    b.side = sideOf(b);
+    s.bubbles.push(b);
+    return b;
+  }
+
+  // Bubbles start near the outer edges and drift toward the hinge. Versus sides are exact mirrors.
+  function spawnLevel() {
+    const n = conf.count;
+    const rows = versus ? [[0.2, n], [0.8, n]] : [[0.18, Math.ceil(n / 2)], [0.82, Math.floor(n / 2)]];
+    rows.forEach(([v, c], row) => {
+      for (let j = 0; j < c; j++) {
+        const u = (j + 1) / (c + 1);
+        const deg = !versus && row === 1 ? (j % 2 ? 40 : 140) : (j % 2 ? 145 : 35);
+        const a = (deg * Math.PI) / 180;
+        const toward = v < 0.5 ? 1 : -1;
+        const along = Math.cos(a), acrossDir = Math.abs(Math.sin(a)) * toward;
+        if (s.vertical) add(0, v * s.w, s.top + u * (s.h - s.top), Math.atan2(along, acrossDir), 0);
+        else add(0, u * s.w, s.top + v * (s.h - s.top), Math.atan2(acrossDir, along), 0);
+      }
+    });
+  }
+
+  const remove = (b) => { s.bubbles.splice(s.bubbles.indexOf(b), 1); };
+
+  function award(p, g) {
+    const pts = Math.round(CFG.points[g] * p.combo);
+    p.score += pts;
+    p.combo = Math.min(CFG.comboMax, p.combo + CFG.comboStep);
+    p.bestCombo = Math.max(p.bestCombo, p.combo);
+    p.comboT = CFG.comboWindow;
+    return pts;
+  }
+
+  // A full streak restores a lost shield. At full shields it clears the meter instead.
+  function advanceStreak(p, owner) {
+    p.streak++;
+    if (p.streak < CFG.rechargeStreak) return;
+    p.streak = 0;
+    if (p.shields < CFG.shields) {
+      p.shields++;
+      p.recharges++;
+      s.events.push({ type: 'recharge', owner });
+    } else if (p.meter > 0) {
+      p.meter = 0;
+      s.events.push({ type: 'cool', owner });
+    }
+  }
+
+  function checkEnd() {
+    if (s.status !== 'playing' || s.bubbles.length > 0) return;
+    if (versus) {
+      s.status = 'ended';
+      const [a, b] = s.players;
+      s.winner = a.score === b.score ? null : a.score > b.score ? 0 : 1;
+    } else {
+      s.status = 'won';
+      const p = s.players[0];
+      if (p.crossings === 0) { s.cleanBonus = true; p.score = Math.round(p.score * CFG.cleanBonus); }
+    }
+    s.events.push({ type: 'won' });
+  }
+
+  // A tap with no direction fans pieces around the bubble's heading; a flick aims them.
+  function tap(b, dir) {
+    if (s.status !== 'playing' || s.ready > 0 || !s.bubbles.includes(b)) return false;
+    const owner = ownerIndex(b), p = s.players[owner];
+    p.taps++;
+    if (dir) p.flicks++;
+    const pts = award(p, b.g);
+    advanceStreak(p, owner);
+    remove(b);
+    if (b.g < 3) {
+      const childR = CFG.radii[b.g + 1] * scale();
+      const base = dir ? Math.atan2(dir.y, dir.x) : Math.atan2(b.vy, b.vx);
+      const spread = dir ? 0.35 : 0.96;
+      for (const sign of [-1, 1]) {
+        const a = base + sign * spread;
+        add(b.g + 1, b.x + Math.cos(a) * childR * 0.7, b.y + Math.sin(a) * childR * 0.7, a, CFG.graceTap);
+      }
+    }
+    s.events.push({ type: b.g < 3 ? 'split' : 'pop', x: b.x, y: b.y, r: b.r, g: b.g, pts });
+    checkEnd();
+    return true;
+  }
+
+  // The smallest size pops on the hinge at no cost. Combo and streak are left untouched.
+  function zap(b) {
+    const p = s.players[ownerIndex(b)];
+    p.zaps++;
+    p.score += CFG.points[b.g];
+    remove(b);
+    s.events.push({ type: 'zap', x: b.x, y: b.y, r: b.r, pts: CFG.points[b.g] });
+    checkEnd();
+  }
+
+  // b.side still holds the side the bubble left, so the cost goes to that player.
+  function cross(b, newSide) {
+    const owner = ownerIndex(b), p = s.players[owner];
+    p.crossings++;
+    p.combo = 1; p.comboT = 0;
+    p.streak = 0;
+    p.meter++;
+    remove(b);
+    s.events.push({ type: 'cross', x: b.x, y: b.y, r: b.r, g: b.g });
+    const childG = b.g + 1;
+    const childR = CFG.radii[childG] * scale();
+    const heading = Math.atan2(b.vy, b.vx);
+    const outward = s.vertical ? (newSide > 0 ? 0 : Math.PI) : (newSide > 0 ? Math.PI / 2 : -Math.PI / 2);
+    for (const sign of [-1, 1]) {
+      if (s.grace) {
+        const a = outward + sign * 0.87;
+        const off = childR + 2;
+        const along = sign * childR;
+        const x = s.vertical ? line() + newSide * off : b.x + along;
+        const y = s.vertical ? b.y + along : line() + newSide * off;
+        add(childG, x, y, a, CFG.graceHinge);
+      } else {
+        add(childG, b.x, b.y, heading + sign * 0.96, 0);
+      }
+    }
+    if (p.meter >= CFG.meterMax) {
+      p.meter = 0;
+      p.shields--;
+      s.events.push({ type: 'shield' });
+      if (p.shields <= 0) {
+        if (versus) { s.status = 'ended'; s.winner = 1 - owner; }
+        else s.status = 'lost';
+        s.events.push({ type: 'lost' });
+        return;
+      }
+    }
+    checkEnd();
+  }
+
+  function step(dt) {
+    if (s.status !== 'playing') return;
+    if (s.ready > 0) { s.ready -= dt; return; }
+    s.t += dt;
+    for (const p of s.players) {
+      if (p.comboT > 0) { p.comboT -= dt; if (p.comboT <= 0) p.combo = 1; }
+    }
+    const crossed = [];
+    for (const b of s.bubbles) {
+      b.x += b.vx * dt; b.y += b.vy * dt;
+      if (b.x < b.r) { b.x = b.r; b.vx = Math.abs(b.vx); }
+      if (b.x > s.w - b.r) { b.x = s.w - b.r; b.vx = -Math.abs(b.vx); }
+      if (b.y < s.top + b.r) { b.y = s.top + b.r; b.vy = Math.abs(b.vy); }
+      if (b.y > s.h - b.r) { b.y = s.h - b.r; b.vy = -Math.abs(b.vy); }
+      if (b.grace > 0) b.grace -= dt;
+      const now = sideOf(b);
+      if (now !== b.side) {
+        if (b.grace > 0 && b.g < 3) b.side = now;
+        else crossed.push([b, now]);
+      }
+    }
+    for (const [b, side] of crossed) {
+      if (s.status !== 'playing') break;
+      if (b.g === 3) zap(b);
+      else cross(b, side);
+    }
+  }
+
+  // In versus, a touch only reaches bubbles on that player's own side.
+  function hit(x, y) {
+    const touchSide = x < line() ? -1 : 1;
+    let best = null, bestGap = Infinity;
+    for (const b of s.bubbles) {
+      if (versus && b.side !== touchSide) continue;
+      const gap = Math.hypot(b.x - x, b.y - y) - b.r;
+      const pad = Math.max(10, 26 - b.r);
+      if (gap <= pad && gap < bestGap) { best = b; bestGap = gap; }
+    }
+    return best;
+  }
+
+  function resize(w, h, top) {
+    const fx = w / s.w, fy = (h - top) / (s.h - s.top), oldTop = s.top;
+    s.w = w; s.h = h; s.top = top;
+    for (const b of s.bubbles) {
+      b.x *= fx;
+      b.y = top + (b.y - oldTop) * fy;
+      b.r = CFG.radii[b.g] * scale();
+      b.side = sideOf(b);
+    }
+  }
+
+  spawnLevel();
+  return Object.assign(s, { step, tap, hit, resize, line });
+}
+// SIM END
+
+(function () {
+  const $ = (id) => document.getElementById(id);
+  const canvas = $('game'), ctx = canvas.getContext('2d'), stage = $('stage'), hud = $('hud');
+  const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const css = getComputedStyle(document.documentElement);
+  const color = (n) => css.getPropertyValue(n).trim();
+  const C = { hinge: color('--hinge'), charged: color('--charged'), overload: color('--overload'), fg: color('--fg'), ink: color('--ink') };
+  const BUBBLE = ['#cfe3f5', '#a9e3d3', '#f2dd8f', '#ffb27a'];
+  const STORE = 'hinge-pop-prefs';
+
+  let W = 0, H = 0, sim = null, mode = 'menu';
+  let level = 1, runScore = 0;
+  let fx = [], shake = 0, hingePulse = 0, endTimer = 0;
+  const active = new Map();
+
+  function readStore() {
+    try { return JSON.parse(localStorage.getItem(STORE) || '{}'); } catch (e) { return {}; }
+  }
+  function writeStore(extra) {
+    try {
+      localStorage.setItem(STORE, JSON.stringify(Object.assign(readStore(), { flick: $('optFlick').checked, grace: $('optGrace').checked, sound: $('optSound').checked }, extra)));
+    } catch (e) { /* storage unavailable: progress lasts for this visit only */ }
+  }
+  function loadPrefs() {
+    const p = readStore();
+    if (typeof p.flick === 'boolean') $('optFlick').checked = p.flick;
+    if (typeof p.grace === 'boolean') $('optGrace').checked = p.grace;
+    if (typeof p.sound === 'boolean') $('optSound').checked = p.sound;
+    if (Number.isInteger(p.level) && p.level > 0) level = p.level;
+  }
+
+  let audio = null;
+  function initAudio() {
+    if ($('optSound').checked && !audio) {
+      try { audio = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) { audio = null; }
+    }
+    if (audio && audio.state === 'suspended') audio.resume();
+  }
+  function blip(freq, dur, type, gain) {
+    if (!audio || !$('optSound').checked) return;
+    const o = audio.createOscillator(), g = audio.createGain(), t = audio.currentTime;
+    o.type = type; o.frequency.setValueAtTime(freq, t); o.frequency.exponentialRampToValueAtTime(freq * 0.5, t + dur);
+    g.gain.setValueAtTime(gain, t); g.gain.exponentialRampToValueAtTime(0.001, t + dur);
+    o.connect(g); g.connect(audio.destination); o.start(t); o.stop(t + dur);
+  }
+
+  function measure() {
+    const r = stage.getBoundingClientRect(), dpr = Math.min(devicePixelRatio || 1, 2.5);
+    W = r.width; H = r.height;
+    canvas.width = Math.round(W * dpr); canvas.height = Math.round(H * dpr);
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    return hud.getBoundingClientRect().bottom - r.top;
+  }
+
+  function setHudMode(versus) {
+    hud.classList.toggle('versus', versus);
+    $('p1').hidden = !versus;
+    $('levelLabel').textContent = 'Level ' + level + ' · Overload';
+    hudKey = '';
+  }
+
+  function newSim(o) {
+    setHudMode(!!o.versus);
+    const top = measure();
+    active.clear(); fx = []; shake = 0; hingePulse = 0; endTimer = 0;
+    sim = createSim(Object.assign({ w: W, h: H, top, flick: $('optFlick').checked, grace: $('optGrace').checked }, o));
+  }
+
+  function play(o) {
+    initAudio();
+    writeStore();
+    newSim(o);
+    mode = 'play';
+    $('panel').hidden = true;
+  }
+  const playLevel = () => play({ level, score: runScore });
+  const playVersus = () => play({ versus: true });
+  const replay = () => (sim.versus ? playVersus() : playLevel());
+  function resume() {
+    initAudio();
+    writeStore();
+    sim.flick = $('optFlick').checked;
+    sim.grace = $('optGrace').checked;
+    mode = 'play';
+    $('panel').hidden = true;
+  }
+
+  function showPanel(o) {
+    $('heading').textContent = o.heading;
+    $('sub').textContent = o.sub || '';
+    $('sub').hidden = !o.sub;
+    $('finalScore').textContent = o.final || '';
+    $('finalScore').hidden = !o.final;
+    $('stats').hidden = !o.stats;
+    $('stats').classList.toggle('two', !!o.twoColumn);
+    $('stats').innerHTML = (o.stats || []).map(([k, v]) => '<div><dt>' + k + '</dt><dd>' + v + '</dd></div>').join('');
+    $('rules1').hidden = $('rules2').hidden = !o.rules;
+    $('toggles').hidden = !o.toggles;
+    const box = $('actions');
+    box.textContent = '';
+    for (const a of o.actions) {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.id = a.id;
+      btn.className = a.primary ? 'primary' : 'secondary';
+      btn.textContent = a.label;
+      btn.addEventListener('click', a.run);
+      box.appendChild(btn);
+    }
+    $('panel').hidden = false;
+    $('panel').scrollTop = 0;
+  }
+
+  function menu() {
+    mode = 'menu';
+    runScore = 0;
+    newSim({ level });
+    const actions = [{ id: 'two', label: '2 Players', run: playVersus }];
+    if (level > 1) actions.push({ id: 'levelOne', label: 'Back to level 1', run: () => { level = 1; writeStore({ level: 1 }); playLevel(); } });
+    actions.push({ id: 'play', label: level > 1 ? 'Play level ' + level : 'Play', primary: true, run: playLevel });
+    showPanel({ heading: 'Hinge Pop', sub: 'Prototype: plain circles.', rules: true, toggles: true, actions });
+  }
+
+  function pause() {
+    if (mode !== 'play' || sim.status !== 'playing') return;
+    mode = 'paused';
+    active.clear();
+    showPanel({
+      heading: 'Paused',
+      sub: 'Switches apply as soon as you resume.',
+      toggles: true,
+      actions: [
+        { id: 'menu', label: 'Menu', run: menu },
+        { id: 'restart', label: sim.versus ? 'Rematch' : 'Restart level', run: replay },
+        { id: 'play', label: 'Resume', primary: true, run: resume },
+      ],
+    });
+  }
+
+  function describeLevel(n) {
+    const c = levelConfig(n);
+    return c.count + (c.count === 1 ? ' bubble' : ' bubbles') + ' at ' + Math.round(c.speed * 100) + '% speed';
+  }
+
+  function finish() {
+    mode = 'ended';
+    if (sim.versus) {
+      const [a, b] = sim.players;
+      const heading = sim.winner === null ? 'Draw' : sim.winner === 0 ? 'Left wins' : 'Right wins';
+      const out = a.shields <= 0 || b.shields <= 0;
+      showPanel({
+        heading,
+        sub: out ? 'The hinge took the last shield.' : sim.winner === null ? 'Same score, every bubble cleared.' : 'Every bubble cleared. Higher score wins.',
+        twoColumn: true,
+        stats: [['Left score', a.score.toLocaleString()], ['Right score', b.score.toLocaleString()], ['Left crossings', a.crossings], ['Right crossings', b.crossings], ['Left shields', a.shields], ['Right shields', b.shields]],
+        actions: [{ id: 'menu', label: 'Menu', run: menu }, { id: 'play', label: 'Rematch', primary: true, run: playVersus }],
+      });
+      return;
+    }
+    const p = sim.players[0], won = sim.status === 'won';
+    const stored = readStore();
+    let best = stored.best || 0;
+    if (won && p.score > best) best = p.score;
+    const stats = [['Time', sim.t.toFixed(1) + 's'], ['Taps', p.taps], ['Crossings', p.crossings], ['Hinge pops', p.zaps], ['Recharged', p.recharges], [won ? 'Shields' : 'Left', won ? p.shields : sim.bubbles.length]];
+    const final = 'Score ' + p.score.toLocaleString() + (sim.cleanBonus ? ' (no-crossing bonus +25%)' : '') + (best ? ' · Best ' + best.toLocaleString() : '');
+    if (won) {
+      const done = level;
+      level = done + 1;
+      runScore = p.score;
+      writeStore({ level, best });
+      showPanel({
+        heading: 'Level ' + done + ' cleared',
+        sub: 'Next: ' + describeLevel(level) + '.',
+        final, stats,
+        actions: [{ id: 'menu', label: 'Menu', run: menu }, { id: 'play', label: 'Level ' + level, primary: true, run: playLevel }],
+      });
+    } else {
+      showPanel({
+        heading: 'Overloaded',
+        sub: 'The hinge took your last shield. Level ' + level + ' starts again.',
+        final, stats,
+        actions: [{ id: 'menu', label: 'Menu', run: menu }, { id: 'play', label: 'Try again', primary: true, run: playLevel }],
+      });
+    }
+  }
+
+  function drainEvents() {
+    for (const e of sim.events) {
+      if (e.type === 'split' || e.type === 'pop') {
+        fx.push({ kind: 'ring', x: e.x, y: e.y, r: e.r, t: 0, life: 0.35, color: BUBBLE[e.g] });
+        fx.push({ kind: 'text', x: e.x, y: e.y, t: 0, life: 0.7, text: '+' + e.pts });
+        blip(e.type === 'pop' ? 880 : 420 + e.g * 150, 0.09, 'triangle', 0.14);
+      } else if (e.type === 'cross') {
+        fx.push({ kind: 'ring', x: e.x, y: e.y, r: e.r, t: 0, life: 0.45, color: C.overload });
+        hingePulse = 1;
+        blip(150, 0.16, 'sawtooth', 0.11);
+      } else if (e.type === 'shield') {
+        if (!reduced) shake = 1;
+        hingePulse = 1.6;
+        blip(80, 0.4, 'square', 0.14);
+      } else if (e.type === 'zap') {
+        fx.push({ kind: 'ring', x: e.x, y: e.y, r: e.r, t: 0, life: 0.4, color: C.hinge });
+        fx.push({ kind: 'text', x: e.x, y: e.y, t: 0, life: 0.7, text: '+' + e.pts });
+        blip(1200, 0.1, 'sine', 0.13);
+      } else if (e.type === 'recharge' || e.type === 'cool') {
+        const pos = sim.line();
+        const text = e.type === 'recharge' ? 'SHIELD RESTORED' : 'METER CLEARED';
+        if (sim.versus) fx.push({ kind: 'text', x: e.owner === 0 ? W * 0.25 : W * 0.75, y: (sim.top + H) / 2, t: 0, life: 1.1, text });
+        else fx.push({ kind: 'text', x: sim.vertical ? pos : W / 2, y: sim.vertical ? (sim.top + H) / 2 : pos - 16, t: 0, life: 1.1, text });
+        blip(520, 0.12, 'triangle', 0.14);
+        blip(990, 0.26, 'triangle', 0.12);
+      } else if (e.type === 'won') {
+        blip(660, 0.3, 'triangle', 0.16);
+        endTimer = 0.6;
+      } else if (e.type === 'lost') {
+        blip(70, 0.6, 'sawtooth', 0.16);
+        endTimer = 0.6;
+      }
+    }
+    sim.events.length = 0;
+  }
+
+  const meterColor = (m) => (m >= CFG.meterMax - 1 ? C.overload : m >= CFG.meterMax - 2 ? C.charged : C.hinge);
+
+  function drawHinge(now) {
+    const pos = sim.line(), meter = Math.max(...sim.players.map((p) => p.meter)), col = meterColor(meter);
+    const start = sim.vertical ? sim.top : 0, end = sim.vertical ? H : W;
+    ctx.fillStyle = 'rgba(0,0,0,.35)';
+    if (sim.vertical) ctx.fillRect(pos - 9, sim.top, 18, H - sim.top);
+    else ctx.fillRect(0, pos - 9, W, 18);
+    const steps = 28, amp = reduced ? 0 : 1.5 + hingePulse * 5 + meter * 0.5;
+    ctx.strokeStyle = col; ctx.lineWidth = 2 + hingePulse * 2;
+    ctx.shadowColor = col; ctx.shadowBlur = 8 + hingePulse * 18;
+    ctx.beginPath();
+    for (let i = 0; i <= steps; i++) {
+      const along = start + ((end - start) * i) / steps;
+      const off = i === 0 || i === steps ? 0 : Math.sin(i * 1.7 + now * 0.013) * amp * Math.sin(i * 0.61 - now * 0.007);
+      if (sim.vertical) { if (i) ctx.lineTo(pos + off, along); else ctx.moveTo(pos + off, along); }
+      else if (i) ctx.lineTo(along, pos + off); else ctx.moveTo(along, pos + off);
+    }
+    ctx.stroke();
+    ctx.shadowBlur = 0;
+  }
+
+  function draw(now, dt) {
+    ctx.save();
+    ctx.fillStyle = C.ink;
+    ctx.fillRect(0, 0, W, H);
+    if (shake > 0) ctx.translate((Math.random() - 0.5) * 12 * shake, (Math.random() - 0.5) * 12 * shake);
+    if (sim.versus) {
+      ctx.fillStyle = 'rgba(79,216,255,.05)';
+      ctx.fillRect(0, sim.top, W / 2, H - sim.top);
+      ctx.fillStyle = 'rgba(255,178,122,.05)';
+      ctx.fillRect(W / 2, sim.top, W / 2, H - sim.top);
+    }
+    drawHinge(now);
+
+    for (const b of sim.bubbles) {
+      ctx.beginPath();
+      ctx.arc(b.x, b.y, b.r, 0, Math.PI * 2);
+      ctx.fillStyle = BUBBLE[b.g];
+      ctx.globalAlpha = b.grace > 0 ? 0.6 : 1;
+      ctx.fill();
+      ctx.globalAlpha = 1;
+    }
+
+    for (const a of active.values()) {
+      if (!sim.bubbles.includes(a.b)) continue;
+      ctx.beginPath();
+      ctx.arc(a.b.x, a.b.y, a.b.r + 5, 0, Math.PI * 2);
+      ctx.strokeStyle = C.fg; ctx.lineWidth = 2; ctx.stroke();
+    }
+
+    fx = fx.filter((f) => (f.t += dt) < f.life);
+    for (const f of fx) {
+      const p = f.t / f.life;
+      ctx.globalAlpha = 1 - p;
+      if (f.kind === 'ring') {
+        ctx.beginPath(); ctx.arc(f.x, f.y, f.r * (1 + p * 0.9), 0, Math.PI * 2);
+        ctx.strokeStyle = f.color; ctx.lineWidth = 3; ctx.stroke();
+      } else {
+        ctx.fillStyle = C.fg; ctx.font = '600 14px ' + css.getPropertyValue('--mono');
+        ctx.textAlign = 'center';
+        ctx.fillText(f.text, f.x, f.y - p * 30);
+      }
+    }
+    ctx.globalAlpha = 1;
+    ctx.restore();
+  }
+
+  function buildHud() {
+    for (const box of ['p0', 'p1'].map($)) {
+      box.querySelector('.shields').innerHTML = '<div class="shield"></div>'.repeat(CFG.shields);
+      box.querySelector('.ticks').innerHTML = '<div class="tick"></div>'.repeat(CFG.meterMax);
+      box.querySelector('.ticks').style.gap = '3px';
+    }
+  }
+  let hudKey = '';
+  function updateHud() {
+    const key = sim.players.map((p) => [p.shields, p.meter, p.score, p.combo, p.streak].join('|')).join('/');
+    if (key === hudKey) return;
+    hudKey = key;
+    sim.players.forEach((p, i) => {
+      const box = $('p' + i);
+      box.querySelector('.charge i').style.width = (p.streak / CFG.rechargeStreak) * 100 + '%';
+      [...box.querySelector('.shields').children].forEach((el, n) => el.classList.toggle('gone', n >= p.shields));
+      const col = meterColor(p.meter);
+      [...box.querySelector('.ticks').children].forEach((el, n) => { el.classList.toggle('on', n < p.meter); el.style.setProperty('--tick-color', col); });
+      box.querySelector('.score').textContent = p.score.toLocaleString();
+      const combo = box.querySelector('.combo');
+      combo.textContent = 'x' + p.combo;
+      combo.classList.toggle('hot', p.combo > 1);
+    });
+  }
+
+  function onResize() {
+    const top = measure();
+    if (!sim) return;
+    if (!sim.versus && (W > H) !== sim.vertical) {
+      if (mode === 'play' || mode === 'paused') {
+        playLevel();
+        mode = 'paused';
+        showPanel({ heading: 'Level restarted', sub: 'The phone turned, so the hinge moved.', actions: [{ id: 'play', label: 'Play', primary: true, run: resume }] });
+      } else if (mode === 'menu') {
+        const panelOpen = !$('panel').hidden;
+        newSim({ level });
+        $('panel').hidden = !panelOpen;
+      } else {
+        sim.vertical = W > H;
+        sim.resize(W, H, top);
+      }
+    } else {
+      sim.resize(W, H, top);
+    }
+  }
+
+  let last = 0, acc = 0;
+  const STEP = 1 / 120;
+  function frame(now) {
+    const dt = Math.min(0.05, (now - last) / 1000 || 0);
+    last = now;
+    if (mode === 'play' && sim) {
+      acc += dt;
+      while (acc >= STEP) { sim.step(STEP); acc -= STEP; }
+      drainEvents();
+      if (endTimer > 0) { endTimer -= dt; if (endTimer <= 0) finish(); }
+    }
+    shake = Math.max(0, shake - dt * 3);
+    hingePulse = Math.max(0, hingePulse - dt * 3);
+    if (sim) { draw(now, dt); updateHud(); }
+    requestAnimationFrame(frame);
+  }
+
+  function point(e) {
+    const r = canvas.getBoundingClientRect();
+    return { x: e.clientX - r.left, y: e.clientY - r.top };
+  }
+  const FLICK_PX = 18;
+  canvas.addEventListener('pointerdown', (e) => {
+    if (mode !== 'play') return;
+    e.preventDefault();
+    const p = point(e), b = sim.hit(p.x, p.y);
+    if (!b) return;
+    if (!sim.flick) { sim.tap(b); return; }
+    try { canvas.setPointerCapture(e.pointerId); } catch (err) { /* capture optional */ }
+    active.set(e.pointerId, { b, x0: p.x, y0: p.y });
+  });
+  canvas.addEventListener('pointermove', (e) => {
+    const a = active.get(e.pointerId);
+    if (!a) return;
+    const p = point(e), dx = p.x - a.x0, dy = p.y - a.y0;
+    if (Math.hypot(dx, dy) >= FLICK_PX) {
+      active.delete(e.pointerId);
+      sim.tap(a.b, { x: dx, y: dy });
+    }
+  });
+  canvas.addEventListener('pointerup', (e) => {
+    const a = active.get(e.pointerId);
+    if (!a) return;
+    active.delete(e.pointerId);
+    sim.tap(a.b);
+  });
+  canvas.addEventListener('pointercancel', (e) => active.delete(e.pointerId));
+
+  $('pause').addEventListener('click', pause);
+  document.addEventListener('visibilitychange', () => { if (document.hidden) pause(); });
+  addEventListener('resize', onResize);
+  ['optFlick', 'optGrace', 'optSound'].forEach((id) => $(id).addEventListener('change', () => writeStore()));
+
+  window.hingePop = { get sim() { return sim; } };
+  $('streakCount').textContent = CFG.rechargeStreak;
+  loadPrefs();
+  buildHud();
+  menu();
+  requestAnimationFrame(frame);
+})();
+</script>

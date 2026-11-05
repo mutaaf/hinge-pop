@@ -1,0 +1,9 @@
+{
+  // hinge-pop: static assets at mutaafaziz.com/hingepop/. No Worker code and no server state.
+  // The route takes precedence over the mutaafaziz.com Custom Domain (the personal site).
+  "name": "hinge-pop",
+  "compatibility_date": "2026-10-01",
+  "workers_dev": false,
+  "assets": { "directory": "./dist" },
+  "routes": [{ "pattern": "mutaafaziz.com/hingepop*", "zone_name": "mutaafaziz.com" }]
+}
