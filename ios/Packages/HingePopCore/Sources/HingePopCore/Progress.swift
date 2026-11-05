@@ -12,7 +12,13 @@ public struct GameProgress: Codable, Equatable, Sendable {
   public var taught: Set<String> = []
   public var flick = true
   public var hingeGrace = true
-  public var sound = true
+  /// Silent until someone turns it on. Saves from when this defaulted to on stored that automatically, so the
+  /// old key is ignored, and only a choice made in Settings counts.
+  private var soundChoice: Bool? = nil
+  public var sound: Bool {
+    get { soundChoice ?? false }
+    set { soundChoice = newValue }
+  }
   public var haptics = true
   public var arena: Arena? = nil
   /// Optional so saves from before cameos existed still load.

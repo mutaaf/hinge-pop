@@ -6,7 +6,7 @@ import UIKit
 @MainActor
 final class Sound {
   static let shared = Sound()
-  var enabled = true
+  var enabled = false
   enum Wave { case sine, triangle, square, saw }
   private let engine = AVAudioEngine()
   private var players: [AVAudioPlayerNode] = []
@@ -70,7 +70,7 @@ final class Sound {
 @MainActor
 final class Haptics {
   static let shared = Haptics()
-  var enabled = true
+  var enabled = false
   private let light = UIImpactFeedbackGenerator(style: .light)
   private let rigid = UIImpactFeedbackGenerator(style: .rigid)
   private let notify = UINotificationFeedbackGenerator()

@@ -382,7 +382,7 @@ details[open] > summary::after { content: "\2212"; }
           <summary>Settings</summary>
           <div class="toggle-row"><label class="toggle">Swipe to slice<small>One swipe hits every bubble it crosses and aims the pieces.</small><input type="checkbox" id="optFlick" checked></label><button type="button" class="info" data-tip="optFlick" aria-label="More about Swipe to slice"><span>?</span></button></div>
           <div class="toggle-row"><label class="toggle">Hinge grace<small>Pieces from a hinge split get pushed clear of the line.</small><input type="checkbox" id="optGrace" checked></label><button type="button" class="info" data-tip="optGrace" aria-label="More about Hinge grace"><span>?</span></button></div>
-          <div class="toggle-row"><label class="toggle">Sound<small>Short synth blips.</small><input type="checkbox" id="optSound" checked></label><button type="button" class="info" data-tip="optSound" aria-label="More about Sound"><span>?</span></button></div>
+          <div class="toggle-row"><label class="toggle">Sound<small>Off until you turn it on.</small><input type="checkbox" id="optSound"></label><button type="button" class="info" data-tip="optSound" aria-label="More about Sound"><span>?</span></button></div>
         </details>
       </div>
     </div>
@@ -1030,14 +1030,15 @@ function createSim(opts) {
   }
   function writeStore(extra) {
     try {
-      localStorage.setItem(STORE, JSON.stringify(Object.assign(readStore(), { flick: $('optFlick').checked, grace: $('optGrace').checked, sound: $('optSound').checked }, extra)));
+      localStorage.setItem(STORE, JSON.stringify(Object.assign(readStore(), { flick: $('optFlick').checked, grace: $('optGrace').checked, soundOn: $('optSound').checked }, extra)));
     } catch (e) { /* storage unavailable: progress lasts for this visit only */ }
   }
   function loadPrefs() {
     const p = readStore();
     if (typeof p.flick === 'boolean') $('optFlick').checked = p.flick;
     if (typeof p.grace === 'boolean') $('optGrace').checked = p.grace;
-    if (typeof p.sound === 'boolean') $('optSound').checked = p.sound;
+    // Silent until someone turns it on. The old `sound` key was stored automatically, so it doesn't count as a choice.
+    if (typeof p.soundOn === 'boolean') $('optSound').checked = p.soundOn;
     if (Number.isInteger(p.level) && p.level > 0) level = p.level;
   }
 

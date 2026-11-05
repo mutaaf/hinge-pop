@@ -4,7 +4,7 @@ import { serve } from './serve.mjs';
 const server = await serve(8791, process.env.PERF_ROOT || 'dist');
 const browser = await chromium.launch({ args: ['--use-gl=swiftshader', '--enable-webgl', '--ignore-gpu-blocklist'] });
 const context = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2 });
-await context.addInitScript(() => localStorage.setItem('hinge-pop-prefs', JSON.stringify({ toured: true, touredTwo: true, sound: false, level: 29 })));
+await context.addInitScript(() => localStorage.setItem('hinge-pop-prefs', JSON.stringify({ toured: true, touredTwo: true, level: 29 })));
 const page = await context.newPage();
 if (process.env.PERF_THROTTLE) await (await context.newCDPSession(page)).send('Emulation.setCPUThrottlingRate', { rate: Number(process.env.PERF_THROTTLE) });
 await page.goto('http://localhost:8791/hingepop/play/');

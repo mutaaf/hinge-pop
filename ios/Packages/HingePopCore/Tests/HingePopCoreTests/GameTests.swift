@@ -584,4 +584,15 @@ final class GameTests: XCTestCase {
     for _ in 0..<(60 * 9) { g.step(1.0 / 60); g.players[0].meter = 0; g.players[0].shields = 3 }
     XCTAssertTrue(g.visitors.isEmpty)
   }
+
+  func testSoundStartsOffEvenForOldSavesThatStoredItOn() throws {
+    XCTAssertFalse(GameProgress().sound)
+    let old = try JSONDecoder().decode(GameProgress.self, from: Data(#"{"unlocked":3,"stars":{},"bestScores":{},"arcadeBest":0,"dailyBest":{},"seenTour":true,"seenVersusTour":true,"taught":[],"flick":true,"hingeGrace":true,"sound":true,"haptics":true}"#.utf8))
+    XCTAssertFalse(old.sound)
+    XCTAssertEqual(old.unlocked, 3)
+    var chosen = old
+    chosen.sound = true
+    let again = try JSONDecoder().decode(GameProgress.self, from: JSONEncoder().encode(chosen))
+    XCTAssertTrue(again.sound)
+  }
 }

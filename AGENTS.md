@@ -55,6 +55,7 @@ The first Play and the first two-player match open a guided tour using real bubb
 ## Definition of done
 
 - `npm test`, `npm run test:e2e`, `npm run test:devices` and `npm run test:landing` pass. For native changes, `make -C ios core build` too.
+- Sound is off by default everywhere, so automated runs stay silent while someone's working. Never turn it on in a script.
 - Do not run two web test suites at once. Each rebuilds `dist/`.
 - Smoothness is measured, not guessed: `ios/scripts/perf.sh [simulator] [level]` for native, and `PERF_THROTTLE=6 node scripts/perf-web.mjs` for web. Always check web with the throttle, because desktop hides per-pixel costs.
 - Native effects are pooled and art is prewarmed off the main thread. Don't create nodes or render art mid-play, and don't use `SKShapeNode` or `SKLabelNode` per frame. On web, avoid `shadowBlur`.
