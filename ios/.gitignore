@@ -1,0 +1,7 @@
+build/
+HingePop.xcodeproj/
+.build/
+.swiftpm/
+DerivedData/
+HingePop/Info.plist
+.env.testflight

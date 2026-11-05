@@ -1,0 +1,129 @@
+{
+  "lobby": 1,
+  "slug": "hinge-pop",
+  "name": "Hinge Pop",
+  "category": "Games \u203a Arcade",
+  "tagline": "Pop. Split. Chain. Clear.",
+  "audience": "general",
+  "stores": [
+    "appstore",
+    "web"
+  ],
+  "ipad": true,
+  "ios": {
+    "bundleId": "com.mutaafaziz.hingepop"
+  },
+  "android": {
+    "package": ""
+  },
+  "icon": "ios/HingePop/Assets.xcassets/AppIcon.appiconset/AppIcon-1024.png",
+  "brand": {
+    "mode": "dark",
+    "bg": "#160a33",
+    "bg2": "#2a1266",
+    "ink": "#ffffff",
+    "muted": "#d8cff5",
+    "accent": "#ffc533",
+    "accent2": "#4fd8ff",
+    "glow": [
+      "#7a3cff",
+      "#4fd8ff",
+      "#ff4fb0"
+    ],
+    "display": {
+      "family": "Titan One",
+      "weights": [
+        400
+      ]
+    },
+    "body": {
+      "family": "Nunito",
+      "weights": [
+        700,
+        900
+      ]
+    },
+    "mono": {
+      "family": "JetBrains Mono",
+      "weights": [
+        700
+      ]
+    },
+    "texture": "stars",
+    "ribbon": true
+  },
+  "raw": {
+    "iphone": "store/lobby/raw/iphone",
+    "ipad": "store/lobby/raw/ipad",
+    "duo": "store/lobby/raw/duo"
+  },
+  "capture": {
+    "command": "ios/scripts/store-capture.sh",
+    "notes": "Debug launch flags stage each scene. Build first with make -C ios build."
+  },
+  "shots": [
+    {
+      "id": "hook",
+      "raw": "home",
+      "layout": "cover",
+      "kicker": "ONE HINGE. EIGHT BUBBLES.",
+      "title": "Keep them off *the line*",
+      "sub": "Split, slice and chain before the big ones cross."
+    },
+    {
+      "id": "swipe",
+      "raw": "swarm",
+      "layout": "bleed",
+      "kicker": "SWIPE TO SLICE",
+      "title": "One stroke, *every bubble*",
+      "sub": "Then pop one tiny bubble and watch the rest go."
+    },
+    {
+      "id": "physics",
+      "raw": "gates",
+      "layout": "tilt",
+      "kicker": "REAL PHYSICS",
+      "title": "Every bubble has *its own weight*",
+      "sub": "Big ones shove. Small ones bounce. Gates let you through."
+    },
+    {
+      "id": "boss",
+      "raw": "boss",
+      "layout": "hero",
+      "kicker": "FIVE CHAPTERS",
+      "title": "Bosses too big to *cross*",
+      "sub": "Wear them down, phase by phase."
+    },
+    {
+      "id": "versus",
+      "raw": "versus",
+      "layout": "hero",
+      "kicker": "TWO PLAYERS, ONE SCREEN",
+      "title": "What you miss lands *on them*",
+      "sub": "One side each. On iPhone Duo, one panel each."
+    },
+    {
+      "id": "map",
+      "raw": "map",
+      "layout": "tilt",
+      "kicker": "THEN IT KEEPS GOING",
+      "title": "Starts with *one bubble*",
+      "sub": "50 authored levels, then Infinity, Arcade and a new Daily."
+    },
+    {
+      "id": "guide",
+      "raw": "guide",
+      "layout": "bleed",
+      "kicker": "MEET THE CAST",
+      "title": "Eight bubbles, *five power-ups*",
+      "sub": "No ads. No accounts. Nothing leaves your device."
+    }
+  ],
+  "feature": {
+    "title": "Keep them off the line",
+    "sub": "Pop. Split. Chain. Clear."
+  },
+  "avoid": [
+    "Fruit Ninja"
+  ]
+}

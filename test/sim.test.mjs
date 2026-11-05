@@ -16,25 +16,63 @@ function sendAcross(s, b) {
 }
 const makeSmallest = (b) => { b.g = 3; b.r = CFG.radii[3]; };
 
-test('levels start with one slow bubble and add one per level up to the cap', () => {
-  assert.equal(levelConfig(1).count, 1);
-  assert.equal(levelConfig(2).count, 2);
-  assert.equal(levelConfig(4).count, 4);
-  assert.equal(levelConfig(6).count, 6);
-  assert.equal(levelConfig(40).count, 6);
+test('levels ramp by how much tapping they ask for, starting with one big bubble', () => {
+  assert.deepEqual(Array.from(levelConfig(1).sizes), [0]);
+  assert.deepEqual(Array.from(levelConfig(2).sizes), [0, 2]);
+  assert.deepEqual(Array.from(levelConfig(3).sizes), [0, 1]);
   assert.ok(levelConfig(1).speed < levelConfig(2).speed);
-  assert.ok(levelConfig(6).speed < levelConfig(10).speed);
-  assert.equal(levelConfig(99).speed, CFG.maxSpeed);
-  for (const n of [1, 2, 3, 4, 5, 6, 9]) assert.equal(solo(n).bubbles.length, levelConfig(n).count);
+  const work = (n) => Array.from(levelConfig(n).sizes).reduce((t, size) => t + CFG.work[size], 0);
+  for (let n = 2; n <= 9; n++) assert.ok(work(n) > work(n - 1), 'level ' + n);
+  for (let n = 1; n <= 300; n++) {
+    assert.ok(work(n) <= CFG.maxWork, 'level ' + n + ' asks for ' + work(n));
+    assert.ok(levelConfig(n).speed <= CFG.maxSpeed);
+    assert.equal(solo(n).bubbles.length, levelConfig(n).sizes.length);
+  }
 });
 
-test('one large bubble takes 15 taps to clear and a clean clear earns the bonus', () => {
+test('one large bubble takes 15 taps to clear when nothing chains, and a clean clear earns the bonus', () => {
+  const saved = CFG.chainPopRadius;
+  CFG.chainPopRadius = 0;
   const s = solo(1);
   let taps = 0;
   while (s.bubbles.length) { s.tap(s.bubbles[0]); taps++; }
+  CFG.chainPopRadius = saved;
   assert.equal(taps, 15);
   assert.equal(s.status, 'won');
   assert.equal(s.cleanBonus, true);
+});
+
+test('a swipe hits everything it crosses once, and leaves fresh pieces alone', () => {
+  const s = solo(1);
+  s.bubbles.length = 0;
+  const a = s.add(1, 80, 200, 0, 0), b = s.add(1, 200, 200, 0, 0), far = s.add(1, 200, 340, 0, 0);
+  for (const x of [a, b, far]) { x.vx = 0; x.vy = 0; }
+  const skip = new Set();
+  assert.equal(s.slice(20, 200, 300, 200, skip), 2);
+  assert.ok(!s.bubbles.includes(a) && !s.bubbles.includes(b) && s.bubbles.includes(far));
+  assert.equal(s.slice(20, 200, 300, 200, skip), 0);
+});
+
+test('two players: a swipe stays on its own side', () => {
+  const s = versus();
+  s.bubbles.length = 0;
+  const r = s.add(1, s.line() + 60, 200, 0, 0);
+  assert.equal(s.slice(s.line() - 100, 200, s.line() + 100, 200, new Set()), 0);
+  assert.ok(s.bubbles.includes(r));
+});
+
+test('popping a tiny bubble sets off the tiny bubbles close to it, and leaves the rest', () => {
+  const s = solo(1);
+  s.bubbles.length = 0;
+  const a = s.add(3, 100, 200, 0, 0);
+  s.add(3, 140, 200, 0, 0); s.add(3, 180, 200, 0, 0);
+  const big = s.add(0, 200, 330, 0, 0), far = s.add(3, 320, 320, 0, 0);
+  for (const b of s.bubbles) { b.vx = 0; b.vy = 0; }
+  s.tap(a);
+  assert.equal(s.players[0].taps, 1);
+  assert.equal(s.players[0].chained, 2);
+  assert.ok(s.bubbles.includes(big) && s.bubbles.includes(far));
+  assert.equal(s.bubbles.length, 2);
 });
 
 test('a larger bubble on the hinge splits and costs the meter, streak and combo', () => {
@@ -91,7 +129,7 @@ test('a hinge pop on the last bubble wins and keeps the no-crossing bonus', () =
 });
 
 test('a full streak restores a shield, and clears the meter at full shields', () => {
-  const s = solo(6);
+  const s = solo(9);
   const p = s.players[0];
   p.shields = 2;
   for (const b of s.bubbles) { b.vx = 0; b.vy = 0; }

@@ -1,0 +1,180 @@
+import SwiftUI
+import HingePopArt
+import HingePopCore
+
+extension Arena {
+  /// The curtain colours for each arena.
+  var aurora: [Color] {
+    switch self {
+    case .classic: [Color(red: 0.2, green: 0.85, blue: 1), Color(red: 0.4, green: 0.45, blue: 1), Color(red: 0.25, green: 1, blue: 0.75)]
+    case .neon: [Color(red: 0.9, green: 0.3, blue: 1), Color(red: 0.35, green: 0.5, blue: 1), Color(red: 1, green: 0.35, blue: 0.7)]
+    case .forest: [Color(red: 0.3, green: 1, blue: 0.55), Color(red: 0.2, green: 0.85, blue: 0.8), Color(red: 0.75, green: 1, blue: 0.35)]
+    case .space: [Color(red: 0.55, green: 0.35, blue: 1), Color(red: 0.2, green: 0.7, blue: 1), Color(red: 1, green: 0.45, blue: 0.75)]
+    }
+  }
+}
+
+/// The aurora behind every screen: one full-screen Metal layer at no more than 30 fps. It pauses off
+/// screen, in the background and in Low Power Mode, and shows a still frame under Reduce Motion. Menus
+/// let it rest after a few seconds, while gameplay keeps it moving.
+struct AuroraField: View {
+  var arena: Arena
+  var heat: Double = 0
+  var strength: Double = 0.42
+  var alwaysOn = false
+  @Environment(\.accessibilityReduceMotion) private var reduceMotion
+  @Environment(\.scenePhase) private var phase
+  @State private var visible = false
+  @State private var resting = false
+  @State private var lowPower = ProcessInfo.processInfo.isLowPowerModeEnabled
+
+  var body: some View {
+    let calm = reduceMotion || lowPower || phase != .active || !visible || (resting && !alwaysOn)
+    TimelineView(.animation(minimumInterval: 1.0 / 30.0, paused: calm)) { ctx in
+      let t = Float(ctx.date.timeIntervalSinceReferenceDate.truncatingRemainder(dividingBy: 10_000))
+      GeometryReader { geo in
+        let c = arena.aurora
+        Rectangle()
+          .colorEffect(ShaderLibrary.auroraLight(.float2(geo.size), .float(t), .color(c[0]), .color(c[1]), .color(c[2]), .float(Float(strength)), .float(Float(heat))))
+      }
+    }
+    .blendMode(.plusLighter)
+    .allowsHitTesting(false)
+    .accessibilityHidden(true)
+    .ignoresSafeArea()
+    .task(id: "\(visible)|\(phase == .active)") {
+      resting = false
+      guard visible, phase == .active, !alwaysOn else { return }
+      try? await Task.sleep(for: .seconds(8))
+      if !Task.isCancelled { resting = true }
+    }
+    .onAppear { visible = true }
+    .onDisappear { visible = false }
+    .onReceive(NotificationCenter.default.publisher(for: .NSProcessInfoPowerStateDidChange)) { _ in
+      lowPower = ProcessInfo.processInfo.isLowPowerModeEnabled
+    }
+  }
+}
+
+/// Particles sampled from a piece of art. Each one is its own damped spring with its own stiffness, so the
+/// field swirls into the shape instead of easing into it, the way the aurora-field library does. The crisp
+/// art then fades up through the settled particles, which keep breathing around it as a halo.
+struct AuroraAssemble: View {
+  let item: ArtImage.Item
+  let size: CGFloat
+  var count = 900
+  var delay = 0.0
+  @Environment(\.displayScale) private var scale
+  @Environment(\.accessibilityReduceMotion) private var reduceMotion
+  @State private var cloud: ParticleCloud?
+  @State private var start = Date()
+
+  var body: some View {
+    let box = artSize
+    ZStack {
+      if reduceMotion {
+        ArtImage(item: item, size: size)
+      } else {
+        TimelineView(.animation) { ctx in
+          let t = ctx.date.timeIntervalSince(start) - delay
+          ZStack {
+            Canvas { g, canvas in cloud?.draw(in: &g, canvas: canvas, time: max(0, t)) }
+              .frame(width: box.width * 1.5, height: box.height * 1.5)
+              .allowsHitTesting(false)
+            ArtImage(item: item, size: size)
+              .opacity(min(1, max(0, (t - 0.85) / 0.45)))
+              .scaleEffect(0.97 + 0.03 * min(1, max(0, (t - 0.85) / 0.45)))
+          }
+        }
+      }
+    }
+    .frame(width: box.width, height: box.height)
+    .task {
+      start = Date()
+      guard !reduceMotion, cloud == nil else { return }
+      let source = cgImage
+      let want = count
+      cloud = await Task.detached(priority: .userInitiated) { ParticleCloud(image: source, count: want) }.value
+    }
+  }
+
+  private var cgImage: CGImage {
+    switch item {
+    case .bubble(let k): Art.bubble(k, size: size, scale: 1)
+    case .power(let k): Art.power(k, size: size, scale: 1)
+    case .glyph(let g): Art.glyph(g, size: size, scale: 1)
+    case .logo: Art.logo(width: size, scale: 1)
+    }
+  }
+  private var artSize: CGSize {
+    let img = cgImage
+    return CGSize(width: img.width, height: img.height)
+  }
+}
+
+/// The sampled points, plus a closed-form damped spring, so a frame costs no simulation state.
+final class ParticleCloud: @unchecked Sendable {
+  private struct Dot {
+    var x, y: Float        // home, relative to the centre
+    var sx, sy: Float      // where it starts
+    var k: Float           // its own spring rate
+    var phase: Float
+    var size: Float
+    var bucket: Int
+  }
+  private var dots: [Dot] = []
+  private var colors: [Color] = []
+  let width: Float
+  let height: Float
+
+  init(image: CGImage, count: Int) {
+    let w = image.width, h = image.height
+    width = Float(w); height = Float(h)
+    var data = [UInt8](repeating: 0, count: w * h * 4)
+    let made = CGContext(data: &data, width: w, height: h, bitsPerComponent: 8, bytesPerRow: w * 4, space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)
+    made?.draw(image, in: CGRect(x: 0, y: 0, width: w, height: h))
+    var rng = SplitMix(seed: UInt64(w * 31 + h))
+    var buckets: [Int: Int] = [:]
+    var tries = 0
+    while dots.count < count, tries < count * 40 {
+      tries += 1
+      let px = rng.int(w), py = rng.int(h), i = (py * w + px) * 4
+      guard data[i + 3] > 110 else { continue }
+      let a = Double(data[i + 3]) / 255
+      // Colours are quantised, so all the dots of one colour can be filled in a single draw.
+      let qr = Int(Double(data[i]) / a) >> 5, qg = Int(Double(data[i + 1]) / a) >> 5, qb = Int(Double(data[i + 2]) / a) >> 5
+      let key = (min(7, qr) << 6) | (min(7, qg) << 3) | min(7, qb)
+      let bucket: Int
+      if let b = buckets[key] { bucket = b } else {
+        bucket = colors.count
+        buckets[key] = bucket
+        colors.append(Color(red: Double(min(7, qr)) / 7, green: Double(min(7, qg)) / 7, blue: Double(min(7, qb)) / 7))
+      }
+      let spin = Float(rng.unit()) * 6.283, reach = Float(max(w, h)) * (0.5 + Float(rng.unit()) * 0.45)
+      dots.append(Dot(x: Float(px) - Float(w) / 2, y: Float(py) - Float(h) / 2, sx: cos(spin) * reach, sy: sin(spin) * reach,
+                      k: 4.5 + Float(rng.unit()) * 5.5, phase: Float(rng.unit()) * 6.283, size: 1 + Float(rng.unit()) * 1.6, bucket: bucket))
+    }
+  }
+
+  func draw(in g: inout GraphicsContext, canvas: CGSize, time: Double) {
+    let t = Float(time)
+    let cx = Float(canvas.width) / 2, cy = Float(canvas.height) / 2
+    var paths = [Path](repeating: Path(), count: colors.count)
+    // Particles fade back to a light halo once the crisp art is up.
+    let settle = min(1, max(0, (t - 1) / 0.6))
+    for d in dots {
+      // Underdamped spring: overshoots once or twice, then settles, with a swirl that dies away.
+      let fall = exp(-d.k * 0.72 * t) * cos(d.k * 1.25 * t)
+      let swirl = exp(-d.k * 0.5 * t) * 1.4
+      let dx = d.sx * fall, dy = d.sy * fall
+      let breathe = settle * 1.6 * sin(t * 1.3 + d.phase)
+      let x = cx + d.x + dx * cos(swirl) - dy * sin(swirl) + breathe
+      let y = cy + d.y + dx * sin(swirl) + dy * cos(swirl) + breathe * 0.6
+      let s = CGFloat(d.size)
+      paths[d.bucket].addEllipse(in: CGRect(x: CGFloat(x) - s / 2, y: CGFloat(y) - s / 2, width: s, height: s))
+    }
+    g.blendMode = .plusLighter
+    g.opacity = Double(1 - settle * 0.72)
+    for (i, path) in paths.enumerated() { g.fill(path, with: .color(colors[i])) }
+  }
+}

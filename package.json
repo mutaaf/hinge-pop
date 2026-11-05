@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Split bubbles and keep them off the hinge. Arcade prototype at mutaafaziz.com/hingepop.",
+  "description": "Split bubbles and keep them off the hinge. Landing page and web game at mutaafaziz.com/hingepop.",
   "scripts": {
     "up": "npm install --no-audit --no-fund --silent && npm run build && node scripts/serve.mjs",
     "build": "node scripts/build.mjs",
@@ -11,7 +11,10 @@
     "test:e2e": "npm run build && node test/e2e.mjs",
     "test:devices": "npm run build && node test/devices.mjs",
     "balance": "node scripts/balance.mjs",
-    "deploy": "npm test && npm run build && npx wrangler@4 deploy"
+    "deploy": "npm test && npm run build && npx wrangler@4 deploy",
+    "test:landing": "npm run build && node test/landing.mjs",
+    "art": "node scripts/art.mjs",
+    "sync:aurora": "node scripts/sync-aurora.mjs"
   },
   "devDependencies": {
     "playwright": "1.64.1"

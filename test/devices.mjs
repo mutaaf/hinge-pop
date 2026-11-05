@@ -12,7 +12,7 @@ import { mkdirSync } from 'node:fs';
 
 const out = fileURLToPath(new URL('../test-results/devices', import.meta.url));
 mkdirSync(out, { recursive: true });
-const url = process.env.E2E_URL || new URL('../dist/hingepop/index.html', import.meta.url).href;
+const url = process.env.E2E_URL || new URL('../dist/hingepop/play/index.html', import.meta.url).href;
 const SHOTS = process.env.SHOTS !== '0';
 
 const DEVICES = [
@@ -57,7 +57,8 @@ const audit = (page) => page.evaluate(() => {
     const sheet = document.querySelector('.sheet').getBoundingClientRect();
     if (sheet.right > vw + 1 || sheet.left < -1) problems.push('sheet wider than screen');
     const h = document.getElementById('heading');
-    if (h.scrollWidth > h.clientWidth + 1) problems.push('heading clipped');
+    // With the logo art showing, the heading is deliberately visually hidden for screen readers.
+    if (!document.querySelector('.sheet').classList.contains('has-logo') && !document.querySelector('.has-logo #heading') && h.scrollWidth > h.clientWidth + 1) problems.push('heading clipped');
     const play = document.getElementById('play').getBoundingClientRect();
     if (play.bottom > vh + 1 || play.top < 0) problems.push('main button not on screen');
   }

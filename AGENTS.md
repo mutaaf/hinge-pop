@@ -1,12 +1,13 @@
 # Hinge Pop
 
-Arcade prototype at https://mutaafaziz.com/hingepop/. The question it answers is whether the game is fun with plain circles, so keep art out until that is settled.
+Arcade game with three parts: a parallax landing site that scrolls into the web game (https://mutaafaziz.com/hingepop/), the web game itself (`/hingepop/play/`), and a native SwiftUI + SpriteKit app for iPhone, iPad and iPhone Duo (`ios/`). The two games are separate implementations of the same core rules, so change both when a shared rule changes. The native app adds actors, power-ups, gates, chapters, Arcade and Daily.
 
 ## How it fits together
 
-- `index.html` is the whole game. It has no doctype, html, head or body tags on purpose, because it is also published as a private preview that adds them. `scripts/build.mjs` adds them for production.
+- `site/` is the landing site: copy in `pages.mjs`, store links in `links.json` (null shows a disabled button), and the real `aurora-field` library pinned in `vendor/`. `npm run sync:aurora` refreshes the pin.
+- `index.html` is the whole web game. It has no doctype, html, head or body tags on purpose, because it is also published as a private preview that adds them. `scripts/build.mjs` adds them for production.
 - The rules sit between `// SIM START` and `// SIM END` and touch no browser APIs. Tests and bots load that block straight from the page (`test/load-sim.mjs`).
-- Tune numbers in `CFG`, then run `npm run balance` before and after. Bots aim perfectly, so real players do worse than their win rates.
+- Tune numbers in `CFG`, then run `npm run balance` before and after. Measure with the modelled human and slicer bots, because perfect-aim bots hid that levels 6+ were impossible for people.
 - Hosting is a Cloudflare Worker with static assets only, on route `mutaafaziz.com/hingepop*`. Never give it its own domain.
 - Deploys are manual: `npm run deploy`. Workers Builds is not connected.
 
@@ -30,7 +31,20 @@ The first Play and the first two-player match open a guided tour using real bubb
 - `npm run test:e2e` needs Playwright's Chromium. Run `npx playwright install chromium` if it is missing.
 - Progress and settings are in `localStorage` under `hinge-pop-prefs`. There is no server state.
 
+## Native app and App Store
+
+- Run everything from `ios/`: `make up` generates the project and builds it. `make core` tests the rules, `make balance` measures difficulty, `make shots` screenshots screens.
+- `DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer` is required. The Makefile and scripts set it.
+- The simulator cannot fold by script. Debug flags `-pose book|tabletop|flat` synthesize a fold, so a real fold is only proven on hardware.
+- Duo simulator screenshots need `--display=1` (outer, 1398x2034). Without it `simctl` refuses to choose.
+- Debug launch flags live in `Debug` in `AppModel.swift`. `-demo` keeps a game alive for captures and `-demoSwipe` holds a real slicing stroke on screen. None of this ships in Release.
+- Store art: `ios/scripts/store-capture.sh` writes `store/lobby/raw`, then `node ../lobby/bin/lobby build hinge-pop` and `push hinge-pop`. Always look at `store/lobby/out/sheet.png` before pushing. It has caught system banners, end screens and missing bosses.
+- Release: `ios/scripts/testflight.sh` uploads a build (`BETA_EXTERNAL=1` also starts Beta App Review). `node scripts/asc.mjs store-meta|store-rating|store-check` manage the listing. `submit --yes` submits for review.
+- Browser only: creating the app record and the App Privacy label ("Data Not Collected", because the app has no network code).
+- `ios/.env.testflight` holds the App Store Connect key path and is gitignored. Never print it.
+
 ## Definition of done
 
-- `npm test`, `npm run test:e2e` and `npm run test:devices` pass.
+- `npm test`, `npm run test:e2e`, `npm run test:devices` and `npm run test:landing` pass. For native changes, `make -C ios core build` too.
+- Do not run two web test suites at once. Each rebuilds `dist/`.
 - Launcher registration, for any new public mode with a deep link: mutaafaziz-site (`public/index.html` and the docs that list apps), `@mutaaf/launcher`, and Digital Craft `/labs`.

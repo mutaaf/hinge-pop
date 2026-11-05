@@ -3,7 +3,7 @@ import { fileURLToPath } from 'node:url';
 import { mkdirSync } from 'node:fs';
 const out = fileURLToPath(new URL('../test-results', import.meta.url));
 mkdirSync(out, { recursive: true });
-const url = process.env.E2E_URL || new URL('../dist/hingepop/index.html', import.meta.url).href;
+const url = process.env.E2E_URL || new URL('../dist/hingepop/play/index.html', import.meta.url).href;
 const clearAll = (page) => page.evaluate(() => { const s = window.hingePop.sim; s.ready = 0; let guard = 0; while (s.bubbles.length && guard++ < 500) s.tap(s.bubbles[0]); });
 (async () => {
   const browser = await chromium.launch();
