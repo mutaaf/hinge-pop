@@ -117,6 +117,109 @@ test('filling the meter takes a shield, and the last shield ends the level', () 
   assert.equal(s.status, 'lost');
 });
 
+test('turning the device keeps every bubble on its side of the hinge, with no crossing', () => {
+  const s = solo(6);
+  s.tap(s.bubbles[0]);
+  const sides = Array.from(s.bubbles, (b) => b.side).join();
+  const speeds = Array.from(s.bubbles, (b) => Math.hypot(b.vx, b.vy));
+  assert.equal(s.resize(760, 390, 70), true);
+  assert.equal(s.vertical, true);
+  assert.equal(Array.from(s.bubbles, (b) => b.side).join(), sides);
+  // The bubbles shrink with the shorter arena, and their speed scales with them.
+  const ratio = 0.85 / (390 / 400);
+  s.bubbles.forEach((b, i) => assert.ok(Math.abs(Math.hypot(b.vx, b.vy) - speeds[i] * ratio) < 1e-6));
+  s.bubbles.forEach((b) => assert.ok(b.x >= 0 && b.x <= s.w && b.y >= s.top && b.y <= s.h));
+  s.step(1 / 120);
+  assert.equal(s.players[0].crossings, 0);
+  assert.equal(s.resize(800, 390, 70), false);
+  assert.equal(s.resize(390, 760, 70), true);
+  assert.equal(s.vertical, false);
+});
+
+// Two bubbles on the same side, about to touch, with everything else out of the way.
+function pair(gA, gB, va = 100, vb = -100) {
+  const s = solo(1);
+  s.bubbles.length = 0;
+  const a = s.add(gA, 100, 200, 0, 0), b = s.add(gB, 100 + CFG.radii[gA] * 0.85 + CFG.radii[gB] * 0.85 + 0.2, 200, 0, 0);
+  a.vx = va; a.vy = 0; b.vx = vb; b.vy = 0;
+  return { s, a, b };
+}
+const momentum = (a, b) => CFG.matter[a.g].mass * a.vx + CFG.matter[b.g].mass * b.vx;
+
+test('every size has its own matter, heavier and less bouncy as it grows', () => {
+  for (let g = 1; g < 4; g++) {
+    assert.ok(CFG.matter[g].mass < CFG.matter[g - 1].mass);
+    assert.ok(CFG.matter[g].bounce > CFG.matter[g - 1].bounce);
+    assert.ok(CFG.matter[g].recover > CFG.matter[g - 1].recover);
+  }
+});
+
+test('a collision conserves momentum and the lighter bubble takes the hit', () => {
+  const { s, a, b } = pair(0, 3, 100, 0);
+  CFG.matter.forEach((m) => { m.savedRecover = m.recover; m.recover = 0; });
+  const before = momentum(a, b);
+  const av = a.vx;
+  s.step(1 / 120);
+  CFG.matter.forEach((m) => { m.recover = m.savedRecover; delete m.savedRecover; });
+  assert.ok(Math.abs(momentum(a, b) - before) < 1e-6);
+  assert.ok(b.vx > 150, 'light bubble should fly: ' + b.vx);
+  assert.ok(av - a.vx < 30, 'heavy bubble should barely slow: ' + (av - a.vx));
+});
+
+test('equal bubbles trade speed, and impacts squash both', () => {
+  const { s, a, b } = pair(1, 1);
+  s.step(1 / 120);
+  assert.ok(a.vx < 0 && b.vx > 0);
+  assert.ok(a.sq > 0 && b.sq > 0);
+  for (let i = 0; i < 240; i++) { a.vx = -1; b.vx = 1; s.step(1 / 120); }
+  assert.ok(a.sq < 0.01, 'squash should settle: ' + a.sq);
+});
+
+test('fresh pieces pass through each other, and the hinge keeps the sides apart', () => {
+  const fresh = pair(1, 1);
+  fresh.a.grace = 0.5;
+  fresh.s.step(1 / 120);
+  assert.equal(fresh.a.sq, 0);
+  const across = pair(1, 1);
+  across.b.side = -across.a.side;
+  across.s.step(1 / 120);
+  assert.ok(across.a.vx > 0, 'bubbles on opposite sides should not collide');
+});
+
+test('bubbles swim back to their own cruising speed, and stopped ones stay stopped', () => {
+  const s = solo(6);
+  s.bubbles.length = 0;
+  // On opposite sides of the hinge, so they cannot touch.
+  const slow = s.add(3, 100, 120, 0, 0), still = s.add(0, 200, 640, 0, 0);
+  slow.vx = 10; slow.vy = 0; still.vx = 0; still.vy = 0;
+  for (let i = 0; i < 180; i++) s.step(1 / 120);
+  const cruise = CFG.speeds[3] * (390 / 400) * s.speedMul;
+  assert.ok(Math.abs(Math.hypot(slow.vx, slow.vy) - cruise) < cruise * 0.1, 'speed ' + Math.hypot(slow.vx, slow.vy));
+  assert.equal(still.vx, 0);
+});
+
+test('a bubble gliding parallel to the hinge is drawn back, so no level stalls', () => {
+  const s = solo(1);
+  s.bubbles.length = 0;
+  const b = s.add(3, 60, 200, 0, 0);
+  const startSide = b.side;
+  for (let i = 0; i < 120 * 30 && s.bubbles.includes(b); i++) s.step(1 / 120);
+  assert.equal(s.bubbles.includes(b), false, 'still gliding on side ' + startSide);
+  assert.equal(s.players[0].zaps, 1);
+});
+
+test('a harder flick launches the pieces faster', () => {
+  const launched = (len) => {
+    const s = solo(6);
+    for (const b of s.bubbles) { b.vx = 0; b.vy = 0; }
+    const target = s.bubbles[0];
+    s.tap(target, { x: len, y: 0 });
+    const piece = s.bubbles[s.bubbles.length - 1];
+    return Math.hypot(piece.vx, piece.vy);
+  };
+  assert.ok(launched(120) > launched(20) * 1.4);
+});
+
 test('the carried score starts the next level', () => {
   assert.equal(createSim({ w: 390, h: 760, top: 70, level: 3, score: 1234 }).players[0].score, 1234);
 });

@@ -1,102 +1,259 @@
 <title>Hinge Pop Prototype</title>
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="claude:viewport-fit-sides" content="cover">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Rubik+Mono+One&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
 <style>
-/* Layout: one full-bleed canvas split by the hinge; a thin HUD on top; one panel for menu, pause and results. */
+/* Layout: one full-bleed canvas split by the hinge, a thin HUD on top, and one sheet for menu, pause and results.
+   The sheet rises from the bottom on phones, within thumb reach, and floats in the centre on tablets. */
 :root {
   --ink: #0d1117;
-  --ink-raised: #171d27;
-  --line: #2b3442;
-  --fg: #e6edf5;
-  --muted: #94a2b5;
+  --ink-raised: #161c26;
+  --line: #2a3341;
+  --fg: #e8eef6;
+  --muted: #93a1b4;
   --hinge: #4fd8ff;
   --charged: #b183ff;
   --overload: #ff4d5e;
   --p2: #ffb27a;
   --display: "Rubik Mono One", ui-monospace, Menlo, monospace;
   --mono: "IBM Plex Mono", ui-monospace, Menlo, monospace;
+  --shield-w: 14px; --shield-h: 18px;
+  --score: 22px; --tick-h: 8px; --pause: 48px; --hud-gap: 12px; --target: 48px;
+  --ease: cubic-bezier(.2, .8, .2, 1);
   color-scheme: dark;
 }
 [hidden] { display: none !important; }
 * { box-sizing: border-box; }
 html, body { height: 100%; margin: 0; overflow: hidden; overscroll-behavior: none; }
-body { background: var(--ink); color: var(--fg); font-family: var(--mono); touch-action: manipulation; -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color: transparent; }
-#stage { position: relative; height: 100%; overflow: hidden; }
+body { position: fixed; inset: 0; background: var(--ink); color: var(--fg); font-family: var(--mono); touch-action: manipulation; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; -webkit-tap-highlight-color: transparent; }
+#stage {
+  position: fixed; overflow: hidden;
+  top: env(safe-area-inset-top, 0px); right: env(safe-area-inset-right, 0px);
+  bottom: env(safe-area-inset-bottom, 0px); left: env(safe-area-inset-left, 0px);
+}
 canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; }
 
 #hud {
   position: absolute; inset: 0 0 auto; z-index: 2; pointer-events: none;
-  display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 12px;
-  padding-block: 10px;
-  padding-left: max(16px, env(safe-area-inset-left, 0px));
-  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: var(--hud-gap);
+  padding: 10px 16px;
   border-bottom: 1px solid var(--line);
   background: var(--ink);
 }
-#hud.versus { grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); gap: 8px; padding-left: max(8px, env(safe-area-inset-left, 0px)); padding-right: max(8px, env(safe-area-inset-right, 0px)); }
-.phud { --player: var(--hinge); display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 12px; min-width: 0; }
-.versus .phud { gap: 6px; }
+#hud.versus { grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); gap: 8px; padding-inline: 10px; }
+.phud { --player: var(--hinge); display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: var(--hud-gap); min-width: 0; }
+.versus .phud { gap: 8px; }
+[data-tip] { pointer-events: auto; cursor: pointer; }
+.shieldbox, .meter, .readout { min-height: var(--target); align-content: center; }
+.readout { display: grid; }
 #p1 { --player: var(--p2); direction: rtl; }
 .pips { display: flex; gap: 4px; }
-.shield { width: 14px; height: 18px; background: var(--player); clip-path: polygon(0 0, 100% 0, 100% 62%, 50% 100%, 0 62%); }
+.shield { width: var(--shield-w); height: var(--shield-h); background: var(--player); clip-path: polygon(0 0, 100% 0, 100% 62%, 50% 100%, 0 62%); transition: background .25s; }
 .shield.gone { background: var(--line); }
-.versus .shield { width: 10px; height: 14px; }
-.versus .pips { gap: 2px; }
-.shieldbox { display: grid; gap: 4px; }
-.charge { height: 4px; background: var(--line); }
-.charge i { display: block; height: 100%; width: 0; background: var(--player); transition: width .12s linear; }
-.meter { display: grid; gap: 3px; min-width: 0; max-width: 150px; }
-.meter small { font-size: 10px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); white-space: nowrap; }
+.shieldbox { display: grid; gap: 5px; }
+.charge { height: 3px; background: var(--line); border-radius: 2px; overflow: hidden; }
+.charge i { display: block; height: 100%; width: 0; background: var(--player); transition: width .16s var(--ease); }
+.meter { display: grid; gap: 4px; min-width: 0; max-width: 200px; }
+.meter small { font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .versus .meter small { display: none; }
-.tick { flex: 1; height: 8px; background: var(--line); }
+.tick { flex: 1; height: var(--tick-h); background: var(--line); border-radius: 2px; transition: background .2s; }
 .tick.on { background: var(--tick-color, var(--hinge)); }
 .readout { direction: ltr; text-align: right; font-variant-numeric: tabular-nums; line-height: 1.15; }
 #p1 .readout { text-align: left; }
-.score { font-weight: 600; font-size: 18px; }
-.versus .score { font-size: 14px; }
-.combo { font-size: 11px; color: var(--muted); }
+.score { display: inline-block; transform-origin: 100% 50%; font-weight: 600; font-size: var(--score); letter-spacing: -.01em; }
+#p1 .score { transform-origin: 0 50%; }
+.combo { font-size: 12px; color: var(--muted); }
 .combo.hot { color: var(--player); }
 #pause {
-  pointer-events: auto; width: 44px; height: 44px; border: 1px solid var(--line); border-radius: 4px;
-  background: var(--ink-raised); color: var(--fg); font: 600 14px var(--mono); cursor: pointer;
+  pointer-events: auto; position: relative; width: var(--pause); height: var(--pause); padding: 0;
+  border: 1px solid var(--line); border-radius: 50%; background: var(--ink-raised); cursor: pointer;
 }
+#pause::before {
+  content: ""; position: absolute; inset: 32%;
+  background: linear-gradient(90deg, var(--fg) 0 34%, transparent 34% 66%, var(--fg) 66%);
+}
+#coach {
+  position: absolute; left: 50%; top: 28%; z-index: 1; width: fit-content; max-width: min(88%, 480px); transform: translate(-50%, 6px);
+  margin: 0; padding: 8px 14px; border-radius: 14px; background: rgba(22, 28, 38, .92); text-align: center; font-size: clamp(14px, 2.2vmin, 19px); line-height: 1.4; color: var(--fg);
+  opacity: 0; pointer-events: none; transition: opacity .35s, transform .35s var(--ease);
+  text-wrap: balance;
+}
+#coach.show { opacity: 1; transform: translate(-50%, 0); }
 
 #panel {
-  position: absolute; inset: 0; z-index: 3; overflow-y: auto; display: grid; grid-template-columns: minmax(0, 1fr); place-items: center;
-  padding-block: 24px;
-  padding-left: max(16px, env(safe-area-inset-left, 0px));
-  padding-right: max(16px, env(safe-area-inset-right, 0px));
-  background: rgba(13, 17, 23, .78);
+  position: fixed; inset: 0; z-index: 3; overflow-y: auto; display: flex; flex-direction: column; align-items: center;
+  background: rgba(13, 17, 23, .6);
+  -webkit-backdrop-filter: blur(5px); backdrop-filter: blur(5px);
+  animation: fade .22s ease-out;
 }
-.sheet { width: 100%; max-width: 400px; display: grid; gap: 14px; background: var(--ink-raised); border: 1px solid var(--line); padding: 20px; }
-h1 { margin: 0; font: 400 clamp(22px, 8vw, 36px)/1.05 var(--display); letter-spacing: -.02em; }
-.sub { margin: 6px 0 0; font-size: 12px; line-height: 1.45; color: var(--hinge); }
-.rules { margin: 0; font-size: 13px; line-height: 1.5; color: var(--fg); }
-.rules + .rules { margin-top: -6px; color: var(--muted); font-size: 12px; }
-.toggle { display: grid; grid-template-columns: 1fr auto; gap: 2px 12px; align-items: center; padding-block: 7px; border-top: 1px solid var(--line); font-size: 13px; font-weight: 500; cursor: pointer; }
-.toggle small { grid-column: 1; font-size: 11px; font-weight: 400; color: var(--muted); line-height: 1.4; }
-.toggle input { grid-column: 2; grid-row: 1 / span 2; width: 22px; height: 22px; accent-color: var(--hinge); }
-.stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px 8px; margin: 0; font-variant-numeric: tabular-nums; }
+.sheet {
+  width: 100%; flex-shrink: 0; margin-top: auto; display: grid; gap: 16px; background: var(--ink-raised);
+  border-top: 1px solid var(--line); border-radius: 20px 20px 0 0;
+  padding: 24px max(20px, env(safe-area-inset-right, 0px)) calc(20px + env(safe-area-inset-bottom, 0px)) max(20px, env(safe-area-inset-left, 0px));
+  animation: rise .34s var(--ease);
+}
+@keyframes fade { from { opacity: 0; } }
+@keyframes rise { from { opacity: .4; transform: translateY(26px); } }
+h1 { margin: 0; font: 400 clamp(26px, 8.6vw, 34px)/1.05 var(--display); letter-spacing: -.02em; text-wrap: balance; }
+.sub { margin: 8px 0 0; font-size: 14px; line-height: 1.45; color: var(--muted); }
+#finalScore { display: grid; gap: 2px; margin: 10px 0 0; font-variant-numeric: tabular-nums; }
+#finalScore b { font: 400 clamp(30px, 10vw, 40px)/1.1 var(--display); color: var(--hinge); letter-spacing: -.02em; }
+#finalScore small { font-size: 13px; color: var(--muted); }
+.stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px 8px; margin: 0; padding-block: 14px; border-block: 1px solid var(--line); font-variant-numeric: tabular-nums; }
 .stats.two { grid-template-columns: repeat(2, 1fr); }
-.stats div { display: grid; gap: 2px; min-width: 0; }
-.stats dt { font-size: 10px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+.stats div { display: grid; gap: 2px; min-width: 0; min-height: var(--target); align-content: center; }
+.stats dt { font-size: 11px; letter-spacing: .05em; text-decoration: underline dotted; text-underline-offset: 3px; text-transform: uppercase; color: var(--muted); }
 .stats dd { margin: 0; font-size: 18px; font-weight: 600; }
-#finalScore { font-size: 14px; color: var(--muted); margin: 6px 0 0; font-variant-numeric: tabular-nums; }
 .actions { display: flex; flex-wrap: wrap; gap: 10px; }
-.actions button { flex: 1 1 120px; min-height: 48px; font: 600 15px var(--mono); border-radius: 4px; cursor: pointer; }
-.actions .primary { background: var(--hinge); color: var(--ink); border: 0; }
+.actions button { flex: 1 1 120px; min-height: var(--target); font: 600 15px var(--mono); border-radius: 12px; cursor: pointer; transition: transform .12s var(--ease), background .15s; }
+.actions button:active { transform: scale(.98); }
+.actions .primary { order: -1; flex-basis: 100%; min-height: 54px; background: var(--hinge); color: var(--ink); border: 0; }
 .actions .secondary { background: transparent; color: var(--fg); border: 1px solid var(--line); }
+@media (hover: hover) { .actions .secondary:hover { background: rgba(255, 255, 255, .05); } }
+.more { display: flex; flex-direction: column; }
+details { border-top: 1px solid var(--line); }
+summary { list-style: none; display: flex; justify-content: space-between; align-items: center; min-height: var(--target); font-size: 14px; font-weight: 500; cursor: pointer; }
+summary::-webkit-details-marker { display: none; }
+summary::after { content: "+"; font-size: 18px; color: var(--muted); }
+details[open] summary::after { content: "\2212"; }
+.rules { list-style: none; margin: 0; padding: 0 0 12px; display: grid; gap: 8px; font-size: 14px; line-height: 1.5; color: var(--muted); }
+.sizes { list-style: none; margin: 0; padding: 4px 0 14px; display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; align-items: end; text-align: center; font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.sizes li { display: grid; justify-items: center; gap: 6px; }
+.sizes i { display: block; border-radius: 50%; }
+.tour-links { display: flex; flex-wrap: wrap; gap: 8px; padding-bottom: 14px; }
+.tour-links button { flex: 1 1 130px; min-height: var(--target); font: 500 14px var(--mono); color: var(--fg); background: transparent; border: 1px solid var(--line); border-radius: 12px; cursor: pointer; }
+.toggle-row { display: grid; grid-template-columns: minmax(0, 1fr) var(--target); gap: 4px; align-items: center; }
+.info { width: var(--target); height: var(--target); padding: 0; background: none; border: 0; color: var(--muted); font: 600 15px var(--mono); cursor: pointer; }
+.info span { display: inline-grid; place-items: center; width: 24px; height: 24px; border: 1px solid var(--line); border-radius: 50%; }
+.toggle { display: grid; grid-template-columns: 1fr auto; gap: 2px 12px; align-items: center; min-height: var(--target); padding-block: 8px; font-size: 14px; font-weight: 500; cursor: pointer; }
+.toggle small { grid-column: 1; font-size: 12px; font-weight: 400; color: var(--muted); line-height: 1.4; }
+.toggle input {
+  grid-column: 2; grid-row: 1 / span 2; appearance: none; -webkit-appearance: none; margin: 0; position: relative;
+  width: 44px; height: 26px; border-radius: 13px; background: var(--line); cursor: pointer; transition: background .18s;
+}
+.toggle input::before { content: ""; position: absolute; top: 3px; left: 3px; width: 20px; height: 20px; border-radius: 50%; background: var(--fg); transition: transform .18s var(--ease); }
+.toggle input:checked { background: var(--hinge); }
+.toggle input:checked::before { transform: translateX(18px); background: var(--ink); }
 :focus-visible { outline: 2px solid var(--fg); outline-offset: 2px; }
-@media (max-height: 560px) {
-  #panel { padding-block: 10px; }
-  .sheet { gap: 8px; padding: 12px 16px; max-width: 620px; }
-  .rules, .sub, .toggle small { display: none; }
-  .toggle { padding-block: 4px; }
-  .stats, .stats.two { grid-template-columns: repeat(6, 1fr); }
-  .stats dd { font-size: 14px; }
-  .stats dt { font-size: 9px; letter-spacing: 0; }
+
+/* Two players on a narrow screen: shields and score share a row, with the meter underneath. */
+@media (max-width: 599px) {
+  .versus .phud { grid-template-columns: auto minmax(0, 1fr); gap: 2px 8px; }
+  .versus .shieldbox, .versus .readout { min-height: 36px; }
+  .versus .meter { grid-column: 1 / -1; grid-row: 2; min-height: 24px; max-width: none; }
+  .versus .readout { justify-self: end; }
+  #p1.phud .readout { justify-self: end; }
+  :root { --shield-w: 13px; --shield-h: 17px; }
+  .versus .score { font-size: 17px; }
+}
+
+#spot {
+  position: fixed; z-index: 4; pointer-events: none; border-radius: 16px;
+  box-shadow: 0 0 0 200vmax rgba(7, 10, 15, .62), 0 0 0 2px var(--hinge);
+  transition: left .28s var(--ease), top .28s var(--ease), width .28s var(--ease), height .28s var(--ease), border-radius .28s;
+}
+#spot.round { border-radius: 50%; }
+#spot.open { box-shadow: 0 0 0 200vmax rgba(7, 10, 15, 0); }
+#tour {
+  position: fixed; z-index: 5; left: 0; right: 0; bottom: 0; max-height: 46%;
+  display: flex; flex-direction: column; gap: 8px; background: var(--ink-raised); border-top: 1px solid var(--line); border-radius: 20px 20px 0 0;
+  padding: 16px max(20px, env(safe-area-inset-right, 0px)) calc(14px + env(safe-area-inset-bottom, 0px)) max(20px, env(safe-area-inset-left, 0px));
+  animation: rise .3s var(--ease);
+}
+.tour-top { display: flex; justify-content: space-between; align-items: center; min-height: 32px; font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
+#tourSkip { min-height: var(--target); margin-block: -8px; margin-right: -8px; padding-inline: 8px; background: none; border: 0; color: var(--muted); font: 500 13px var(--mono); cursor: pointer; text-decoration: underline; text-underline-offset: 3px; }
+.tour-top, .tour-bar, .tour-actions { flex-shrink: 0; }
+.tour-text { flex: 1 1 auto; min-height: 0; overflow-y: auto; display: grid; gap: 8px; align-content: start; }
+/* A fade says there is more to read, since phones hide their scrollbars. */
+.tour-text.more-below { -webkit-mask-image: linear-gradient(#000 calc(100% - 22px), transparent); mask-image: linear-gradient(#000 calc(100% - 22px), transparent); }
+.tour-bar { height: 3px; background: var(--line); border-radius: 2px; overflow: hidden; }
+.tour-bar i { display: block; height: 100%; background: var(--hinge); transition: width .25s var(--ease); }
+#tour h2 { margin: 0; font-size: 19px; line-height: 1.25; font-weight: 600; text-wrap: balance; }
+#tourBody { margin: 0; font-size: 15px; line-height: 1.5; color: var(--fg); }
+#tourTry { margin: 0; font-size: 14px; line-height: 1.45; color: var(--hinge); font-weight: 500; }
+.tour-actions { display: flex; gap: 10px; margin-top: 4px; }
+.tour-actions button { flex: 1; min-height: var(--target); font: 600 15px var(--mono); border-radius: 12px; cursor: pointer; }
+#tourNext { flex: 2; background: var(--hinge); color: var(--ink); border: 0; }
+#tourNext:disabled { background: var(--line); color: var(--muted); cursor: default; }
+#tourBack { background: transparent; color: var(--fg); border: 1px solid var(--line); }
+#tourBack:disabled { opacity: .4; cursor: default; }
+#tip {
+  position: fixed; z-index: 6; width: min(340px, calc(100vw - 32px)); padding: 14px 16px; display: grid; gap: 6px;
+  background: #222b38; color: var(--fg); border: 1px solid #3a4658; border-radius: 14px; font-size: 14px; line-height: 1.45;
+  box-shadow: 0 12px 34px rgba(0, 0, 0, .45); animation: fade .14s ease-out;
+}
+#tipTitle { font-weight: 600; }
+#tipLive { margin: 0; color: var(--hinge); font-weight: 500; }
+#tipBody { margin: 0; }
+#tip small { font-size: 12px; color: var(--muted); }
+
+/* Phone on its side: a compact centred card, in two columns so nothing needs scrolling. */
+@media (max-height: 500px) {
+  #panel { padding: 8px max(16px, env(safe-area-inset-right, 0px)) 8px max(16px, env(safe-area-inset-left, 0px)); }
+  .sheet { margin-block: auto; max-width: 660px; gap: 10px; padding: 14px 18px; border: 1px solid var(--line); border-radius: 16px; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); align-items: center; }
+  .sheet > * { grid-column: 1; }
+  .sheet > .actions { grid-column: 2; grid-row: 1 / span 3; align-self: start; }
+  .sheet > .stats { grid-column: 1 / -1; grid-row: 4; grid-template-columns: repeat(6, 1fr); padding-block: 8px; }
+  .sub { font-size: 12px; margin-top: 4px; }
+  #finalScore { margin-top: 4px; }
+  #finalScore b { font-size: 26px; }
+  #finalScore small { font-size: 12px; }
+  h1 { font-size: 24px; }
+  .stats dd { font-size: 15px; }
+  .stats dt { letter-spacing: 0; }
+  .actions .primary { min-height: var(--target); }
+  #coach { top: 24%; }
+  #hud { padding-block: 4px; }
+  #tour { left: auto; right: max(10px, env(safe-area-inset-right, 0px)); top: 8px; bottom: 8px; width: 44%; max-height: none; border: 1px solid var(--line); border-radius: 16px; padding: 10px 14px; gap: 5px; }
+  #tour h2 { font-size: 16px; margin: 0; }
+  #tourBody { font-size: 13px; line-height: 1.4; }
+  .tour-text { gap: 5px; }
+  #tourTry { font-size: 13px; }
+}
+
+/* Tablets and unfolded foldables: everything steps up, and the sheet floats. */
+@media (min-width: 600px) and (min-height: 600px) {
+  :root { --shield-w: 18px; --shield-h: 23px; --score: 32px; --tick-h: 10px; --pause: 52px; --hud-gap: 18px; }
+  #hud { padding: 14px 22px; }
+  #hud.versus { padding-inline: 18px; gap: 16px; }
+  .versus .phud { gap: 14px; }
+  .meter { max-width: 280px; }
+  .meter small { font-size: 11px; }
+  .combo { font-size: 13px; }
+  #panel { padding: 24px; }
+  .sheet { margin-block: auto; max-width: 500px; gap: 20px; padding: 32px; border: 1px solid var(--line); border-radius: 24px; }
+  h1 { font-size: 46px; }
+  .sub { font-size: 16px; }
+  #finalScore b { font-size: 56px; }
+  #finalScore small { font-size: 15px; }
+  .stats dd { font-size: 24px; }
+  .stats dt { font-size: 11px; }
+  summary { min-height: 52px; font-size: 15px; }
+  .rules { font-size: 16px; gap: 10px; }
+  .sizes { font-size: 14px; }
+  .toggle { font-size: 15px; }
+  .toggle small { font-size: 13px; }
+  .actions button { min-height: 56px; font-size: 17px; }
+  #tour { left: 50%; right: auto; bottom: 24px; width: 500px; max-height: 40%; transform: translateX(-50%); padding: 24px; border: 1px solid var(--line); border-radius: 20px; animation: none; }
+  #tour h2 { font-size: 24px; }
+  #tourBody { font-size: 17px; }
+  #tourTry { font-size: 16px; }
+  #tip { font-size: 16px; }
+  .actions .primary { min-height: 60px; }
+}
+/* Tablet on its side: the tour card docks beside the hinge, clear of the bubbles on the near side. */
+@media (min-width: 600px) and (min-height: 501px) and (min-aspect-ratio: 1/1) {
+  #tour { left: auto; right: 24px; bottom: 24px; width: min(42%, 460px); max-height: calc(100% - 48px); transform: none; }
+}
+/* A short phone keeps the hinge in view above the card. */
+@media (max-height: 620px) and (min-height: 501px) {
+  #tour { max-height: 42%; padding-top: 10px; gap: 6px; }
+  #tour h2 { font-size: 17px; }
+  #tourBody, #tourTry { font-size: 14px; line-height: 1.4; }
+}
+@media (prefers-reduced-motion: reduce) {
+  #panel, .sheet { animation: none; }
+  #coach, .charge i, .toggle input::before { transition: none; }
 }
 </style>
 
@@ -104,23 +261,36 @@ h1 { margin: 0; font: 400 clamp(22px, 8vw, 36px)/1.05 var(--display); letter-spa
   <canvas id="game" aria-label="Game arena. Tap bubbles to split them."></canvas>
   <div id="hud">
     <div class="phud" id="p0">
-      <div class="shieldbox">
-        <div class="pips shields" aria-label="Left player shields"></div>
-        <div class="charge" aria-label="Shield recharge progress"><i></i></div>
+      <div class="shieldbox" data-tip="shields" role="button" tabindex="0" aria-label="Left player shields. Show details.">
+        <div class="pips shields"></div>
+        <div class="charge"><i></i></div>
       </div>
-      <div class="meter"><small id="levelLabel">Level 1 · Overload</small><div class="pips ticks"></div></div>
-      <div class="readout"><div class="score">0</div><div class="combo">x1</div></div>
+      <div class="meter" data-tip="meter" role="button" tabindex="0" aria-label="Overload meter. Show details."><small id="levelLabel">Level 1 · Overload</small><div class="pips ticks"></div></div>
+      <div class="readout" data-tip="score" role="button" tabindex="0" aria-label="Score and combo. Show details."><div class="score">0</div><div class="combo">x1</div></div>
     </div>
-    <button id="pause" type="button" aria-label="Pause">II</button>
+    <button id="pause" type="button" aria-label="Pause"></button>
     <div class="phud" id="p1" hidden>
-      <div class="shieldbox">
-        <div class="pips shields" aria-label="Right player shields"></div>
-        <div class="charge" aria-label="Shield recharge progress"><i></i></div>
+      <div class="shieldbox" data-tip="shields" role="button" tabindex="0" aria-label="Right player shields. Show details.">
+        <div class="pips shields"></div>
+        <div class="charge"><i></i></div>
       </div>
-      <div class="meter"><div class="pips ticks"></div></div>
-      <div class="readout"><div class="score">0</div><div class="combo">x1</div></div>
+      <div class="meter" data-tip="meter" role="button" tabindex="0" aria-label="Right player overload meter. Show details."><div class="pips ticks"></div></div>
+      <div class="readout" data-tip="score" role="button" tabindex="0" aria-label="Score and combo. Show details."><div class="score">0</div><div class="combo">x1</div></div>
     </div>
   </div>
+  <p id="coach" role="status" aria-live="polite"></p>
+  <div id="spot" hidden></div>
+  <section id="tour" role="dialog" aria-labelledby="tourTitle" hidden>
+    <div class="tour-top"><span id="tourCount"></span><button type="button" id="tourSkip">Skip tour</button></div>
+    <div class="tour-bar"><i id="tourBar"></i></div>
+    <div class="tour-text" id="tourText" tabindex="0">
+      <h2 id="tourTitle"></h2>
+      <p id="tourBody" aria-live="polite"></p>
+      <p id="tourTry"></p>
+    </div>
+    <div class="tour-actions"><button type="button" id="tourBack">Back</button><button type="button" id="tourNext">Next</button></div>
+  </section>
+  <div id="tip" role="tooltip" hidden><span id="tipTitle"></span><p id="tipLive"></p><p id="tipBody"></p><small>Tap anywhere to close.</small></div>
   <div id="panel">
     <div class="sheet">
       <div>
@@ -129,14 +299,36 @@ h1 { margin: 0; font: 400 clamp(22px, 8vw, 36px)/1.05 var(--display); letter-spa
         <p id="finalScore" hidden></p>
       </div>
       <dl class="stats" id="stats" hidden></dl>
-      <p class="rules" id="rules1">Tap a bubble to split it. Tap the smallest size to pop it. A bubble that crosses the hinge splits for free, but charges the overload meter. The smallest size just pops on the hinge, at no cost. Fill the meter and you lose a shield. Tap <span id="streakCount">8</span> times in a row with no crossing to win a shield back. Clear every bubble to win.</p>
-      <p class="rules" id="rules2">2 Players: each player owns one side of the hinge. A crossing charges the player who let it through and lands on the other side.</p>
-      <div id="toggles">
-        <label class="toggle">Flick to aim<small>Swipe off a bubble to choose where its pieces fly.</small><input type="checkbox" id="optFlick" checked></label>
-        <label class="toggle">Hinge grace<small>Pieces from a hinge split get pushed clear of the line.</small><input type="checkbox" id="optGrace" checked></label>
-        <label class="toggle">Sound<small>Short synth blips.</small><input type="checkbox" id="optSound" checked></label>
-      </div>
       <div class="actions" id="actions"></div>
+      <div class="more">
+        <details id="howto">
+          <summary>How to play</summary>
+          <ul class="sizes" aria-label="The four bubble sizes and what each one scores">
+            <li><i style="width:44px;height:44px;background:#cfe3f5"></i>100</li>
+            <li><i style="width:31px;height:31px;background:#a9e3d3"></i>200</li>
+            <li><i style="width:21px;height:21px;background:#f2dd8f"></i>300</li>
+            <li><i style="width:14px;height:14px;background:#ffb27a"></i>500</li>
+          </ul>
+          <ul class="rules">
+            <li>Tap a bubble to split it. Flick to aim the pieces.</li>
+            <li>A larger bubble that crosses the hinge charges your overload. A full meter costs a shield.</li>
+            <li>The smallest bubbles pop on the hinge for free.</li>
+            <li>Each size has its own weight and bounce. Bubbles knock each other around, and a heavy one can shove a light one into the hinge.</li>
+            <li>Tap <span id="streakCount">8</span> times in a row with no crossing to win a shield back.</li>
+            <li>2 Players: each player owns one side. A crossing charges whoever let it through and lands on the other side.</li>
+          </ul>
+          <div class="tour-links">
+            <button type="button" id="tourSolo">Replay the tour</button>
+            <button type="button" id="tourTwo">Two-player tour</button>
+          </div>
+        </details>
+        <details id="settings">
+          <summary>Settings</summary>
+          <div class="toggle-row"><label class="toggle">Flick to aim<small>Swipe off a bubble to choose where its pieces fly.</small><input type="checkbox" id="optFlick" checked></label><button type="button" class="info" data-tip="optFlick" aria-label="More about Flick to aim"><span>?</span></button></div>
+          <div class="toggle-row"><label class="toggle">Hinge grace<small>Pieces from a hinge split get pushed clear of the line.</small><input type="checkbox" id="optGrace" checked></label><button type="button" class="info" data-tip="optGrace" aria-label="More about Hinge grace"><span>?</span></button></div>
+          <div class="toggle-row"><label class="toggle">Sound<small>Short synth blips.</small><input type="checkbox" id="optSound" checked></label><button type="button" class="info" data-tip="optSound" aria-label="More about Sound"><span>?</span></button></div>
+        </details>
+      </div>
     </div>
   </div>
 </div>
@@ -146,9 +338,19 @@ h1 { margin: 0; font: 400 clamp(22px, 8vw, 36px)/1.05 var(--display); letter-spa
 const CFG = {
   radii: [44, 31, 21, 14],
   speeds: [110, 152, 200, 250],
+  // Each size is its own kind of object. Mass decides who wins a collision, bounce how much speed
+  // survives an impact, and recover how fast it swims back up to its cruising speed.
+  matter: [
+    { name: 'large', mass: 8, bounce: 0.7, recover: 0.9 },
+    { name: 'medium', mass: 4, bounce: 0.8, recover: 1.4 },
+    { name: 'small', mass: 2, bounce: 0.9, recover: 2.2 },
+    { name: 'smallest', mass: 1, bounce: 0.98, recover: 3 },
+  ],
   points: [100, 200, 300, 500],
   meterMax: 4,
   rechargeStreak: 8,
+  minCross: 0.25,
+  hingePull: 0.6,
   shields: 3,
   comboStep: 0.5,
   comboMax: 10,
@@ -159,8 +361,8 @@ const CFG = {
   cleanBonus: 1.25,
   // Level n has n large bubbles up to maxBubbles. Speed keeps rising after that.
   maxBubbles: 6,
-  baseSpeed: 0.6,
-  speedStep: 0.08,
+  baseSpeed: 0.5,
+  speedStep: 0.04,
   maxSpeed: 1.5,
   versusPerSide: 3,
   versusSpeed: 0.85,
@@ -187,7 +389,7 @@ function createSim(opts) {
   };
   let nextId = 1;
 
-  const scale = () => Math.max(0.85, Math.min(1.6, Math.min(s.w, s.h - s.top) / 400));
+  const scale = () => Math.max(0.85, Math.min(2.4, Math.min(s.w, s.h - s.top) / 400));
   const line = () => (s.vertical ? s.w / 2 : s.top + (s.h - s.top) / 2);
   const across = (b) => (s.vertical ? b.x : b.y);
   const sideOf = (b) => (across(b) < line() ? -1 : 1);
@@ -195,7 +397,7 @@ function createSim(opts) {
 
   function add(g, x, y, angle, grace) {
     const sp = CFG.speeds[g] * scale() * s.speedMul;
-    const b = { id: nextId++, g, x, y, r: CFG.radii[g] * scale(), vx: Math.cos(angle) * sp, vy: Math.sin(angle) * sp, grace, side: 0 };
+    const b = { id: nextId++, g, x, y, r: CFG.radii[g] * scale(), vx: Math.cos(angle) * sp, vy: Math.sin(angle) * sp, grace, side: 0, sq: 0, sqA: 0 };
     b.side = sideOf(b);
     s.bubbles.push(b);
     return b;
@@ -219,6 +421,33 @@ function createSim(opts) {
   }
 
   const remove = (b) => { s.bubbles.splice(s.bubbles.indexOf(b), 1); };
+
+  // Squash is plain data for the renderer: how hard, and along which direction.
+  function impact(b, normal, strength) {
+    const q = Math.min(1, strength / (CFG.speeds[b.g] * scale()));
+    if (q > b.sq) { b.sq = q; b.sqA = normal; }
+  }
+
+  // Equal and opposite impulses along the line between centres, so momentum is conserved.
+  function collide(a, b) {
+    const dx = b.x - a.x, dy = b.y - a.y, min = a.r + b.r, d2 = dx * dx + dy * dy;
+    if (d2 >= min * min || d2 === 0) return;
+    const d = Math.sqrt(d2), nx = dx / d, ny = dy / d;
+    const ma = CFG.matter[a.g].mass, mb = CFG.matter[b.g].mass, inva = 1 / ma, invb = 1 / mb;
+    const push = (min - d) / (inva + invb);
+    a.x -= nx * push * inva; a.y -= ny * push * inva;
+    b.x += nx * push * invb; b.y += ny * push * invb;
+    const closing = (a.vx - b.vx) * nx + (a.vy - b.vy) * ny;
+    if (closing <= 0) return;
+    const e = Math.min(CFG.matter[a.g].bounce, CFG.matter[b.g].bounce);
+    const j = ((1 + e) * closing) / (inva + invb);
+    a.vx -= j * inva * nx; a.vy -= j * inva * ny;
+    b.vx += j * invb * nx; b.vy += j * invb * ny;
+    const angle = Math.atan2(ny, nx);
+    impact(a, angle, j * inva);
+    impact(b, angle, j * invb);
+    if (closing > 30) s.events.push({ type: 'bump', g: Math.min(a.g, b.g), strength: closing });
+  }
 
   function award(p, g) {
     const pts = Math.round(CFG.points[g] * p.combo);
@@ -271,9 +500,12 @@ function createSim(opts) {
       const childR = CFG.radii[b.g + 1] * scale();
       const base = dir ? Math.atan2(dir.y, dir.x) : Math.atan2(b.vy, b.vx);
       const spread = dir ? 0.35 : 0.96;
+      // A harder flick launches the pieces faster. Their matter then slows them back to cruising speed.
+      const launch = dir ? 1 + Math.min(1, Math.hypot(dir.x, dir.y) / 120) : 1;
       for (const sign of [-1, 1]) {
         const a = base + sign * spread;
-        add(b.g + 1, b.x + Math.cos(a) * childR * 0.7, b.y + Math.sin(a) * childR * 0.7, a, CFG.graceTap);
+        const piece = add(b.g + 1, b.x + Math.cos(a) * childR * 0.7, b.y + Math.sin(a) * childR * 0.7, a, CFG.graceTap);
+        piece.vx *= launch; piece.vy *= launch;
       }
     }
     s.events.push({ type: b.g < 3 ? 'split' : 'pop', x: b.x, y: b.y, r: b.r, g: b.g, pts });
@@ -339,12 +571,38 @@ function createSim(opts) {
     }
     const crossed = [];
     for (const b of s.bubbles) {
+      const m = CFG.matter[b.g];
+      // Swim back toward cruising speed. A bubble that is stopped stays stopped until something hits it.
+      const speed = Math.hypot(b.vx, b.vy);
+      if (speed > 0.001) {
+        const cruise = CFG.speeds[b.g] * scale() * s.speedMul;
+        const next = speed + (cruise - speed) * Math.min(1, m.recover * dt);
+        b.vx *= next / speed; b.vy *= next / speed;
+      }
+      // A bubble gliding almost parallel to the hinge feels a faint pull, so no level can stall.
+      const crossV = s.vertical ? b.vx : b.vy;
+      if (speed > 0.001 && Math.abs(crossV) < speed * CFG.minCross) {
+        const pull = (line() - across(b) > 0 ? 1 : -1) * speed * CFG.hingePull * dt;
+        if (s.vertical) b.vx += pull; else b.vy += pull;
+      }
       b.x += b.vx * dt; b.y += b.vy * dt;
-      if (b.x < b.r) { b.x = b.r; b.vx = Math.abs(b.vx); }
-      if (b.x > s.w - b.r) { b.x = s.w - b.r; b.vx = -Math.abs(b.vx); }
-      if (b.y < s.top + b.r) { b.y = s.top + b.r; b.vy = Math.abs(b.vy); }
-      if (b.y > s.h - b.r) { b.y = s.h - b.r; b.vy = -Math.abs(b.vy); }
+      if (b.x < b.r) { impact(b, 0, Math.abs(b.vx)); b.x = b.r; b.vx = Math.abs(b.vx) * m.bounce; }
+      if (b.x > s.w - b.r) { impact(b, 0, Math.abs(b.vx)); b.x = s.w - b.r; b.vx = -Math.abs(b.vx) * m.bounce; }
+      if (b.y < s.top + b.r) { impact(b, Math.PI / 2, Math.abs(b.vy)); b.y = s.top + b.r; b.vy = Math.abs(b.vy) * m.bounce; }
+      if (b.y > s.h - b.r) { impact(b, Math.PI / 2, Math.abs(b.vy)); b.y = s.h - b.r; b.vy = -Math.abs(b.vy) * m.bounce; }
       if (b.grace > 0) b.grace -= dt;
+      if (b.sq > 0) b.sq = Math.max(0, b.sq - b.sq * 9 * dt - 0.2 * dt);
+    }
+    // Pieces fresh from a split pass through each other, and the hinge keeps the two sides apart.
+    const list = s.bubbles;
+    for (let i = 0; i < list.length; i++) {
+      if (list[i].grace > 0) continue;
+      for (let j = i + 1; j < list.length; j++) {
+        if (list[j].grace > 0 || list[i].side !== list[j].side) continue;
+        collide(list[i], list[j]);
+      }
+    }
+    for (const b of s.bubbles) {
       const now = sideOf(b);
       if (now !== b.side) {
         if (b.grace > 0 && b.g < 3) b.side = now;
@@ -371,19 +629,28 @@ function createSim(opts) {
     return best;
   }
 
+  // Turning the device swaps the axes, so each bubble keeps its place relative to the hinge.
   function resize(w, h, top) {
-    const fx = w / s.w, fy = (h - top) / (s.h - s.top), oldTop = s.top;
-    s.w = w; s.h = h; s.top = top;
+    const vertical = versus || w > h;
+    const turned = vertical !== s.vertical;
+    const before = scale();
+    const oldW = s.w, oldH = s.h - s.top, oldTop = s.top;
+    s.w = w; s.h = h; s.top = top; s.vertical = vertical;
+    const ratio = scale() / before;
     for (const b of s.bubbles) {
-      b.x *= fx;
-      b.y = top + (b.y - oldTop) * fy;
+      const u = b.x / oldW, v = (b.y - oldTop) / oldH;
+      b.x = (turned ? v : u) * w;
+      b.y = top + (turned ? u : v) * (h - top);
+      if (turned) { const vx = b.vx; b.vx = b.vy; b.vy = vx; }
+      b.vx *= ratio; b.vy *= ratio;
       b.r = CFG.radii[b.g] * scale();
       b.side = sideOf(b);
     }
+    return turned;
   }
 
   spawnLevel();
-  return Object.assign(s, { step, tap, hit, resize, line });
+  return Object.assign(s, { step, tap, hit, resize, line, add });
 }
 // SIM END
 
@@ -399,8 +666,10 @@ function createSim(opts) {
 
   let W = 0, H = 0, sim = null, mode = 'menu';
   let level = 1, runScore = 0;
-  let fx = [], shake = 0, hingePulse = 0, endTimer = 0;
+  let lastBump = 0;
+  let fx = [], shake = 0, hingePulse = 0, endTimer = 0, held = false;
   const active = new Map();
+  const born = new WeakMap();
 
   function readStore() {
     try { return JSON.parse(localStorage.getItem(STORE) || '{}'); } catch (e) { return {}; }
@@ -452,7 +721,45 @@ function createSim(opts) {
     setHudMode(!!o.versus);
     const top = measure();
     active.clear(); fx = []; shake = 0; hingePulse = 0; endTimer = 0;
+    shown[0] = shown[1] = rolled[0] = rolled[1] = 0;
     sim = createSim(Object.assign({ w: W, h: H, top, flick: $('optFlick').checked, grace: $('optGrace').checked }, o));
+    shown[0] = rolled[0] = sim.players[0].score;
+  }
+
+  let coachTimer = 0;
+  function coach(text, ms) {
+    clearTimeout(coachTimer);
+    const el = $('coach');
+    if (!text) { el.classList.remove('show'); return; }
+    el.textContent = text;
+    el.classList.add('show');
+    coachTimer = setTimeout(() => el.classList.remove('show'), ms || 2600);
+  }
+  // Each lesson shows once, then stays out of the way on later visits.
+  function teach(key, text) {
+    if (mode === 'tour') return false;
+    const seen = readStore().taught || {};
+    if (seen[key]) return false;
+    seen[key] = 1;
+    writeStore({ taught: seen });
+    coach(text, 3200);
+    return true;
+  }
+
+  let wake = null;
+  async function holdWake() {
+    try { if (navigator.wakeLock && !wake) wake = await navigator.wakeLock.request('screen'); } catch (e) { wake = null; }
+  }
+  function releaseWake() {
+    if (wake) { try { wake.release(); } catch (e) { /* already released */ } wake = null; }
+  }
+
+  function introduce() {
+    if (sim.versus) {
+      coach(W < 600 && H > W ? 'Left and right, one side each. Turn the phone sideways for more room.' : 'Left and right, one side each. Tap your own bubbles.', 2800);
+    } else if (!(level === 1 && teach('tap', 'Tap the bubble to split it.'))) {
+      coach('Level ' + level, 1200);
+    }
   }
 
   function play(o) {
@@ -461,9 +768,13 @@ function createSim(opts) {
     newSim(o);
     mode = 'play';
     $('panel').hidden = true;
+    holdWake();
+    introduce();
   }
-  const playLevel = () => play({ level, score: runScore });
-  const playVersus = () => play({ versus: true });
+  const playLevelNow = () => play({ level, score: runScore });
+  const playLevel = () => (readStore().toured ? playLevelNow() : startTour('solo'));
+  const playVersusNow = () => play({ versus: true });
+  const playVersus = () => (readStore().touredTwo ? playVersusNow() : startTour('two'));
   const replay = () => (sim.versus ? playVersus() : playLevel());
   function resume() {
     initAudio();
@@ -472,19 +783,40 @@ function createSim(opts) {
     sim.grace = $('optGrace').checked;
     mode = 'play';
     $('panel').hidden = true;
+    holdWake();
+  }
+
+  // The result counts up instead of just appearing.
+  function tally(el, total) {
+    el.textContent = total.toLocaleString();
+    if (reduced || !total) return;
+    const start = performance.now(), length = 700;
+    const tick = (now) => {
+      if (!el.isConnected) return;
+      const k = Math.min(1, (now - start) / length);
+      el.textContent = Math.round(total * (1 - (1 - k) * (1 - k) * (1 - k))).toLocaleString();
+      if (k < 1) requestAnimationFrame(tick);
+    };
+    requestAnimationFrame(tick);
   }
 
   function showPanel(o) {
     $('heading').textContent = o.heading;
     $('sub').textContent = o.sub || '';
     $('sub').hidden = !o.sub;
-    $('finalScore').textContent = o.final || '';
-    $('finalScore').hidden = !o.final;
+    $('finalScore').hidden = !o.total && o.total !== 0;
+    if (!$('finalScore').hidden) {
+      $('finalScore').innerHTML = '<b></b><small></small>';
+      $('finalScore').lastChild.textContent = o.final || '';
+      tally($('finalScore').firstChild, o.total);
+    }
     $('stats').hidden = !o.stats;
     $('stats').classList.toggle('two', !!o.twoColumn);
-    $('stats').innerHTML = (o.stats || []).map(([k, v]) => '<div><dt>' + k + '</dt><dd>' + v + '</dd></div>').join('');
-    $('rules1').hidden = $('rules2').hidden = !o.rules;
-    $('toggles').hidden = !o.toggles;
+    $('stats').innerHTML = (o.stats || []).map(([k, v]) => '<div data-tip="stat:' + k + '" role="button" tabindex="0" aria-label="' + k + ': ' + v + '. Show details."><dt>' + k + '</dt><dd>' + v + '</dd></div>').join('');
+    $('howto').hidden = !o.rules;
+    $('settings').hidden = !o.toggles;
+    if (!o.rules) $('howto').open = false;
+    if (!o.toggles) $('settings').open = false;
     const box = $('actions');
     box.textContent = '';
     for (const a of o.actions) {
@@ -498,6 +830,9 @@ function createSim(opts) {
     }
     $('panel').hidden = false;
     $('panel').scrollTop = 0;
+    coach('');
+    closeTip();
+    releaseWake();
   }
 
   function menu() {
@@ -507,16 +842,16 @@ function createSim(opts) {
     const actions = [{ id: 'two', label: '2 Players', run: playVersus }];
     if (level > 1) actions.push({ id: 'levelOne', label: 'Back to level 1', run: () => { level = 1; writeStore({ level: 1 }); playLevel(); } });
     actions.push({ id: 'play', label: level > 1 ? 'Play level ' + level : 'Play', primary: true, run: playLevel });
-    showPanel({ heading: 'Hinge Pop', sub: 'Prototype: plain circles.', rules: true, toggles: true, actions });
+    showPanel({ heading: 'Hinge Pop', sub: 'Split the bubbles. Keep them off the hinge.', rules: true, toggles: true, actions });
   }
 
   function pause() {
+    closeTip();
     if (mode !== 'play' || sim.status !== 'playing') return;
     mode = 'paused';
     active.clear();
     showPanel({
       heading: 'Paused',
-      sub: 'Switches apply as soon as you resume.',
       toggles: true,
       actions: [
         { id: 'menu', label: 'Menu', run: menu },
@@ -540,6 +875,7 @@ function createSim(opts) {
       showPanel({
         heading,
         sub: out ? 'The hinge took the last shield.' : sim.winner === null ? 'Same score, every bubble cleared.' : 'Every bubble cleared. Higher score wins.',
+        total: sim.winner === null ? a.score : sim.players[sim.winner].score,
         twoColumn: true,
         stats: [['Left score', a.score.toLocaleString()], ['Right score', b.score.toLocaleString()], ['Left crossings', a.crossings], ['Right crossings', b.crossings], ['Left shields', a.shields], ['Right shields', b.shields]],
         actions: [{ id: 'menu', label: 'Menu', run: menu }, { id: 'play', label: 'Rematch', primary: true, run: playVersus }],
@@ -551,7 +887,8 @@ function createSim(opts) {
     let best = stored.best || 0;
     if (won && p.score > best) best = p.score;
     const stats = [['Time', sim.t.toFixed(1) + 's'], ['Taps', p.taps], ['Crossings', p.crossings], ['Hinge pops', p.zaps], ['Recharged', p.recharges], [won ? 'Shields' : 'Left', won ? p.shields : sim.bubbles.length]];
-    const final = 'Score ' + p.score.toLocaleString() + (sim.cleanBonus ? ' (no-crossing bonus +25%)' : '') + (best ? ' · Best ' + best.toLocaleString() : '');
+    const final = (sim.cleanBonus ? 'No-crossing bonus +25%. ' : '') + (best ? 'Best ' + best.toLocaleString() : '');
+    const total = p.score;
     if (won) {
       const done = level;
       level = done + 1;
@@ -560,36 +897,323 @@ function createSim(opts) {
       showPanel({
         heading: 'Level ' + done + ' cleared',
         sub: 'Next: ' + describeLevel(level) + '.',
-        final, stats,
+        total, final, stats,
         actions: [{ id: 'menu', label: 'Menu', run: menu }, { id: 'play', label: 'Level ' + level, primary: true, run: playLevel }],
       });
     } else {
       showPanel({
         heading: 'Overloaded',
         sub: 'The hinge took your last shield. Level ' + level + ' starts again.',
-        final, stats,
+        total, final, stats,
         actions: [{ id: 'menu', label: 'Menu', run: menu }, { id: 'play', label: 'Try again', primary: true, run: playLevel }],
       });
     }
   }
 
+  // ---- Tooltips: tap to open, tap anywhere to close. The game holds still while one is open.
+  const R = CFG.rechargeStreak, M = CFG.meterMax;
+  const whoseStats = (el) => sim.players[el.closest('#p1') ? 1 : 0];
+  const STAT_TIPS = {
+    Time: ['Time', 'How long the bubbles were moving. Pauses and open tooltips do not count.'],
+    Taps: ['Taps', 'Every tap and flick that hit a bubble. One large bubble takes 15 taps to clear by hand, and fewer if you let the hinge pop the smallest pieces.'],
+    Crossings: ['Crossings', 'Larger bubbles that crossed the hinge. Each one charged the overload meter, reset the combo and reset the shield streak. Free pops of the smallest size do not count.'],
+    'Hinge pops': ['Hinge pops', 'Smallest bubbles that popped on the hinge. Each one scores a flat 500 and costs nothing. Tapping one instead scores 500 times your combo.'],
+    Recharged: ['Recharged', 'Shields won back with a streak of ' + R + ' taps and no crossing.'],
+    Shields: ['Shields', 'Shields you still had when the level ended. A level always starts with ' + CFG.shields + '.'],
+    Left: ['Bubbles left', 'Bubbles still in play when the last shield went. Fewer means you were closer.'],
+    'Left score': ['Left score', "The left player's points. If every bubble gets cleared, the higher score wins the match."],
+    'Right score': ['Right score', "The right player's points. If every bubble gets cleared, the higher score wins the match."],
+    'Left crossings': ['Left crossings', 'Bubbles the left player let through. Each one charged their meter and landed on the right side.'],
+    'Right crossings': ['Right crossings', 'Bubbles the right player let through. Each one charged their meter and landed on the left side.'],
+    'Left shields': ['Left shields', 'Shields the left player had at the end. A player with none loses the match, whatever the score.'],
+    'Right shields': ['Right shields', 'Shields the right player had at the end. A player with none loses the match, whatever the score.'],
+  };
+  const TIPS = {
+    shields: (el) => {
+      const p = whoseStats(el), left = R - p.streak;
+      return ['Shields', p.shields + ' of ' + CFG.shields + ' left. Streak: ' + p.streak + ' of ' + R + ' taps.',
+        'A full overload meter costs one shield. Lose the last one and ' + (sim.versus ? 'you lose the match.' : 'the level starts again from the score you began it with.') + ' The thin bar underneath is your streak: ' + left + (left === 1 ? ' more tap' : ' more taps') + ' with no crossing ' + (p.shields < CFG.shields ? 'wins a shield back.' : 'clears the meter, since your shields are full.') + ' Any crossing empties the bar.'];
+    },
+    meter: (el) => {
+      const p = whoseStats(el), left = M - p.meter;
+      return ['Overload meter', p.meter + ' of ' + M + ' charged. ' + left + (left === 1 ? ' more crossing costs' : ' more crossings cost') + ' a shield.',
+        'Each larger bubble that crosses the hinge adds one charge. The smallest size adds none. When the meter fills you lose a shield and it empties. The hinge changes colour as it fills: blue, then violet, then red.'];
+    },
+    score: (el) => {
+      const p = whoseStats(el);
+      return ['Score and combo', p.score.toLocaleString() + ' points at x' + p.combo + '.',
+        'Each tap scores the bubble\'s points times your combo: 100, 200, 300 or 500 by size. Each tap adds x0.5, up to x10. The combo ends if ' + CFG.comboWindow + ' seconds pass with no tap, or on any crossing.' + (sim.versus ? '' : ' Clear a level with no crossings for a 25% bonus. Your score carries from level to level.')];
+    },
+    optFlick: () => ['Flick to aim', '', 'On: swipe off a bubble and both pieces fly the way you swiped, close together. A plain tap still works, but it fires when you lift your finger. Off: every touch splits the bubble the moment you land on it, and the pieces fan out along its heading.'],
+    optGrace: () => ['Hinge grace', '', 'On: pieces from a hinge split get pushed away from the line and cannot cause another crossing for 0.6 seconds. Off: pieces carry on from where the bubble was, so one crossing can set off several in a row.'],
+    optSound: () => ['Sound', '', 'Short synthesised blips for splits, pops, crossings and shields, with no music. On iPhone and iPad, the ring/silent switch can also mute them.'],
+  };
+  const tipOpen = () => !$('tip').hidden;
+  function closeTip() {
+    if (!$('tip').hidden) $('tip').hidden = true;
+    held = false;
+  }
+  function openTip(el) {
+    const key = el.dataset.tip;
+    const made = key.startsWith('stat:') ? [STAT_TIPS[key.slice(5)][0], '', STAT_TIPS[key.slice(5)][1]] : TIPS[key](el);
+    $('tipTitle').textContent = made[0];
+    $('tipLive').textContent = made[1];
+    $('tipLive').hidden = !made[1];
+    $('tipBody').textContent = made[2];
+    const tip = $('tip');
+    tip.hidden = false;
+    const r = el.getBoundingClientRect(), t = tip.getBoundingClientRect();
+    const below = r.bottom + 8 + t.height <= innerHeight - 8;
+    tip.style.top = Math.max(8, below ? r.bottom + 8 : r.top - t.height - 8) + 'px';
+    tip.style.left = Math.max(16, Math.min(innerWidth - t.width - 16, r.left + r.width / 2 - t.width / 2)) + 'px';
+    held = mode === 'play';
+  }
+  let swallowClick = 0;
+  document.addEventListener('pointerdown', (e) => {
+    if (!tipOpen()) return;
+    closeTip();
+    swallowClick = performance.now();
+    e.stopPropagation();
+    e.preventDefault();
+  }, true);
+  document.addEventListener('click', (e) => {
+    if (swallowClick && performance.now() - swallowClick < 600) { swallowClick = 0; e.stopPropagation(); e.preventDefault(); return; }
+    if (mode === 'tour') return;
+    const el = e.target.closest && e.target.closest('[data-tip]');
+    if (el) { e.preventDefault(); openTip(el); }
+  }, true);
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') {
+      if (tipOpen()) closeTip();
+      else if (mode === 'play') pause();
+    } else if ((e.key === 'Enter' || e.key === ' ') && e.target.dataset && e.target.dataset.tip && e.target.tagName !== 'BUTTON') {
+      e.preventDefault();
+      openTip(e.target);
+    }
+  });
+
+  // ---- Guided tours: real bubbles, real input. Each step sets up its own small scene.
+  const tour = { kind: 'solo', i: 0, run: false, input: false, done: false, b: null, entered: 0, freezeAt: 0 };
+  // u runs along the hinge and v across it, as fractions of the arena. v below 0.5 is the near side.
+  function put(g, u, v, deg, speed) {
+    const span = sim.h - sim.top, a = (deg * Math.PI) / 180;
+    const along = Math.cos(a), acrossDir = Math.abs(Math.sin(a)) * (v < 0.5 ? 1 : -1);
+    const b = sim.vertical
+      ? sim.add(g, v * sim.w, sim.top + u * span, Math.atan2(along, acrossDir), 0)
+      : sim.add(g, u * sim.w, sim.top + v * span, Math.atan2(acrossDir, along), 0);
+    b.vx *= speed; b.vy *= speed;
+    return b;
+  }
+  const P0 = () => sim.players[0];
+  const SOLO_TOUR = [
+    { title: 'Welcome to Hinge Pop', target: 'hinge',
+      body: 'Bubbles drift around the arena. This glowing line down the middle is the hinge, where a foldable phone folds. Your job is to clear every bubble while keeping the big ones off the hinge. This tour takes about a minute, and you try each move for real.',
+      scene: () => { put(0, 0.3, 0.2, 35, 0); put(1, 0.72, 0.28, 145, 0); } },
+    { title: 'Tap to split', target: 'bubble', input: true, waits: () => P0().taps >= 1,
+      body: 'A touch on any bubble splits it into two smaller ones.',
+      todo: 'Tap the big bubble.',
+      done: 'One bubble became two, each a size smaller. You scored 100 points for it, and the pieces will keep moving.',
+      scene: () => { tour.b = put(0, 0.5, 0.22, 35, 0); } },
+    { title: 'Four sizes', target: 'arena',
+      body: 'Bubbles go large, medium, small, smallest. Smaller ones move faster and score more per tap: 100, 200, 300 and 500. Tap the smallest size and it pops for good. So one large bubble takes 15 taps to clear by hand.',
+      scene: () => { [0, 1, 2, 3].forEach((g, n) => put(g, 0.14 + n * 0.25, 0.22, 35, 0)); } },
+    { title: 'Every bubble has its own weight', target: 'arena', live: true,
+      body: 'Large bubbles are heavy and slow. The smallest are light, fast and very bouncy. When two bump, the lighter one takes most of the hit. Watch the big one knock the little one away. So watch out: a shove can send a bubble into the hinge.',
+      scene: () => { put(0, 0.12, 0.2, 0, 1); put(3, 0.62, 0.2, 0, 0); } },
+    { title: 'Flick to aim', target: 'bubble', input: true, waits: () => P0().flicks >= 1,
+      retry: () => P0().taps >= 1 && P0().flicks === 0,
+      retryText: 'That was a tap, so the pieces fanned out. This time, slide your finger off the bubble.',
+      body: 'A plain tap fans the pieces out. A swipe sends them both the way you swiped, and a harder swipe launches them faster, so you can steer them clear of the hinge.',
+      todo: 'Put a finger on the bubble and swipe away from the hinge.',
+      done: 'Both pieces went where you pointed. Use this when a split would otherwise send pieces straight at the hinge.',
+      scene: () => { tour.b = put(1, 0.5, 0.3, 35, 0); } },
+    { title: 'The hinge bites', target: 'hinge', waits: () => P0().crossings >= 1,
+      body: 'Now watch what happens when a larger bubble reaches the hinge.',
+      todo: 'Watch the bubble.',
+      done: 'It split for free, but you pay for it: no points, your combo resets, and the overload meter gains a charge. Sometimes that is still worth it when you have too much to handle.',
+      scene: () => { put(0, 0.3, 0.34, 70, 0.8); } },
+    { title: 'The overload meter', target: '#p0 .meter', before: () => { P0().meter = 2; },
+      body: 'This is the meter. Each crossing fills one of its ' + M + ' segments, and the hinge changes from blue to violet to red as it fills. When the last segment fills, you lose a shield and the meter empties. It is showing 2 of ' + M + ' as an example.',
+      scene: () => {} },
+    { title: 'Shields', target: '#p0 .pips.shields', before: () => { P0().shields = 2; },
+      body: 'You start each level with ' + CFG.shields + ' shields. Lose the last one and the level starts again, with your score back to where it began. It is showing 2 of ' + CFG.shields + ' as an example.',
+      scene: () => {} },
+    { title: 'The hinge helps with the smallest', target: 'hinge', waits: () => P0().zaps >= 1,
+      body: 'Here is the good news. Watch the smallest bubble reach the hinge.',
+      todo: 'Watch the bubble.',
+      done: 'It popped for a flat 500 points, and the meter, combo and streak did not change. So you can leave the smallest ones to the hinge, or even aim them at it. Tapping one scores more, because the combo multiplies it.',
+      scene: () => { put(3, 0.5, 0.36, 70, 0.5); put(0, 0.2, 0.14, 35, 0); } },
+    { title: 'Win shields back', target: '#p0 .charge', before: () => { P0().shields = 2; P0().streak = 5; },
+      body: 'This thin bar is your streak. Tap ' + R + ' times in a row with no crossing and you win back a lost shield. At full shields, the streak clears the meter instead. Any crossing empties the bar. It is showing 5 of ' + R + ' as an example.',
+      scene: () => {} },
+    { title: 'Score and combo', target: '#p0 .readout', before: () => { P0().score = 1450; P0().combo = 3; },
+      body: 'Each tap multiplies a bubble\'s points by your combo. Every tap adds x0.5, up to x10. It ends if ' + CFG.comboWindow + ' seconds pass with no tap, or on any crossing. Clear a level with no crossings for a 25% bonus.',
+      scene: () => {} },
+    { title: 'Help is always here', target: '#hud', last: 'Play level 1',
+      body: 'During play, tap the shields, the meter or the score for a full explanation with your live numbers. The game holds still while you read. The round button pauses, and results and settings can be tapped for details too. You can replay this tour under How to play.',
+      scene: () => {} },
+  ];
+  const left = () => sim.players[0], right = () => sim.players[1];
+  const TWO_TOUR = [
+    { title: 'Two players, one hinge', target: 'hinge',
+      body: 'The hinge splits the screen in two. The left player owns the left side, and the right player owns the right. Each player has their own shields, meter and score at the top. A phone has more room held sideways, and a tablet can lie flat between you.',
+      scene: () => { put(0, 0.5, 0.2, 35, 0); put(0, 0.5, 0.8, 35, 0); } },
+    { title: 'Stay on your side', target: 'arena', input: true, waits: () => left().taps + right().taps >= 1,
+      body: 'A touch only reaches bubbles on the side it lands on, so you cannot steal your rival\'s bubbles. Both of you can tap at the same time.',
+      todo: 'Tap a bubble.',
+      done: 'That point goes to whoever owns the side. Same moves as solo: tap to split, flick to aim.',
+      scene: () => { put(0, 0.25, 0.2, 35, 0); put(0, 0.25, 0.8, 35, 0); } },
+    { title: 'Crossings land on your rival', target: 'hinge', waits: () => left().crossings >= 1,
+      body: 'Watch this bubble leave the left side.',
+      todo: 'Watch the bubble.',
+      done: 'The left player paid a meter charge. The two pieces landed on the right side, so the right player now has more to clear, and more points to earn. A deliberate crossing can pile on pressure, but it costs you.',
+      scene: () => { put(0, 0.45, 0.36, 60, 0.8); } },
+    { title: 'Two ways to win', target: '#hud', last: 'Start match',
+      body: 'Take your rival\'s last shield and you win on the spot, whatever the score. If every bubble gets cleared first, the higher score wins. The smallest bubbles still pop free on the hinge, and the points go to the side they came from. Tap anything up here during a match for details.',
+      scene: () => {} },
+  ];
+  const steps = () => (tour.kind === 'two' ? TWO_TOUR : SOLO_TOUR);
+
+  function startTour(kind) {
+    closeTip();
+    tour.kind = kind;
+    mode = 'tour';
+    $('panel').hidden = true;
+    coach('');
+    initAudio();
+    writeStore();
+    enterStep(0);
+  }
+  function enterStep(i) {
+    const list = steps(), step = list[i];
+    tour.i = i;
+    newSim(tour.kind === 'two' ? { versus: true, flick: true, grace: true } : { level: 1, flick: true, grace: true });
+    sim.bubbles.length = 0;
+    sim.ready = 0;
+    tour.b = null;
+    step.scene();
+    if (step.before) step.before();
+    tour.done = !step.waits;
+    tour.run = !!step.live || (!!step.waits && !step.input);
+    tour.input = !!step.input;
+    tour.entered = performance.now();
+    tour.freezeAt = 0;
+    tour.note = '';
+    $('tour').hidden = false;
+    $('spot').hidden = false;
+    renderStep();
+  }
+  function renderStep() {
+    const list = steps(), step = list[tour.i], n = tour.i + 1;
+    $('tourCount').textContent = 'Step ' + n + ' of ' + list.length;
+    $('tourBar').style.width = (n / list.length) * 100 + '%';
+    $('tourTitle').textContent = step.title;
+    $('tourBody').textContent = tour.done && step.done ? step.done : step.body;
+    $('tourTry').textContent = tour.done ? '' : tour.note || step.todo || '';
+    $('tourTry').hidden = !$('tourTry').textContent;
+    $('tourBack').disabled = tour.i === 0;
+    $('tourNext').disabled = !tour.done;
+    $('tourNext').textContent = step.last || (tour.done ? 'Next' : step.input ? 'Try it first' : 'Watch first');
+    $('tourText').scrollTop = 0;
+    markMore();
+  }
+  function markMore() {
+    const t = $('tourText');
+    t.classList.toggle('more-below', t.scrollHeight - t.scrollTop - t.clientHeight > 4);
+  }
+  function endTour(completed) {
+    const seen = readStore().taught || {};
+    if (completed) { seen.tap = 1; seen.cross = 1; seen.small = 1; }
+    const kind = tour.kind;
+    writeStore(Object.assign({ taught: seen }, kind === 'two' ? { touredTwo: true } : { toured: true }));
+    $('tour').hidden = true;
+    $('spot').hidden = true;
+    tour.run = false; tour.input = false;
+    if (kind === 'two') playVersusNow(); else playLevelNow();
+  }
+  function tourTick(now) {
+    const step = steps()[tour.i];
+    if (!tour.done && step.retry && step.retry()) {
+      const note = step.retryText;
+      enterStep(tour.i);
+      tour.note = note;
+      renderStep();
+    } else if (!tour.done && step.waits && step.waits()) {
+      tour.done = true;
+      tour.input = false;
+      tour.run = true;
+      tour.freezeAt = now + 900;
+      renderStep();
+    } else if (!tour.done && now - tour.entered > 12000) {
+      // Nobody gets stuck on a gesture they cannot make.
+      tour.done = true;
+      tour.input = false;
+      renderStep();
+    }
+    if (tour.freezeAt && now > tour.freezeAt) { tour.run = false; tour.freezeAt = 0; }
+    placeSpot(step);
+  }
+  function placeSpot(step) {
+    const stage_ = stage.getBoundingClientRect();
+    let target = step.target, x, y, w, h, round = false, open = false;
+    if (target === 'bubble' && tour.b && sim.bubbles.includes(tour.b)) {
+      const pad = 10;
+      x = stage_.left + tour.b.x - tour.b.r - pad; y = stage_.top + tour.b.y - tour.b.r - pad;
+      w = h = (tour.b.r + pad) * 2;
+      round = true;
+    } else if (target === 'hinge') {
+      const pos = sim.line(), band = 44;
+      if (sim.vertical) { x = stage_.left + pos - band / 2; y = stage_.top + sim.top; w = band; h = sim.h - sim.top; }
+      else { x = stage_.left; y = stage_.top + pos - band / 2; w = sim.w; h = band; }
+    } else if (target === 'arena' || target === 'bubble') {
+      x = stage_.left; y = stage_.top + sim.top; w = sim.w; h = sim.h - sim.top; open = true;
+    } else {
+      const r = document.querySelector(target).getBoundingClientRect(), pad = 6;
+      x = r.left - pad; y = r.top - pad; w = r.width + pad * 2; h = r.height + pad * 2;
+    }
+    const spot = $('spot'), key = [x, y, w, h].map(Math.round).join() + round + open;
+    if (spot.dataset.key === key) return;
+    spot.dataset.key = key;
+    spot.style.left = x + 'px'; spot.style.top = y + 'px'; spot.style.width = w + 'px'; spot.style.height = h + 'px';
+    spot.classList.toggle('round', round);
+    spot.classList.toggle('open', open);
+  }
+  $('tourNext').addEventListener('click', () => {
+    if (!tour.done) return;
+    if (tour.i + 1 < steps().length) enterStep(tour.i + 1);
+    else endTour(true);
+  });
+  $('tourBack').addEventListener('click', () => { if (tour.i > 0) enterStep(tour.i - 1); });
+  $('tourSkip').addEventListener('click', () => endTour(false));
+  $('tourText').addEventListener('scroll', markMore, { passive: true });
+  $('tourSolo').addEventListener('click', () => startTour('solo'));
+  $('tourTwo').addEventListener('click', () => startTour('two'));
+
   function drainEvents() {
     for (const e of sim.events) {
       if (e.type === 'split' || e.type === 'pop') {
         fx.push({ kind: 'ring', x: e.x, y: e.y, r: e.r, t: 0, life: 0.35, color: BUBBLE[e.g] });
-        fx.push({ kind: 'text', x: e.x, y: e.y, t: 0, life: 0.7, text: '+' + e.pts });
+        fx.push({ kind: 'text', x: e.x, y: e.y, t: 0, life: 0.85, text: '+' + e.pts.toLocaleString(), pts: e.pts, color: BUBBLE[e.g] });
         blip(e.type === 'pop' ? 880 : 420 + e.g * 150, 0.09, 'triangle', 0.14);
+        if (e.g === 2) teach('small', 'The smallest bubbles pop on the hinge for free. Tap them for more points, or let the hinge take them.');
+        if (sim.players.some((p) => p.combo >= 3)) teach('combo', 'Combo building. Tap again within 1.6 seconds to keep it. A crossing resets it.');
+      } else if (e.type === 'bump') {
+        const clock = performance.now();
+        if (clock - lastBump > 70) { lastBump = clock; blip(150 + e.g * 90, 0.05, 'sine', Math.min(0.1, e.strength / 3000)); }
       } else if (e.type === 'cross') {
         fx.push({ kind: 'ring', x: e.x, y: e.y, r: e.r, t: 0, life: 0.45, color: C.overload });
         hingePulse = 1;
         blip(150, 0.16, 'sawtooth', 0.11);
+        try { if (navigator.vibrate) navigator.vibrate(12); } catch (err) { /* optional */ }
+        if (!teach('cross', 'That charged your overload. A full meter costs a shield.') && sim.players.some((p) => p.meter === CFG.meterMax - 1)) teach('nearfull', 'One more crossing costs a shield.');
       } else if (e.type === 'shield') {
         if (!reduced) shake = 1;
         hingePulse = 1.6;
         blip(80, 0.4, 'square', 0.14);
+        teach('shield', 'A shield is gone. Tap ' + CFG.rechargeStreak + ' times in a row with no crossing to win it back.');
       } else if (e.type === 'zap') {
         fx.push({ kind: 'ring', x: e.x, y: e.y, r: e.r, t: 0, life: 0.4, color: C.hinge });
-        fx.push({ kind: 'text', x: e.x, y: e.y, t: 0, life: 0.7, text: '+' + e.pts });
+        fx.push({ kind: 'text', x: e.x, y: e.y, t: 0, life: 0.85, text: '+' + e.pts.toLocaleString(), pts: e.pts, color: C.hinge });
         blip(1200, 0.1, 'sine', 0.13);
       } else if (e.type === 'recharge' || e.type === 'cool') {
         const pos = sim.line();
@@ -598,6 +1222,7 @@ function createSim(opts) {
         else fx.push({ kind: 'text', x: sim.vertical ? pos : W / 2, y: sim.vertical ? (sim.top + H) / 2 : pos - 16, t: 0, life: 1.1, text });
         blip(520, 0.12, 'triangle', 0.14);
         blip(990, 0.26, 'triangle', 0.12);
+        if (e.type === 'recharge') teach('recharge', 'Shield restored. Any streak of ' + CFG.rechargeStreak + ' taps does this, and at full shields it clears the meter instead.');
       } else if (e.type === 'won') {
         blip(660, 0.3, 'triangle', 0.16);
         endTimer = 0.6;
@@ -614,16 +1239,16 @@ function createSim(opts) {
   function drawHinge(now) {
     const pos = sim.line(), meter = Math.max(...sim.players.map((p) => p.meter)), col = meterColor(meter);
     const start = sim.vertical ? sim.top : 0, end = sim.vertical ? H : W;
-    ctx.fillStyle = 'rgba(0,0,0,.35)';
+    ctx.fillStyle = 'rgba(0,0,0,.26)';
     if (sim.vertical) ctx.fillRect(pos - 9, sim.top, 18, H - sim.top);
     else ctx.fillRect(0, pos - 9, W, 18);
-    const steps = 28, amp = reduced ? 0 : 1.5 + hingePulse * 5 + meter * 0.5;
-    ctx.strokeStyle = col; ctx.lineWidth = 2 + hingePulse * 2;
+    const steps = 56, amp = reduced ? 0 : 1 + hingePulse * 5 + meter * 0.45;
+    ctx.strokeStyle = col; ctx.lineWidth = 2 + hingePulse * 2; ctx.lineJoin = 'round';
     ctx.shadowColor = col; ctx.shadowBlur = 8 + hingePulse * 18;
     ctx.beginPath();
     for (let i = 0; i <= steps; i++) {
       const along = start + ((end - start) * i) / steps;
-      const off = i === 0 || i === steps ? 0 : Math.sin(i * 1.7 + now * 0.013) * amp * Math.sin(i * 0.61 - now * 0.007);
+      const off = i === 0 || i === steps ? 0 : Math.sin(i * 0.42 + now * 0.005) * amp * Math.sin(i * 0.17 - now * 0.003);
       if (sim.vertical) { if (i) ctx.lineTo(pos + off, along); else ctx.moveTo(pos + off, along); }
       else if (i) ctx.lineTo(along, pos + off); else ctx.moveTo(along, pos + off);
     }
@@ -645,10 +1270,21 @@ function createSim(opts) {
     drawHinge(now);
 
     for (const b of sim.bubbles) {
+      // New pieces grow in over a moment; hit testing always uses the full size.
+      if (!born.has(b)) born.set(b, b.grace > 0 && !reduced ? now : now - 1000);
+      const grow = Math.min(1, (now - born.get(b)) / 150);
+      const r = b.r * (0.55 + 0.45 * (1 - (1 - grow) * (1 - grow)));
+      const q = reduced ? 0 : b.sq * 0.16;
       ctx.beginPath();
-      ctx.arc(b.x, b.y, b.r, 0, Math.PI * 2);
+      ctx.ellipse(b.x, b.y, r * (1 - q), r * (1 + q), b.sqA, 0, Math.PI * 2);
       ctx.fillStyle = BUBBLE[b.g];
-      ctx.globalAlpha = b.grace > 0 ? 0.6 : 1;
+      ctx.globalAlpha = b.grace > 0 ? 0.72 : 1;
+      ctx.fill();
+      const shine = ctx.createRadialGradient(b.x - r * 0.36, b.y - r * 0.4, r * 0.05, b.x, b.y, r);
+      shine.addColorStop(0, 'rgba(255,255,255,.62)');
+      shine.addColorStop(0.55, 'rgba(255,255,255,0)');
+      shine.addColorStop(1, 'rgba(13,17,23,.16)');
+      ctx.fillStyle = shine;
       ctx.fill();
       ctx.globalAlpha = 1;
     }
@@ -666,9 +1302,11 @@ function createSim(opts) {
       ctx.globalAlpha = 1 - p;
       if (f.kind === 'ring') {
         ctx.beginPath(); ctx.arc(f.x, f.y, f.r * (1 + p * 0.9), 0, Math.PI * 2);
-        ctx.strokeStyle = f.color; ctx.lineWidth = 3; ctx.stroke();
+        ctx.strokeStyle = f.color; ctx.lineWidth = 2; ctx.stroke();
       } else {
-        ctx.fillStyle = C.fg; ctx.font = '600 14px ' + css.getPropertyValue('--mono');
+        const unit = Math.max(14, Math.min(W, H) / 40);
+        const grow = f.pts ? 1 + Math.min(1.1, f.pts / 2500) : 1;
+        ctx.fillStyle = f.color || C.fg; ctx.font = (f.pts ? '600 ' : '500 ') + Math.round(unit * grow) + 'px ' + css.getPropertyValue('--mono');
         ctx.textAlign = 'center';
         ctx.fillText(f.text, f.x, f.y - p * 30);
       }
@@ -685,6 +1323,7 @@ function createSim(opts) {
     }
   }
   let hudKey = '';
+  const shown = [0, 0], rolled = [0, 0];
   function updateHud() {
     const key = sim.players.map((p) => [p.shields, p.meter, p.score, p.combo, p.streak].join('|')).join('/');
     if (key === hudKey) return;
@@ -695,7 +1334,13 @@ function createSim(opts) {
       [...box.querySelector('.shields').children].forEach((el, n) => el.classList.toggle('gone', n >= p.shields));
       const col = meterColor(p.meter);
       [...box.querySelector('.ticks').children].forEach((el, n) => { el.classList.toggle('on', n < p.meter); el.style.setProperty('--tick-color', col); });
-      box.querySelector('.score').textContent = p.score.toLocaleString();
+      const scoreEl = box.querySelector('.score');
+      if (p.score > (shown[i] || 0) && scoreEl.animate && !reduced) {
+        const size = 1 + Math.min(0.32, 0.08 + (p.score - (shown[i] || 0)) / 12000);
+        scoreEl.animate([{ transform: 'scale(1)' }, { transform: 'scale(' + size + ')' }, { transform: 'scale(1)' }], { duration: 220, easing: 'ease-out' });
+      }
+      if (p.score < (shown[i] || 0)) rolled[i] = p.score;
+      shown[i] = p.score;
       const combo = box.querySelector('.combo');
       combo.textContent = 'x' + p.combo;
       combo.classList.toggle('hot', p.combo > 1);
@@ -705,22 +1350,10 @@ function createSim(opts) {
   function onResize() {
     const top = measure();
     if (!sim) return;
-    if (!sim.versus && (W > H) !== sim.vertical) {
-      if (mode === 'play' || mode === 'paused') {
-        playLevel();
-        mode = 'paused';
-        showPanel({ heading: 'Level restarted', sub: 'The phone turned, so the hinge moved.', actions: [{ id: 'play', label: 'Play', primary: true, run: resume }] });
-      } else if (mode === 'menu') {
-        const panelOpen = !$('panel').hidden;
-        newSim({ level });
-        $('panel').hidden = !panelOpen;
-      } else {
-        sim.vertical = W > H;
-        sim.resize(W, H, top);
-      }
-    } else {
-      sim.resize(W, H, top);
-    }
+    closeTip();
+    const turned = sim.resize(W, H, top);
+    if (turned && mode === 'play') pause();
+    if (turned && mode === 'tour') enterStep(tour.i);
   }
 
   let last = 0, acc = 0;
@@ -728,15 +1361,33 @@ function createSim(opts) {
   function frame(now) {
     const dt = Math.min(0.05, (now - last) / 1000 || 0);
     last = now;
-    if (mode === 'play' && sim) {
+    if (mode === 'play' && sim && !held) {
       acc += dt;
       while (acc >= STEP) { sim.step(STEP); acc -= STEP; }
       drainEvents();
       if (endTimer > 0) { endTimer -= dt; if (endTimer <= 0) finish(); }
+    } else if (mode === 'tour' && sim) {
+      if (tour.run) {
+        acc += dt;
+        while (acc >= STEP) { sim.step(STEP); acc -= STEP; }
+      }
+      drainEvents();
+      tourTick(now);
     }
     shake = Math.max(0, shake - dt * 3);
     hingePulse = Math.max(0, hingePulse - dt * 3);
-    if (sim) { draw(now, dt); updateHud(); }
+    if (sim) {
+      draw(now, dt);
+      updateHud();
+      sim.players.forEach((p, i) => {
+        const from = rolled[i] || 0;
+        const next = reduced || Math.abs(p.score - from) < 2 ? p.score : from + (p.score - from) * Math.min(1, dt * 12);
+        if (next === from && p.score === from && $('p' + i).dataset.shown === String(p.score)) return;
+        rolled[i] = next;
+        $('p' + i).dataset.shown = String(Math.round(next));
+        $('p' + i).querySelector('.score').textContent = Math.round(next).toLocaleString();
+      });
+    }
     requestAnimationFrame(frame);
   }
 
@@ -746,7 +1397,7 @@ function createSim(opts) {
   }
   const FLICK_PX = 18;
   canvas.addEventListener('pointerdown', (e) => {
-    if (mode !== 'play') return;
+    if (mode === 'tour' ? !tour.input : mode !== 'play') return;
     e.preventDefault();
     const p = point(e), b = sim.hit(p.x, p.y);
     if (!b) return;
@@ -772,11 +1423,22 @@ function createSim(opts) {
   canvas.addEventListener('pointercancel', (e) => active.delete(e.pointerId));
 
   $('pause').addEventListener('click', pause);
-  document.addEventListener('visibilitychange', () => { if (document.hidden) pause(); });
+  canvas.addEventListener('contextmenu', (e) => e.preventDefault());
+  // Pinch zoom stays available on the menus. It is only held back while bubbles are in play.
+  document.addEventListener('gesturestart', (e) => { if (mode === 'play' || mode === 'tour') e.preventDefault(); });
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) pause();
+    else if (mode === 'play') { wake = null; holdWake(); }
+  });
   addEventListener('resize', onResize);
   ['optFlick', 'optGrace', 'optSound'].forEach((id) => $(id).addEventListener('change', () => writeStore()));
 
-  window.hingePop = { get sim() { return sim; } };
+  window.hingePop = {
+    get sim() { return sim; },
+    tourInput: () => tour.input,
+    tourTarget: () => steps()[tour.i].target,
+    tourBubble: () => (tour.b && sim.bubbles.includes(tour.b) ? { x: tour.b.x + stage.getBoundingClientRect().left, y: tour.b.y + stage.getBoundingClientRect().top } : null),
+  };
   $('streakCount').textContent = CFG.rechargeStreak;
   loadPrefs();
   buildHud();

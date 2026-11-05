@@ -8,6 +8,7 @@ const clearAll = (page) => page.evaluate(() => { const s = window.hingePop.sim; 
 (async () => {
   const browser = await chromium.launch();
   const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true, deviceScaleFactor: 2 });
+  await ctx.addInitScript(() => { if (!localStorage.getItem('hinge-pop-prefs')) localStorage.setItem('hinge-pop-prefs', JSON.stringify({ toured: true, touredTwo: true })); });
   const page = await ctx.newPage();
   const errors = [];
   page.on('pageerror', (e) => errors.push(e.message));
