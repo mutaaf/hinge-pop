@@ -66,7 +66,11 @@ async function api(method, path, body) {
   const text = await r.text();
   const json = text ? JSON.parse(text) : {};
   if (!r.ok) {
-    const why = (json.errors ?? []).map((x) => `${x.title}: ${x.detail}`).join("; ") || text;
+    const why = (json.errors ?? []).map((x) => {
+      // Apple hides the real reason for a refused review item in meta.associatedErrors.
+      const inner = Object.values(x.meta?.associatedErrors ?? {}).flat().map((e) => e.detail ?? e.title).join(" | ");
+      return `${x.title}: ${x.detail}${inner ? ` [${inner}]` : ""}`;
+    }).join("; ") || text;
     const err = new Error(`${method} ${path} → ${r.status} ${why}`);
     err.status = r.status; err.body = json;
     throw err;
