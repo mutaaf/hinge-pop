@@ -26,7 +26,8 @@ test('levels ramp by how much tapping they ask for, starting with one big bubble
   for (let n = 1; n <= 300; n++) {
     assert.ok(work(n) <= CFG.maxWork, 'level ' + n + ' asks for ' + work(n));
     assert.ok(levelConfig(n).speed <= CFG.maxSpeed);
-    assert.equal(solo(n).bubbles.length, levelConfig(n).sizes.length);
+    const fresh = solo(n);
+    assert.equal(fresh.bubbles.length + fresh.arrivals.length, levelConfig(n).sizes.length);
   }
 });
 
@@ -81,7 +82,8 @@ test('a larger bubble on the hinge splits and costs the meter, streak and combo'
   p.streak = 5; p.combo = 3; p.comboT = 1;
   const before = s.bubbles.length;
   sendAcross(s, s.bubbles[0]);
-  assert.equal(p.meter, 1);
+  assert.equal(p.shields, CFG.shields - 1, 'a big bubble fills the meter by itself');
+  assert.equal(p.meter, 0);
   assert.equal(p.crossings, 1);
   assert.equal(p.streak, 0);
   assert.equal(p.combo, 1);
@@ -147,10 +149,12 @@ test('filling the meter takes a shield, and the last shield ends the level', () 
   const s = solo(6);
   const p = s.players[0];
   p.meter = CFG.meterMax - 1;
+  s.bubbles[0].g = 2; s.bubbles[0].r = CFG.radii[2];
   sendAcross(s, s.bubbles[0]);
   assert.equal(p.shields, CFG.shields - 1);
   assert.equal(p.meter, 0);
   p.shields = 1; p.meter = CFG.meterMax - 1;
+  s.bubbles[0].g = 2; s.bubbles[0].r = CFG.radii[2];
   sendAcross(s, s.bubbles.find((b) => b.g < 3));
   assert.equal(s.status, 'lost');
 });
@@ -298,7 +302,7 @@ test('two players: a crossing costs the sender and lands on the other side', () 
   const s = versus();
   const right = s.bubbles.filter((b) => b.side > 0).length;
   sendAcross(s, s.bubbles.find((b) => b.side < 0));
-  assert.deepEqual(Array.from(s.players, (p) => p.meter), [1, 0]);
+  assert.deepEqual(Array.from(s.players, (p) => p.shields), [CFG.shields - 1, CFG.shields]);
   assert.equal(s.bubbles.filter((b) => b.side > 0).length, right + 2);
 });
 
@@ -335,4 +339,82 @@ test('two players: a cleared arena goes to the higher score, or a draw', () => {
   assert.equal(finish(900, 100).winner, 0);
   assert.equal(finish(100, 900).winner, 1);
   assert.equal(finish(500, 500).winner, null);
+});
+
+// ---- Nobody wins by watching
+
+test('no level can be won without touching the screen', () => {
+  for (const n of [...Array(40).keys()].map((i) => i + 1)) {
+    const s = createSim({ w: 390, h: 760, top: 70, level: n });
+    while (s.status === 'playing' && s.t < 300) { s.step(1 / 30); s.events.length = 0; }
+    assert.notEqual(s.status, 'won', 'level ' + n + ' cleared itself');
+  }
+});
+
+test('heavier bubbles cost more to let through', () => {
+  const s = solo(1);
+  assert.deepEqual([0, 1, 2].map((g) => s.crossingCost(g)), [CFG.meterMax, 2, 1]);
+});
+
+test('busy levels arrive in stages and cannot be won early', () => {
+  const s = solo(39);
+  assert.ok(s.arrivals.length > 0);
+  const waiting = s.arrivals.length;
+  while (s.bubbles.length && s.status === 'playing' && s.arrivals.length === waiting) s.tap(s.bubbles[0]);
+  assert.equal(s.status, 'playing');
+  assert.ok(s.arrivals.length < waiting);
+});
+
+// ---- Guest stars
+
+const meet = (s) => {
+  while (!s.visitors.length && s.t < 40 && s.status === 'playing') {
+    s.step(1 / 60);
+    for (const p of s.players) { p.meter = 0; p.shields = CFG.shields; }
+  }
+  return s.visitors[0];
+};
+
+test('every guest comes around, and level one stays simple', () => {
+  const seen = new Set();
+  for (let n = 2; n <= 9; n++) { const v = meet(solo(n)); if (v) seen.add(v.cameo); }
+  assert.equal(seen.size, CFG.cameos.length);
+  assert.equal(meet(solo(1)), undefined);
+});
+
+test('two players get no guests, so nobody gets lucky', () => {
+  assert.equal(meet(versus()), undefined);
+});
+
+test('catching a guest scores and gives its gift', () => {
+  const s = solo(2);
+  const v = s.summon('docFlux');
+  s.players[0].meter = 3;
+  const before = s.players[0].score;
+  assert.ok(s.catchVisitor(v));
+  assert.equal(s.visitors.length, 0);
+  assert.ok(s.players[0].score > before);
+  assert.equal(s.players[0].meter, 0);
+  assert.equal(s.players[0].cameos, 1);
+});
+
+test('the Chosen Fizz dodges the first touch', () => {
+  const s = solo(2);
+  const v = s.summon('chosenFizz');
+  s.catchVisitor(v);
+  assert.equal(s.visitors.length, 1);
+  s.catchVisitor(v);
+  assert.equal(s.visitors.length, 0);
+});
+
+test('guests never block a clear, and they leave by themselves', () => {
+  const s = solo(2);
+  s.summon('captainFizz');
+  let guard = 0;
+  while (s.bubbles.length && s.status === 'playing' && guard++ < 500) s.tap(s.bubbles[0]);
+  assert.equal(s.status, 'won');
+  const t = solo(2);
+  t.summon('captainFizz');
+  for (let i = 0; i < 60 * 6; i++) { t.step(1 / 60); t.players[0].meter = 0; t.players[0].shields = CFG.shields; if (!t.visitors.length) break; }
+  assert.equal(t.visitors.length, 0);
 });

@@ -9,7 +9,7 @@ public enum ActorKind: String, CaseIterable, Sendable, Codable {
     switch self {
     case .fast: 1.45
     case .frozen: 0.55
-    case .boss: 0.6
+    case .boss: 1.1
     case .golden: 1.2
     default: 1
     }
@@ -28,6 +28,11 @@ public enum ActorKind: String, CaseIterable, Sendable, Codable {
 }
 
 public enum PowerUp: String, CaseIterable, Sendable, Codable { case overcharge, freeze, focus, shield, chainBurst }
+
+/// Guest stars. Original characters that nod at film and TV genres, each with its own way of moving and its own gift.
+public enum Cameo: String, CaseIterable, Sendable, Codable {
+  case captainFizz, docFlux, sirGlowstick, chosenFizz, merlinFizz, bigBurp, booBubble, discoDot
+}
 
 public enum Arena: String, CaseIterable, Sendable, Codable { case classic, neon, forest, space }
 
@@ -83,11 +88,14 @@ public enum Campaign {
     }
   }
 
-  /// Sizes that add up to a budget of work: as many large as fit, then the biggest pieces that fit the rest.
+  /// Sizes that add up to a budget of work. A big bubble that gets through costs a whole shield, so only two
+  /// come at once, and the rest of the budget arrives as lighter pieces that forgive a miss.
   public static func sizes(forWork budget: Int) -> [Int] {
     var left = budget, out: [Int] = []
     for size in 0..<4 {
-      while left >= work[size], out.count < 7 { out.append(size); left -= work[size] }
+      let most = size == 0 ? 2 : 7
+      var made = 0
+      while left >= work[size], out.count < 7, made < most { out.append(size); left -= work[size]; made += 1 }
     }
     return out.isEmpty ? [0] : out
   }
@@ -122,7 +130,7 @@ public enum Campaign {
       var spawns = [Spawn(.boss)]
       if index >= 2 { spawns.append(Spawn(.fast, size: 2)) }
       if index >= 4 { spawns.append(Spawn(.armored, size: 1)) }
-      return LevelSpec(number: n, chapter: ch.number, spawns: spawns, speed: pace, meterMax: 4, gates: 0, bossPhases: min(4, 2 + index / 2), arena: ch.arena)
+      return LevelSpec(number: n, chapter: ch.number, spawns: spawns, speed: pace, meterMax: 4, gates: 0, bossPhases: 3, arena: ch.arena)
     }
     if index == 0 {
       let sizes = firstChapter[k - 1]
@@ -137,7 +145,7 @@ public enum Campaign {
     switch index {
     case 1:
       kinds = k <= 2 ? [.armored] : k <= 4 ? [.armored, .basic, .frozen] : [.armored, .frozen, .armored]
-      if k >= 7 { meter = 3 }
+      if k >= 8 { meter = 3 }
     case 2:
       kinds = k <= 2 ? [.magnetic] : k <= 4 ? [.repel] : k <= 7 ? [.magnetic, .repel] : [.magnetic, .repel, .golden]
     case 3:
@@ -153,7 +161,7 @@ public enum Campaign {
     var phases = 0
     if index == 4 && k == 5 {
       spawns = [Spawn(.boss), Spawn(.fast, size: 2), Spawn(.fast, size: 2)]
-      phases = 2
+      phases = 3
     }
     return LevelSpec(number: n, chapter: ch.number, spawns: spawns, speed: pace, meterMax: meter, gates: gates, bossPhases: phases, arena: ch.arena)
   }
@@ -163,7 +171,7 @@ public enum Campaign {
     var rng = SplitMix(seed: UInt64(n) &* 0x1F3D)
     let pace = min(1.15, 0.75 + 0.004 * Double(n - 50))
     if n % 10 == 0 {
-      return LevelSpec(number: n, chapter: ch.number, spawns: [Spawn(.boss), Spawn(.fast, size: 2), Spawn(.armored, size: 1)], speed: pace, meterMax: 4, gates: 0, bossPhases: 4, arena: ch.arena)
+      return LevelSpec(number: n, chapter: ch.number, spawns: [Spawn(.boss), Spawn(.fast, size: 2), Spawn(.armored, size: 1)], speed: pace, meterMax: 4, gates: 0, bossPhases: 3, arena: ch.arena)
     }
     let budget = min(90, 48 + (n - 50) / 4 + rng.int(12))
     return mixed(number: n, chapter: ch.number, budget: budget, speed: pace, gates: rng.int(3) == 0 ? 1 : 0, arena: ch.arena, rng: &rng)

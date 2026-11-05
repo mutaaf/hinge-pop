@@ -149,6 +149,13 @@ p { margin: 0; }
 
 /* ---- Power-ups: a scattered constellation, not a list. ---- */
 .powers { padding-block: 14vh 12vh; }
+.guests { padding-block: 12vh 10vh; }
+.guest-grid { width: min(1120px, 100% - 32px); margin: 5vh auto 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 250px), 1fr)); gap: 18px 22px; }
+.guest-card { position: relative; display: grid; grid-template-columns: 96px minmax(0, 1fr); gap: 10px; align-items: center; }
+.guest-card .art { position: relative; }
+.guest-card img { display: block; width: 100%; height: auto; }
+.guest-card h3 { margin: 0 0 2px; font: 400 clamp(21px, 2.4vw, 28px)/1.05 var(--display); color: var(--sun); }
+.guest-card p { margin: 0; font-size: 15px; line-height: 1.35; }
 .powers-title { display: grid; gap: 12px; }
 .powers-title .big { max-width: 22em; }
 .power-field { position: relative; width: min(1180px, 100% - 32px); margin: 6vh auto 0; display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); row-gap: 7vh; column-gap: 12px; }

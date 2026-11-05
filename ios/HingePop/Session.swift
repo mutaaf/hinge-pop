@@ -77,6 +77,8 @@ final class Session {
     return game?.spec.arena ?? .classic
   }
   var isHeld: Bool { overlay != .none || tip != nil }
+  /// How far between the last two physics steps this frame lands.
+  var stepAlpha: Double { min(1, acc * 120) }
   /// How close anyone is to losing a shield, for the aurora to warm up.
   var heat: Double {
     guard let game else { return 0 }
@@ -221,7 +223,7 @@ final class Session {
     let next = game.players.map { PlayerHUD(shields: $0.shields, meter: $0.meter, score: $0.score, streak: $0.streak, combo: $0.combo, overcharge: ($0.overcharge * 2).rounded(.up) / 2) }
     if next != hud { hud = next }
     let boss = game.bubbles.first { $0.kind == .boss }
-    let phases = max(1, game.spec.bossPhases), hits = game.tuning.bossHitsPerPhase
+    let phases = max(1, game.spec.bossPhases), hits = game.bossHitsPerPhase
     let left = boss.map { Double(phases * hits - $0.bossPhase * hits - $0.bossHits) / Double(phases * hits) }
     if left != bossLeft { bossLeft = left }
     let f = (game.freeze * 2).rounded(.up) / 2; if f != freezeLeft { freezeLeft = f }
@@ -253,7 +255,7 @@ final class Session {
     for e in events {
       switch e {
       case .crossed:
-        if !teach("cross", "That charged your overload. A full meter costs a shield."),
+        if !teach("cross", "Crossings charge the meter. Bigger bubbles charge more."),
            game.players.contains(where: { $0.meter == game.meterMax - 1 }) {
           teach("nearfull", "One more crossing costs a shield.")
         }
@@ -264,8 +266,15 @@ final class Session {
       case .gatePass: teach("gatepass", "Through the gate, free of charge.")
       case .dropped(let kind, _, _): teach("drop", "A power-up! Tap it before it fades: \(kind.title).", power: kind)
       case .collected(let kind, _, _, _): teach("got-\(kind.rawValue)", "\(kind.title): \(kind.detail)", power: kind)
-      case .bossSlam: teach("slam", "Bosses cannot cross, but each slam charges your meter. Tap it to wear it down.")
-      case .bossPhase: teach("phase", "Next phase! It speeds up and sends out fast bubbles. Grab the Chain Burst it dropped.")
+      case .bossSlam: teach("slam", "Each slam charges your meter. Keep hitting it.")
+      case .bossWindup: teach("windup", "It's winding up! Hit it now for double damage.")
+      case .bossStagger: teach("stagger", "Staggered! Double damage.")
+      case .bossPhase: teach("phase", "Next phase: faster, with friends.")
+      case .cameoArrived(let c, _, _):
+        show("\(c.title)! Catch for \(c.gift)", seconds: 3)
+      case .cameoCaught(let c, _, _, _, _):
+        app.progress.caught(c)
+        show("“\(c.quip)”", seconds: 3)
       case .finished:
         endTimer = 0.7
       default: break
@@ -312,20 +321,20 @@ final class Session {
     let p = game.players[i], r = game.tuning.rechargeStreak, left = r - p.streak
     let end = versus ? "you lose the match." : isCampaign ? "the level starts again from the score you began it with." : "the run ends."
     return Tip(title: "Shields", live: "\(p.shields) of \(game.tuning.shields) left. Streak: \(p.streak) of \(r) taps.",
-      body: "A full overload meter costs one shield. Lose the last one and \(end) The thin bar underneath is your streak: \(left) more \(left == 1 ? "tap" : "taps") with no crossing \(p.shields < game.tuning.shields ? "wins a shield back." : "clears the meter, since your shields are full.") Any crossing empties the bar.")
+      body: "Full meter costs one. Lose the last and \(end) \(left) more \(left == 1 ? "tap" : "taps") with no crossing \(p.shields < game.tuning.shields ? "wins one back." : "clears the meter.")")
   }
   func tipMeter(_ i: Int) -> Tip {
     let p = game.players[i], left = game.meterMax - p.meter
-    return Tip(title: "Overload meter", live: "\(p.meter) of \(game.meterMax) charged. \(left) more \(left == 1 ? "crossing costs" : "crossings cost") a shield.",
-      body: "Each larger bubble that crosses the hinge adds one charge, or two during Overcharge. The smallest size adds none, and neither does anything passing through a green gate. When the meter fills you lose a shield and it empties. The hinge turns from blue to violet to red as it fills.")
+    return Tip(title: "Overload meter", live: "\(p.meter) of \(game.meterMax) charged. \(left) to go.",
+      body: "Big fills it. Medium adds \(game.crossingCost(size: 1)). Small adds 1. Tiny adds nothing, and neither do green gates. Full costs a shield.")
   }
   func tipScore(_ i: Int) -> Tip {
     let p = game.players[i]
     return Tip(title: "Score and combo", live: "\(p.score.formatted()) points at x\(p.combo.formatted()).",
-      body: "Each hit scores the bubble's points times your combo: 100, 200, 300 or 500 by size. Golden bubbles pay 5 times that, and chain pops pay extra. Each hit adds x0.5, up to x10. The combo ends if \(String(format: "%.1f", game.tuning.comboWindow)) seconds pass with no tap, or on any crossing.\(isCampaign ? " Clear a level with no crossings for a 25% bonus. Your score carries from level to level." : "")")
+      body: "Smaller pays more, times your combo. Keep tapping to build it. A crossing resets it.\(isCampaign ? " No crossings: +25%." : "")")
   }
   func tipBoss() -> Tip {
-    Tip(title: "Boss", live: "\(max(1, game.spec.bossPhases)) phases, \(game.tuning.bossHitsPerPhase) hits each.", body: ActorKind.boss.detail)
+    Tip(title: "Boss", live: "\(max(1, game.spec.bossPhases)) phases, \(game.bossHitsPerPhase) hits each.", body: ActorKind.boss.detail)
   }
   func tipPower(_ p: PowerUp) -> Tip { Tip(title: p.title, body: p.detail) }
 
@@ -347,6 +356,7 @@ final class Session {
     let meter = Debug.int("-demoMeter") ?? 0
     for i in game.players.indices { game.players[i].meter = meter; game.players[i].shields = 3 }
     demoClock -= dt
+    if let name = Debug.string("-cameo"), let c = Cameo(rawValue: name), game.visitors.isEmpty, game.time > 0.5 { game.summon(c) }
     guard demoClock <= 0, game.bubbles.count < 14, let b = game.bubbles.first(where: { $0.size < 2 && $0.kind != .boss }) else { return }
     demoClock = 0.5
     game.tap(b)

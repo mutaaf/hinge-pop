@@ -81,8 +81,19 @@ const CAST = [
   ['repel', 'Repel', 'Pushes nearby bubbles away, sometimes right at the hinge.', 'gr'],
   ['golden', 'Golden', 'Worth 5 times the points. Grab it while your combo is high.', 'go'],
   ['frozen', 'Frozen', 'Slow and heavy. It gives you time, but it is hard to knock off course.', 'ic'],
-  ['boss', 'Boss', 'Too big to cross. Each slam charges your meter, and each phase gets faster.', 'ro'],
+  ['boss', 'Boss', 'Too big to cross. When it glows red, hit it, or its dash costs a shield.', 'ro'],
 ];
+const GUESTS = [
+  ['captainFizz', 'Captain Fizz', 'Swoops across and gives a shield back.'],
+  ['docFlux', 'Doc Flux', 'Jumps through time and empties your meter.'],
+  ['sirGlowstick', 'Sir Glowstick', 'Glides in and slashes through the crowd.'],
+  ['chosenFizz', 'The Chosen Fizz', 'Dodges your first tap, then slows time.'],
+  ['merlinFizz', 'Merlin Fizz', 'Zigzags past and pops the small stuff.'],
+  ['bigBurp', 'Big Burp', 'Stomps along the floor. Catch it for a giant stomp.'],
+  ['booBubble', 'Boo Bubble', 'Fades in and out, and doubles your points.'],
+  ['discoDot', 'Disco Dot', 'Grooves in loops and pumps your combo.'],
+];
+
 const POWERS = [
   ['overcharge', 'Overcharge', 'Double points for 8 seconds. The risk: a crossing charges your meter twice.'],
   ['freeze', 'Freeze', 'Slows every bubble to about a third of its speed for 3 seconds.'],
@@ -155,7 +166,7 @@ export function landing(links) {
   <div class="front hinge-in">
     ${stk('h2', 'The hinge', 'cy l', 'id="h-hinge" style="--d:14vh"')}
     <p class="big l" style="--d:6vh">An electric line runs through every arena.</p>
-    <p class="l" style="--d:3vh">A big bubble that crosses it splits for free, but the crossing charges your overload meter. Fill the meter and you lose a shield. Lose all three and the level starts over.</p>
+    <p class="l" style="--d:3vh">Let a big one through and it costs a whole shield. Lose all three and the level starts over.</p>
     <p class="l" style="--d:9vh">The smallest bubbles are the exception. They pop on the hinge at no cost.</p>
   </div>
 </section>
@@ -216,6 +227,20 @@ export function landing(links) {
   </div>
 </section>
 
+<section class="sec guests" data-shape="bubble" data-tint="neon" aria-labelledby="h-guests">
+  ${sparkles(8, 83)}
+  <div class="front blk powers-title">
+    ${stk('h2', 'Guest stars', 'go l', 'id="h-guests" style="--d:10vh"')}
+    <p class="big l" style="--d:4vh">Eight visitors drop in, each moving their own way. Catch them for a gift.</p>
+  </div>
+  <div class="guest-grid">
+  ${GUESTS.map(([id, name, line], i) => `<article class="own guest-card">
+    <div class="l o art" style="--x0:${i % 2 ? 30 : -30}vw;--y0:${10 + i * 3}vh;--r0:${i % 2 ? 90 : -90}deg;--s0:.5" aria-hidden="true"><img src="art/cameo-${id}.webp" alt="" width="200" height="200" loading="lazy" decoding="async"></div>
+    <div class="front l o" style="--y0:${4 + i % 3}vh"><h3>${esc(name)}</h3><p>${esc(line)}</p></div>
+  </article>`).join('\n  ')}
+  </div>
+</section>
+
 <section class="sec chapters" aria-labelledby="h-chapters">
   <div class="front blk chapters-title">
     ${stk('h2', 'Five chapters, then Infinity', 'cy l', 'id="h-chapters" style="--d:9vh"')}
@@ -250,7 +275,7 @@ export function landing(links) {
   <div class="front two-in">
     ${stk('h2', 'Two players, one hinge', 'ho l', 'id="h-two" style="--d:8vh"')}
     <p class="l" style="--d:5vh">Each player owns one side. A touch only reaches the bubbles on the side it lands on, and you can both tap at once.</p>
-    <p class="l" style="--d:3vh">Let a bubble cross and you pay the meter charge, and the pieces land on your rival. Take their last shield and you win on the spot. If every bubble is cleared first, the higher score wins.</p>
+    <p class="l" style="--d:3vh">Let a bubble cross and you pay for it, and the pieces land on your rival. Take their last shield and you win on the spot. If every bubble is cleared first, the higher score wins.</p>
   </div>
 </section>
 
@@ -381,7 +406,7 @@ export const support = () => docPage({
   <li><strong>Tap</strong> a bubble to split it into two smaller ones. Tap the smallest size and it pops for good.</li>
   <li><strong>Swipe</strong> to slice. One stroke hits every bubble it crosses, and the pieces fly the way you swiped.</li>
   <li><strong>Chain pops.</strong> Popping a tiny bubble sets off every tiny bubble close to it.</li>
-  <li><strong>Watch the hinge.</strong> A larger bubble that crosses it splits for free but charges your overload meter. The smallest bubbles pop on it at no cost.</li>
+  <li><strong>Watch the hinge.</strong> A bubble that crosses it charges your meter, and bigger ones charge more. A big one fills it outright. The smallest bubbles pop on it at no cost.</li>
   <li><strong>Keep your shields.</strong> A full meter costs one of your 3 shields. Tap 8 times in a row with no crossing to win one back.</li>
 </ul>
 <p>The first time you play, a short guided tour teaches all of this with real bubbles.</p>
@@ -389,7 +414,7 @@ export const support = () => docPage({
 <h3>How do you win?</h3>
 <p>Clear every bubble in the level. Clear it with no crossings for a 25% score bonus. In the app, a clean run earns three stars.</p>
 <h3>How do you lose?</h3>
-<p>Each crossing charges the overload meter, and a full meter costs a shield. Lose your last shield and the level starts again, with your score back where it began. Nothing else is lost. In a two-player match, losing your last shield loses the match.</p>
+<p>Each crossing charges the overload meter, by more for bigger bubbles, and a full meter costs a shield. Lose your last shield and the level starts again, with your score back where it began. Nothing else is lost. In a two-player match, losing your last shield loses the match.</p>
 <h3>Are the levels infinite?</h3>
 <p>Yes. The app has 50 levels in five chapters, each ending on a boss, and then Infinity, which generates levels that keep climbing. It also has Arcade and Daily modes. The web game has its own endless run of levels with basic bubbles.</p>
 <h3>Is it family friendly?</h3>

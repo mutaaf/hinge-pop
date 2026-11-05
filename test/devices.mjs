@@ -80,7 +80,8 @@ const audit = (page) => page.evaluate(() => {
     const next = document.getElementById('tourNext').getBoundingClientRect();
     if (next.bottom > card.bottom + 1 || next.bottom > vh + 1) problems.push('tour button off the card');
     const text = document.getElementById('tourText');
-    if (text.clientHeight < 60) problems.push('tour text squeezed: ' + text.clientHeight);
+    // Tour text is short now, so a small box is fine. What matters is that nobody has to scroll a tiny window to read it.
+    if (text.clientHeight < 34 || (text.clientHeight < 60 && text.scrollHeight > text.clientHeight + 1)) problems.push('tour text squeezed: ' + text.clientHeight);
     const s = window.hingePop.sim;
     if (window.hingePop.tourInput() && s.bubbles.length) {
       const stage = document.getElementById('stage').getBoundingClientRect();
@@ -164,6 +165,7 @@ for (const [name, width, height] of DEVICES) {
   await page.evaluate(() => { const s = window.hingePop.sim; s.ready = 0; let g = 0; while (s.bubbles.length && g++ < 500) s.tap(s.bubbles[0]); });
   await page.waitForTimeout(800);
   await walk(ctx, page, 'cleared');
+  await page.tap('#statsBox summary');
   await page.tap('[data-tip="stat:Crossings"]');
   await page.waitForTimeout(140);
   if (await page.isHidden('#tip')) problems.push('stat tooltip did not open');

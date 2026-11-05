@@ -22,6 +22,7 @@ func writePNG(_ img: CGImage, _ name: String) {
 // `--sprites` writes each asset alone, for the website and store art, and stops.
 if CommandLine.arguments.contains("--sprites") {
     for k in BubbleKind.allCases { writePNG(Art.bubble(k, size: 256, scale: 2), "bubble-\(k.rawValue).png") }
+    for k in CameoKind.allCases { writePNG(Art.cameo(k, size: 160, scale: 2), "cameo-\(k.rawValue).png") }
     for k in PowerKind.allCases { writePNG(Art.power(k, size: 160, scale: 2), "power-\(k.rawValue).png") }
     for g in UIGlyph.allCases { writePNG(Art.glyph(g, size: 96, scale: 2), "glyph-\(g.rawValue).png") }
     for a in ArenaKind.allCases {

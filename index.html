@@ -114,12 +114,47 @@ h1 { margin: 0; font: 400 clamp(28px, 9vw, 36px)/1.05 var(--display); letter-spa
 .actions .primary { order: -1; flex-basis: 100%; min-height: 54px; background: var(--hinge); color: var(--ink); border: 0; }
 .actions .secondary { background: transparent; color: var(--fg); border: 1px solid var(--line); }
 @media (hover: hover) { .actions .secondary:hover { background: rgba(255, 255, 255, .05); } }
+#sky { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
 .more { display: flex; flex-direction: column; }
+/* Bright aurora behind what matters. Three drifting curtains, painted once and moved, so it costs almost nothing. */
+.spots { display: grid; gap: 8px; padding-bottom: 10px; }
+@media (min-width: 620px) { .spots { grid-template-columns: repeat(3, 1fr); } .spot { flex-direction: column; align-items: stretch; } .spot .say { text-align: center; } .spot .pic { justify-content: center; width: auto; } }
+.spot, .sheet.result #finalScore { position: relative; overflow: hidden; isolation: isolate; border-radius: 16px; border: 1px solid rgba(255,255,255,.26); background: #120a2c; }
+.spot::before, .sheet.result #finalScore::before { content: ""; position: absolute; inset: -50% -30%; z-index: -1; background:
+  radial-gradient(38% 42% at 24% 50%, var(--a1, #3ce8ff) 0, transparent 72%),
+  radial-gradient(34% 46% at 58% 42%, var(--a2, #6a6cff) 0, transparent 72%),
+  radial-gradient(36% 40% at 84% 60%, var(--a3, #4cffc0) 0, transparent 72%);
+  animation: drift 9s ease-in-out infinite alternate; will-change: transform; }
+@keyframes drift { from { transform: translate3d(-9%, -5%, 0) scale(1); } to { transform: translate3d(9%, 5%, 0) scale(1.14); } }
+.spot { display: flex; align-items: center; gap: 10px; padding: 8px; min-height: 72px; }
+.spot.b2 { --a1: #ff4cdc; --a2: #6a5cff; --a3: #ff5c9c; } .spot.c { --a1: #4cff8c; --a2: #2cd8d0; --a3: #d0ff4c; }
+.spot .pic { position: relative; display: flex; align-items: center; justify-content: center; gap: 4px; width: 104px; min-height: 56px; flex: none; }
+.spot .pic em { font: 700 15px var(--body); font-style: normal; color: #fff; }
+.spot .pic.line::before { content: ""; position: absolute; inset-inline: 2px; top: 50%; height: 3px; margin-top: -1.5px; border-radius: 2px; background: #fff; box-shadow: 0 0 10px #4fd8ff, 0 0 20px #4fd8ff; }
+.spot .pic.hot::before { box-shadow: 0 0 10px #ff4c6c, 0 0 20px #ff4c6c; }
+.b { display: block; flex: none; position: relative; border-radius: 50%; background: radial-gradient(circle at 34% 30%, #d8fbff, #39c6ff 42%, #1464d8 100%); box-shadow: 0 0 10px rgba(79,216,255,.7); }
+.b.lg { width: 44px; height: 44px; } .b.md { width: 25px; height: 25px; } .b.sm { width: 18px; height: 18px; }
+.spot .say { flex: 1; min-width: 0; display: grid; gap: 1px; padding: 6px 10px; border-radius: 10px; background: rgba(0,0,0,.48); font-size: 12.5px; line-height: 1.3; color: #fff; }
+.spot .say b { font: 400 16px/1.2 var(--display); }
+.fold { border-top: 1px solid var(--line); }
+.more > .fold:first-of-type { border-top: 0; }
+.fact { margin: 0 0 12px; font-size: 14px; line-height: 1.45; color: var(--fg); }
+.guests { display: grid; grid-template-columns: repeat(auto-fill, minmax(146px, 1fr)); gap: 6px; padding-bottom: 12px; }
+.guest { display: flex; align-items: center; gap: 8px; min-height: 56px; padding: 6px; border-radius: 12px; background: rgba(255,255,255,.05); font-size: 12px; line-height: 1.25; color: var(--muted); }
+.guest img { width: 48px; height: 48px; flex: none; }
+.guest b { display: block; font-size: 13px; color: var(--fg); }
+.sheet.result h1 { text-align: center; }
+.sheet.result .sub { text-align: center; }
+.sheet.result #finalScore { --a1: #ff4cdc; --a2: #3ce8ff; --a3: #4cffc0; justify-items: center; padding: 16px 10px; }
+.sheet.result #finalScore b { font-size: clamp(38px, 12vw, 52px); color: #fff; text-shadow: 0 2px 10px rgba(0,0,0,.55); }
+.sheet.result #finalScore small { color: #fff; font-weight: 600; padding: 2px 10px; border-radius: 999px; background: rgba(0,0,0,.48); }
+.sheet.result #finalScore small:empty { display: none; }
+#statsBox .stats { border-block: 0; padding-block: 0 12px; }
 details { border-top: 1px solid var(--line); }
 summary { list-style: none; display: flex; justify-content: space-between; align-items: center; min-height: var(--target); font-size: 14px; font-weight: 500; cursor: pointer; }
 summary::-webkit-details-marker { display: none; }
 summary::after { content: "+"; font-size: 18px; color: var(--muted); }
-details[open] summary::after { content: "\2212"; }
+details[open] > summary::after { content: "\2212"; }
 .rules { list-style: none; margin: 0; padding: 0 0 12px; display: grid; gap: 8px; font-size: 14px; line-height: 1.5; color: var(--muted); }
 .sizes { list-style: none; margin: 0; padding: 4px 0 14px; display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; align-items: end; text-align: center; font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
 .sizes li { display: grid; justify-items: center; gap: 6px; }
@@ -259,10 +294,12 @@ details[open] summary::after { content: "\2212"; }
 @media (prefers-reduced-motion: reduce) {
   #panel, .sheet { animation: none; }
   #coach, .charge i, .toggle input::before { transition: none; }
+  .spot::before, .sheet.result #finalScore::before { animation: none; }
 }
 </style>
 
 <div id="stage">
+  <canvas id="sky" aria-hidden="true"></canvas>
   <canvas id="game" aria-label="Game arena. Tap bubbles to split them."></canvas>
   <div id="hud">
     <div class="phud" id="p0">
@@ -304,26 +341,38 @@ details[open] summary::after { content: "\2212"; }
         <p class="sub" id="sub"></p>
         <p id="finalScore" hidden></p>
       </div>
-      <dl class="stats" id="stats" hidden></dl>
       <div class="actions" id="actions"></div>
+      <details class="fold" id="statsBox" hidden><summary>Details</summary><dl class="stats" id="stats"></dl></details>
       <div class="more">
         <details id="howto">
           <summary>How to play</summary>
-          <ul class="sizes" aria-label="The four bubble sizes and what each one scores">
-            <li><i style="width:44px;height:44px;background:#cfe3f5"></i>100</li>
-            <li><i style="width:31px;height:31px;background:#a9e3d3"></i>200</li>
-            <li><i style="width:21px;height:21px;background:#f2dd8f"></i>300</li>
-            <li><i style="width:14px;height:14px;background:#ffb27a"></i>500</li>
-          </ul>
-          <ul class="rules">
-            <li>Tap a bubble to split it, or swipe to hit every bubble in a line.</li>
-            <li>Popping a tiny bubble sets off every tiny bubble close to it.</li>
-            <li>A larger bubble that crosses the hinge charges your overload. A full meter costs a shield.</li>
-            <li>The smallest bubbles pop on the hinge for free.</li>
-            <li>Each size has its own weight and bounce. Bubbles knock each other around, and a heavy one can shove a light one into the hinge.</li>
-            <li>Tap <span id="streakCount">8</span> times in a row with no crossing to win a shield back.</li>
-            <li>2 Players: each player owns one side. A crossing charges whoever let it through and lands on the other side.</li>
-          </ul>
+          <div class="spots">
+            <div class="spot a"><span class="pic"><i class="b lg"></i><em>&rarr;</em><i class="b md"></i><i class="b md"></i></span><span class="say"><b>Tap or swipe</b>Split them all</span></div>
+            <div class="spot b2"><span class="pic line hot"><i class="b lg"></i></span><span class="say"><b>Guard the line</b>A big one costs a shield</span></div>
+            <div class="spot c"><span class="pic line"><i class="b sm"></i><i class="b sm"></i><i class="b sm"></i></span><span class="say"><b>Tiny = free</b>The line pops them for you</span></div>
+          </div>
+          <details class="fold" name="learn"><summary>Sizes and scoring</summary>
+            <ul class="sizes" aria-label="The four bubble sizes and what each one scores">
+              <li><i class="b" style="width:44px;height:44px"></i>100</li>
+              <li><i class="b" style="width:31px;height:31px"></i>200</li>
+              <li><i class="b" style="width:21px;height:21px"></i>300</li>
+              <li><i class="b" style="width:14px;height:14px"></i>500</li>
+            </ul>
+            <p class="fact">Keep tapping: combo goes up to x10. No crossings: +25%.</p>
+          </details>
+          <details class="fold" name="learn"><summary>Shields and meter</summary>
+            <ul class="sizes" aria-label="What each size adds to the meter when it crosses">
+              <li><i class="b" style="width:44px;height:44px"></i>Full</li>
+              <li><i class="b" style="width:31px;height:31px"></i>+2</li>
+              <li><i class="b" style="width:21px;height:21px"></i>+1</li>
+              <li><i class="b" style="width:14px;height:14px"></i>Free</li>
+            </ul>
+            <p class="fact">A full meter costs a shield. <span id="streakCount">8</span> taps with no crossing wins one back.</p>
+          </details>
+          <details class="fold" name="learn"><summary>Guest stars</summary><div class="guests" id="guestList"></div></details>
+          <details class="fold" name="learn"><summary>Two players</summary>
+            <p class="fact">One side each. What you miss lands on your rival. Last shield standing wins.</p>
+          </details>
           <div class="tour-links">
             <button type="button" id="tourSolo">Replay the tour</button>
             <button type="button" id="tourTwo">Two-player tour</button>
@@ -378,13 +427,32 @@ const CFG = {
   sliceReach: 8,
   versusPerSide: 3,
   versusSpeed: 0.85,
+  // Busy levels arrive in stages: a new bubble comes when the arena has this little work left, or after the gap.
+  arrivalWork: 12,
+  arrivalOpening: 22,
+  arrivalGap: 9,
+  // Guest stars wander through, ignore the hinge and leave a gift if you catch them.
+  cameos: ['captainFizz', 'docFlux', 'sirGlowstick', 'chosenFizz', 'merlinFizz', 'bigBurp', 'booBubble', 'discoDot'],
+  cameoFirst: 5,
+  cameoGap: 16,
+  cameoLife: 8.5,
+  cameoPoints: 1000,
+  cameoRadius: 34,
+  freezeTime: 3,
+  freezeScale: 0.35,
+  focusTime: 4,
+  focusEvery: 0.14,
+  overchargeTime: 8,
+  burstRadius: 130,
 };
 
 function sizesForWork(budget) {
   const out = [];
   let left = budget;
+  // A big bubble that gets through costs a whole shield, so only two come at once. The rest arrive lighter.
   for (let size = 0; size < 4; size++) {
-    while (left >= CFG.work[size] && out.length < 7) { out.push(size); left -= CFG.work[size]; }
+    let made = 0;
+    while (left >= CFG.work[size] && out.length < 7 && (size > 0 || made < 2)) { out.push(size); left -= CFG.work[size]; made++; }
   }
   return out.length ? out : [0];
 }
@@ -404,18 +472,24 @@ function createSim(opts) {
   const versus = !!opts.versus;
   const level = opts.level || 1;
   const conf = versus ? { sizes: Array(CFG.versusPerSide).fill(0), speed: CFG.versusSpeed } : levelConfig(level);
-  const newPlayer = (score) => ({ score, combo: 1, comboT: 0, bestCombo: 1, meter: 0, shields: CFG.shields, streak: 0, recharges: 0, taps: 0, flicks: 0, crossings: 0, zaps: 0, chained: 0 });
+  const newPlayer = (score) => ({ score, combo: 1, overcharge: 0, cameos: 0, comboT: 0, bestCombo: 1, meter: 0, shields: CFG.shields, streak: 0, recharges: 0, taps: 0, flicks: 0, crossings: 0, zaps: 0, chained: 0 });
   const s = {
     w: opts.w, h: opts.h, top: opts.top || 0,
     versus, level, speedMul: conf.speed,
     vertical: versus || opts.w > opts.h,
     flick: opts.flick !== false, grace: opts.grace !== false,
     players: versus ? [newPlayer(0), newPlayer(0)] : [newPlayer(opts.score || 0)],
-    bubbles: [], events: [],
+    bubbles: [], visitors: [], arrivals: [], events: [],
+    freeze: 0, focus: 0,
     status: 'playing', winner: null,
     t: 0, ready: CFG.readyTime, cleanBonus: false,
   };
   let nextId = 1;
+  let arrivalClock = 0, focusClock = 0, cameoTurn = level;
+  // A small seeded generator, so a guest's timing replays exactly.
+  let seed = (level * 2654435761) >>> 0;
+  const unit = () => { seed = (seed + 0x6D2B79F5) >>> 0; let t = seed; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
+  let cameoClock = CFG.cameoFirst + unit() * 4;
 
   const scale = () => Math.max(0.85, Math.min(2.4, Math.min(s.w, s.h - s.top) / 400));
   const line = () => (s.vertical ? s.w / 2 : s.top + (s.h - s.top) / 2);
@@ -425,7 +499,7 @@ function createSim(opts) {
 
   function add(g, x, y, angle, grace) {
     const sp = CFG.speeds[g] * scale() * s.speedMul;
-    const b = { id: nextId++, g, x, y, r: CFG.radii[g] * scale(), vx: Math.cos(angle) * sp, vy: Math.sin(angle) * sp, grace, side: 0, sq: 0, sqA: 0 };
+    const b = { id: nextId++, g, x, y, r: CFG.radii[g] * scale(), px: x, py: y, vx: Math.cos(angle) * sp, vy: Math.sin(angle) * sp, grace, side: 0, sq: 0, sqA: 0 };
     b.side = sideOf(b);
     s.bubbles.push(b);
     return b;
@@ -433,7 +507,16 @@ function createSim(opts) {
 
   // Bubbles start near the outer edges and drift toward the hinge. Versus sides are exact mirrors.
   function spawnLevel() {
-    const all = conf.sizes;
+    // Only what a person can handle comes in first. The rest follows as the arena clears.
+    let all = conf.sizes;
+    if (!versus && !opts.sandbox) {
+      const opening = [];
+      let work = 0;
+      all.forEach((g, i) => {
+        if (i === 0 || work + CFG.work[g] <= CFG.arrivalOpening) { opening.push(g); work += CFG.work[g]; } else s.arrivals.push(g);
+      });
+      all = opening;
+    }
     const near = versus ? all : all.slice(0, Math.ceil(all.length / 2));
     const far = versus ? all : all.slice(Math.ceil(all.length / 2));
     const rows = [[0.18, near], [0.82, far]];
@@ -453,6 +536,129 @@ function createSim(opts) {
   }
 
   const remove = (b) => { s.bubbles.splice(s.bubbles.indexOf(b), 1); };
+
+  function bringNext() {
+    if (!s.arrivals.length) return;
+    arrivalClock = 0;
+    const g = s.arrivals.shift();
+    const near = unit() < 0.5, u = 0.15 + unit() * 0.7, v = near ? 0.12 : 0.88;
+    const a = ((25 + unit() * 130) * Math.PI) / 180, toward = near ? 1 : -1;
+    const along = Math.cos(a), acrossDir = Math.abs(Math.sin(a)) * toward;
+    if (s.vertical) add(g, v * s.w, s.top + u * (s.h - s.top), Math.atan2(along, acrossDir), CFG.graceHinge);
+    else add(g, u * s.w, s.top + v * (s.h - s.top), Math.atan2(acrossDir, along), CFG.graceHinge);
+  }
+
+  // Heavier bubbles hit harder. A big one fills the meter by itself, and each generation of its pieces costs
+  // a full meter again, so a big bubble left completely alone always takes all three shields with it.
+  const crossingCost = (g) => (g === 0 ? CFG.meterMax : g === 1 ? Math.ceil(CFG.meterMax / 2) : 1);
+
+  const visitorRadius = () => CFG.cameoRadius * scale();
+  function burst(b, owner) {
+    if (!s.bubbles.includes(b)) return;
+    const p = s.players[owner], pts = Math.round(CFG.points[b.g] * p.combo * (p.overcharge > 0 ? 2 : 1));
+    p.score += pts;
+    remove(b);
+    if (b.g < 3) for (const sign of [-1, 1]) {
+      const a = Math.atan2(b.vy, b.vx) + sign * 0.96;
+      add(b.g + 1, b.x + Math.cos(a) * b.r * 0.5, b.y + Math.sin(a) * b.r * 0.5, a, CFG.graceTap);
+    }
+    s.events.push({ type: b.g < 3 ? 'split' : 'pop', x: b.x, y: b.y, r: b.r, g: b.g, pts });
+  }
+  function gift(v) {
+    const p = s.players[0];
+    switch (v.cameo) {
+      case 'captainFizz':
+        if (p.shields < CFG.shields) { p.shields++; p.recharges++; s.events.push({ type: 'recharge', owner: 0 }); }
+        else { p.meter = 0; s.events.push({ type: 'cool', owner: 0 }); }
+        break;
+      case 'docFlux': p.meter = 0; s.events.push({ type: 'cool', owner: 0 }); break;
+      case 'sirGlowstick': case 'bigBurp': {
+        const radius = CFG.burstRadius * scale() * (v.cameo === 'bigBurp' ? 1.3 : 1);
+        for (const b of s.bubbles.slice()) if (Math.hypot(b.x - v.x, b.y - v.y) <= radius) burst(b, 0);
+        break;
+      }
+      case 'chosenFizz': s.freeze = CFG.freezeTime; break;
+      case 'merlinFizz': s.focus = CFG.focusTime; focusClock = 0; break;
+      case 'booBubble': p.overcharge = CFG.overchargeTime; break;
+      default:
+        p.combo = Math.min(CFG.comboMax, p.combo + 3);
+        p.bestCombo = Math.max(p.bestCombo, p.combo);
+        p.comboT = CFG.comboWindow * 2;
+    }
+  }
+  function hitVisitor(x, y) {
+    return s.visitors.find((v) => v.presence > 0.35 && Math.hypot(v.x - x, v.y - y) <= visitorRadius() + 12) || null;
+  }
+  // A touch on a guest. The Chosen Fizz sees the first one coming.
+  function catchVisitor(v) {
+    if (s.status !== 'playing' || s.ready > 0 || !s.visitors.includes(v)) return false;
+    if (v.dodges > 0) {
+      v.dodges--;
+      const middle = s.top + (s.h - s.top) / 2;
+      s.events.push({ type: 'cameoDodge', cameo: v.cameo, x: v.x, y: v.y });
+      v.baseY = Math.max(s.top + 70 * scale(), Math.min(s.h - 70 * scale(), v.baseY + (v.baseY > middle ? -1 : 1) * 130 * scale()));
+      v.y = v.baseY; v.py = v.baseY;
+      return true;
+    }
+    s.visitors.splice(s.visitors.indexOf(v), 1);
+    const p = s.players[0], pts = Math.round(CFG.cameoPoints * p.combo);
+    p.score += pts;
+    p.cameos++;
+    p.combo = Math.min(CFG.comboMax, p.combo + CFG.comboStep);
+    p.bestCombo = Math.max(p.bestCombo, p.combo);
+    p.comboT = CFG.comboWindow;
+    s.events.push({ type: 'cameoCaught', cameo: v.cameo, x: v.x, y: v.y, pts });
+    gift(v);
+    checkEnd();
+    return true;
+  }
+  function spawnVisitor(cameo) {
+    const list = CFG.cameos;
+    const name = cameo || list[((cameoTurn % list.length) + list.length) % list.length];
+    cameoTurn++;
+    const dir = unit() < 0.5 ? 1 : -1, margin = 60 * scale(), startX = dir > 0 ? -margin : s.w + margin;
+    const lo = s.top + 90 * scale(), hi = Math.max(lo + 1, s.h - 90 * scale());
+    const y = name === 'bigBurp' ? s.h - visitorRadius() - 8 : lo + unit() * (hi - lo);
+    const v = { id: nextId++, cameo: name, x: startX, y, px: startX, py: y, age: 0, life: CFG.cameoLife, presence: name === 'booBubble' ? 0 : 1, startX, baseY: y, dir, dodges: name === 'chosenFizz' ? 1 : 0 };
+    s.visitors.push(v);
+    s.events.push({ type: 'cameoArrive', cameo: name, x: v.x, y });
+    return v;
+  }
+  function summon(name) {
+    const v = spawnVisitor(name);
+    v.age = CFG.cameoLife * 0.42; v.life = CFG.cameoLife * 0.58;
+    return v;
+  }
+  // Each guest moves its own way: a hero's swoop, a time traveller's jumps, a knight's glide, and so on.
+  function stepVisitors(dt) {
+    if (!versus && !opts.sandbox && level >= 2) {
+      cameoClock -= dt;
+      if (cameoClock <= 0) { cameoClock = CFG.cameoGap + unit() * 6; spawnVisitor(); }
+    }
+    const k = scale();
+    for (let i = s.visitors.length - 1; i >= 0; i--) {
+      const v = s.visitors[i];
+      v.px = v.x; v.py = v.y;
+      v.age += dt; v.life -= dt;
+      if (v.life <= 0) { s.visitors.splice(i, 1); continue; }
+      const u = v.age / CFG.cameoLife, t = v.age, span = s.w + 120 * k;
+      let nx = v.startX + span * u * v.dir, ny = v.baseY;
+      if (v.cameo === 'captainFizz') ny = v.baseY + Math.sin(t * 1.6) * 70 * k;
+      else if (v.cameo === 'docFlux') {
+        const jump = Math.floor(u * 7) / 7;
+        nx = v.startX + span * jump * v.dir;
+        ny = v.baseY + Math.sin(jump * 19) * 60 * k;
+        if (Math.abs(nx - v.x) > 1) s.events.push({ type: 'cameoBlink', fromX: v.x, fromY: v.y, x: nx, y: ny });
+      } else if (v.cameo === 'sirGlowstick') ny = v.baseY + Math.sin(t * 0.6) * 12 * k;
+      else if (v.cameo === 'chosenFizz') ny = v.baseY + Math.sin(t * 2.4) * 8 * k;
+      else if (v.cameo === 'merlinFizz') ny = v.baseY + (Math.abs(((t * 0.9) % 2) - 1) * 2 - 1) * 80 * k;
+      else if (v.cameo === 'bigBurp') { const hop = Math.abs(Math.sin(t * 2.2)); ny = s.h - visitorRadius() - 8 - hop * hop * 90 * k; }
+      else if (v.cameo === 'booBubble') { ny = v.baseY + Math.sin(t * 1.1) * 26 * k; v.presence = 0.5 + 0.5 * Math.sin(t * 1.9 - 1.2); }
+      else { ny = v.baseY + Math.sin(t * 3.4) * 50 * k; nx += Math.sin(t * 1.7) * 26 * k; }
+      v.x = nx;
+      v.y = Math.max(s.top + visitorRadius(), Math.min(s.h - visitorRadius(), ny));
+    }
+  }
 
   // Squash is plain data for the renderer: how hard, and along which direction.
   function impact(b, normal, strength) {
@@ -482,7 +688,7 @@ function createSim(opts) {
   }
 
   function award(p, g) {
-    const pts = Math.round(CFG.points[g] * p.combo);
+    const pts = Math.round(CFG.points[g] * p.combo * (p.overcharge > 0 ? 2 : 1));
     p.score += pts;
     p.combo = Math.min(CFG.comboMax, p.combo + CFG.comboStep);
     p.bestCombo = Math.max(p.bestCombo, p.combo);
@@ -534,6 +740,11 @@ function createSim(opts) {
     const touch = (s.vertical ? x0 : y0) < line() ? -1 : 1;
     const reach = CFG.sliceReach * Math.max(1, scale());
     const hits = [];
+    for (const v of s.visitors.slice()) {
+      if (skip.has(v.id) || v.presence <= 0.35) continue;
+      const t = Math.max(0, Math.min(1, ((v.x - x0) * dx + (v.y - y0) * dy) / len2));
+      if (Math.hypot(v.x - (x0 + dx * t), v.y - (y0 + dy * t)) <= visitorRadius() + reach) { skip.add(v.id); catchVisitor(v); }
+    }
     for (const b of s.bubbles) {
       if (b.grace > 0 || skip.has(b.id) || (versus && b.side !== touch)) continue;
       const t = Math.max(0, Math.min(1, ((b.x - x0) * dx + (b.y - y0) * dy) / len2));
@@ -550,6 +761,7 @@ function createSim(opts) {
 
   function checkEnd() {
     if (s.status !== 'playing' || s.bubbles.length > 0) return;
+    if (s.arrivals.length) { bringNext(); return; }
     if (versus) {
       s.status = 'ended';
       const [a, b] = s.players;
@@ -605,7 +817,6 @@ function createSim(opts) {
     p.crossings++;
     p.combo = 1; p.comboT = 0;
     p.streak = 0;
-    p.meter++;
     remove(b);
     s.events.push({ type: 'cross', x: b.x, y: b.y, r: b.r, g: b.g });
     const childG = b.g + 1;
@@ -624,7 +835,10 @@ function createSim(opts) {
         add(childG, b.x, b.y, heading + sign * 0.96, 0);
       }
     }
-    if (p.meter >= CFG.meterMax) {
+    const cost = crossingCost(b.g) * (p.overcharge > 0 ? 2 : 1);
+    for (let i = 0; i < cost && s.status === 'playing'; i++) {
+      p.meter++;
+      if (p.meter < CFG.meterMax) continue;
       p.meter = 0;
       p.shields--;
       s.events.push({ type: 'shield' });
@@ -638,15 +852,34 @@ function createSim(opts) {
     checkEnd();
   }
 
-  function step(dt) {
+  function step(real) {
     if (s.status !== 'playing') return;
-    if (s.ready > 0) { s.ready -= dt; return; }
-    s.t += dt;
+    if (s.ready > 0) { s.ready -= real; return; }
+    s.t += real;
+    if (s.freeze > 0) s.freeze = Math.max(0, s.freeze - real);
+    const dt = s.freeze > 0 ? real * CFG.freezeScale : real;
     for (const p of s.players) {
-      if (p.comboT > 0) { p.comboT -= dt; if (p.comboT <= 0) p.combo = 1; }
+      if (p.comboT > 0) { p.comboT -= real; if (p.comboT <= 0) p.combo = 1; }
+      if (p.overcharge > 0) p.overcharge = Math.max(0, p.overcharge - real);
+    }
+    if (s.focus > 0) {
+      s.focus = Math.max(0, s.focus - real);
+      focusClock -= real;
+      if (focusClock <= 0) {
+        focusClock = CFG.focusEvery;
+        const target = s.bubbles.find((b) => b.g === 3) || s.bubbles.find((b) => b.g === 2);
+        if (target) { burst(target, 0); checkEnd(); }
+      }
+    }
+    stepVisitors(real);
+    if (s.arrivals.length) {
+      arrivalClock += real;
+      const onScreen = s.bubbles.reduce((sum, b) => sum + CFG.work[b.g], 0);
+      if (onScreen <= CFG.arrivalWork || arrivalClock >= CFG.arrivalGap) bringNext();
     }
     const crossed = [];
     for (const b of s.bubbles) {
+      b.px = b.x; b.py = b.y;
       const m = CFG.matter[b.g];
       // Swim back toward cruising speed. A bubble that is stopped stays stopped until something hits it.
       const speed = Math.hypot(b.vx, b.vy);
@@ -721,12 +954,14 @@ function createSim(opts) {
       b.vx *= ratio; b.vy *= ratio;
       b.r = CFG.radii[b.g] * scale();
       b.side = sideOf(b);
+      b.px = b.x; b.py = b.y;
     }
+    s.visitors.length = 0;
     return turned;
   }
 
   spawnLevel();
-  return Object.assign(s, { step, tap, hit, resize, line, add, slice });
+  return Object.assign(s, { step, tap, hit, resize, line, add, slice, hitVisitor, catchVisitor, summon, crossingCost });
 }
 // SIM END
 
@@ -936,10 +1171,16 @@ function createSim(opts) {
       $('finalScore').lastChild.textContent = o.final || '';
       tally($('finalScore').firstChild, o.total);
     }
-    $('stats').hidden = !o.stats;
+    $('statsBox').hidden = !o.stats;
+    $('statsBox').open = false;
+    document.querySelector('.sheet').classList.toggle('result', !!o.total || o.total === 0);
     $('stats').classList.toggle('two', !!o.twoColumn);
     $('stats').innerHTML = (o.stats || []).map(([k, v]) => '<div data-tip="stat:' + k + '" role="button" tabindex="0" aria-label="' + k + ': ' + v + '. Show details."><dt>' + k + '</dt><dd>' + v + '</dd></div>').join('');
     $('howto').hidden = !o.rules;
+    if (o.rules) {
+      const met = new Set(readStore().cameos || []);
+      $('guestList').innerHTML = CFG.cameos.map((c) => '<div class="guest"><img src="' + ART + 'cameo-' + c + '.webp" alt="" width="48" height="48"' + (met.has(c) ? '' : ' style="opacity:.55"') + '><span><b>' + CAMEO_INFO[c][0] + '</b>Gives ' + CAMEO_INFO[c][1] + '</span></div>').join('');
+    }
     $('settings').hidden = !o.toggles;
     if (!o.rules) $('howto').open = false;
     if (!o.toggles) $('settings').open = false;
@@ -1007,7 +1248,7 @@ function createSim(opts) {
       const out = a.shields <= 0 || b.shields <= 0;
       showPanel({
         heading,
-        sub: out ? 'The hinge took the last shield.' : sim.winner === null ? 'Same score, every bubble cleared.' : 'Every bubble cleared. Higher score wins.',
+        sub: out ? 'Last shield gone.' : sim.winner === null ? 'Same score.' : 'All clear. Top score wins.',
         total: sim.winner === null ? a.score : sim.players[sim.winner].score,
         twoColumn: true,
         stats: [['Left score', a.score.toLocaleString()], ['Right score', b.score.toLocaleString()], ['Left crossings', a.crossings], ['Right crossings', b.crossings], ['Left shields', a.shields], ['Right shields', b.shields]],
@@ -1036,7 +1277,7 @@ function createSim(opts) {
     } else {
       showPanel({
         heading: 'Overloaded',
-        sub: 'The hinge took your last shield. Level ' + level + ' starts again.',
+        sub: 'Out of shields. One more go?',
         total, final, stats,
         actions: [{ id: 'menu', label: 'Menu', run: menu }, { id: 'play', label: 'Try again', primary: true, run: playLevel }],
       });
@@ -1047,35 +1288,35 @@ function createSim(opts) {
   const R = CFG.rechargeStreak, M = CFG.meterMax;
   const whoseStats = (el) => sim.players[el.closest('#p1') ? 1 : 0];
   const STAT_TIPS = {
-    Time: ['Time', 'How long the bubbles were moving. Pauses and open tooltips do not count.'],
-    Taps: ['Taps', 'Every tap or swipe hit on a bubble. Swipes that cross several count once each, and chain pops and hinge pops do not count at all.'],
-    Crossings: ['Crossings', 'Larger bubbles that crossed the hinge. Each one charged the overload meter, reset the combo and reset the shield streak. Free pops of the smallest size do not count.'],
-    'Hinge pops': ['Hinge pops', 'Smallest bubbles that popped on the hinge. Each one scores a flat 500 and costs nothing. Tapping one instead scores 500 times your combo.'],
-    Recharged: ['Recharged', 'Shields won back with a streak of ' + R + ' taps and no crossing.'],
-    Shields: ['Shields', 'Shields you still had when the level ended. A level always starts with ' + CFG.shields + '.'],
-    Left: ['Bubbles left', 'Bubbles still in play when the last shield went. Fewer means you were closer.'],
-    'Left score': ['Left score', "The left player's points. If every bubble gets cleared, the higher score wins the match."],
-    'Right score': ['Right score', "The right player's points. If every bubble gets cleared, the higher score wins the match."],
-    'Left crossings': ['Left crossings', 'Bubbles the left player let through. Each one charged their meter and landed on the right side.'],
-    'Right crossings': ['Right crossings', 'Bubbles the right player let through. Each one charged their meter and landed on the left side.'],
-    'Left shields': ['Left shields', 'Shields the left player had at the end. A player with none loses the match, whatever the score.'],
-    'Right shields': ['Right shields', 'Shields the right player had at the end. A player with none loses the match, whatever the score.'],
+    Time: ['Time', 'Time the bubbles were moving.'],
+    Taps: ['Taps', 'Touches that hit a bubble.'],
+    Crossings: ['Crossings', 'Bubbles that got past you.'],
+    'Hinge pops': ['Hinge pops', 'Tiny ones the line popped for free.'],
+    Recharged: ['Recharged', 'Shields won back.'],
+    Shields: ['Shields', 'Shields left at the end.'],
+    Left: ['Bubbles left', 'Bubbles still in play at the end.'],
+    'Left score': ['Left score', "The left player's points."],
+    'Right score': ['Right score', "The right player's points."],
+    'Left crossings': ['Left crossings', 'What the left player let through.'],
+    'Right crossings': ['Right crossings', 'What the right player let through.'],
+    'Left shields': ['Left shields', 'Shields left at the end.'],
+    'Right shields': ['Right shields', 'Shields left at the end.'],
   };
   const TIPS = {
     shields: (el) => {
       const p = whoseStats(el), left = R - p.streak;
       return ['Shields', p.shields + ' of ' + CFG.shields + ' left. Streak: ' + p.streak + ' of ' + R + ' taps.',
-        'A full overload meter costs one shield. Lose the last one and ' + (sim.versus ? 'you lose the match.' : 'the level starts again from the score you began it with.') + ' The thin bar underneath is your streak: ' + left + (left === 1 ? ' more tap' : ' more taps') + ' with no crossing ' + (p.shields < CFG.shields ? 'wins a shield back.' : 'clears the meter, since your shields are full.') + ' Any crossing empties the bar.'];
+        'Full meter costs one. ' + left + (left === 1 ? ' more tap' : ' more taps') + ' with no crossing ' + (p.shields < CFG.shields ? 'wins one back.' : 'clears the meter.')];
     },
     meter: (el) => {
       const p = whoseStats(el), left = M - p.meter;
-      return ['Overload meter', p.meter + ' of ' + M + ' charged. ' + left + (left === 1 ? ' more crossing costs' : ' more crossings cost') + ' a shield.',
-        'Each larger bubble that crosses the hinge adds one charge. The smallest size adds none. When the meter fills you lose a shield and it empties. The hinge changes colour as it fills: blue, then violet, then red.'];
+      return ['Overload meter', p.meter + ' of ' + M + ' charged. ' + left + ' to go.',
+        'Big fills it. Medium adds 2. Small adds 1. Tiny adds nothing. Full costs a shield.'];
     },
     score: (el) => {
       const p = whoseStats(el);
       return ['Score and combo', p.score.toLocaleString() + ' points at x' + p.combo + '.',
-        'Each tap scores the bubble\'s points times your combo: 100, 200, 300 or 500 by size. Each tap adds x0.5, up to x10. The combo ends if ' + CFG.comboWindow + ' seconds pass with no tap, or on any crossing.' + (sim.versus ? '' : ' Clear a level with no crossings for a 25% bonus. Your score carries from level to level.')];
+        'Smaller pays more, times your combo. A crossing resets it.' + (sim.versus ? '' : ' No crossings: +25%.')];
     },
     optFlick: () => ['Swipe to slice', '', 'On: one swipe hits every bubble it crosses, and the pieces fly the way you swiped. A plain tap still works, but it fires when you lift your finger. Off: every touch splits the bubble the moment you land on it.'],
     optGrace: () => ['Hinge grace', '', 'On: pieces from a hinge split get pushed away from the line and cannot cause another crossing for 0.6 seconds. Off: pieces carry on from where the bubble was, so one crossing can set off several in a row.'],
@@ -1140,74 +1381,74 @@ function createSim(opts) {
   const P0 = () => sim.players[0];
   const SOLO_TOUR = [
     { title: 'Welcome to Hinge Pop', target: 'hinge',
-      body: 'Bubbles drift around the arena. This glowing line down the middle is the hinge, where a foldable phone folds. Your job is to clear every bubble while keeping the big ones off the hinge. This tour takes about a minute, and you try each move for real.',
+      body: 'Clear every bubble. Keep the big ones off this line.',
       scene: () => { put(0, 0.3, 0.2, 35, 0); put(1, 0.72, 0.28, 145, 0); } },
     { title: 'Tap to split', target: 'bubble', input: true, waits: () => P0().taps >= 1,
       body: 'A touch on any bubble splits it into two smaller ones.',
       todo: 'Tap the big bubble.',
-      done: 'One bubble became two, each a size smaller. You scored 100 points for it, and the pieces will keep moving.',
+      done: 'One became two.',
       scene: () => { tour.b = put(0, 0.5, 0.22, 35, 0); } },
     { title: 'Four sizes', target: 'arena',
-      body: 'Bubbles go large, medium, small, smallest. Smaller ones move faster and score more per tap: 100, 200, 300 and 500. Tap the smallest size and it pops for good.',
+      body: 'Smaller is faster and pays more. Tiny ones pop for good.',
       scene: () => { [0, 1, 2, 3].forEach((g, n) => put(g, 0.14 + n * 0.25, 0.22, 35, 0)); } },
-    { title: 'Every bubble has its own weight', target: 'arena', live: true,
-      body: 'Large bubbles are heavy and slow. The smallest are light, fast and very bouncy. When two bump, the lighter one takes most of the hit. Watch the big one knock the little one away. So watch out: a shove can send a bubble into the hinge.',
+    { title: 'Weight matters', target: 'arena', live: true,
+      body: 'Big ones shove little ones. Watch.',
       scene: () => { put(0, 0.12, 0.2, 0, 1); put(3, 0.62, 0.2, 0, 0); } },
     { title: 'Swipe to slice', target: 'bubble', input: true, waits: () => P0().flicks >= 1,
       retry: () => P0().taps >= 1 && P0().flicks === 0,
       retryText: 'That was a tap. This time, drag your finger across the bubble.',
-      body: 'You do not have to tap one at a time. One swipe hits every bubble it crosses, and the pieces fly the way you swiped. A faster swipe launches them harder.',
+      body: 'One swipe hits everything it crosses.',
       todo: 'Drag your finger across the bubble.',
-      done: 'The pieces went where you pointed. Swiping is how you keep up when the screen gets busy.',
+      done: 'The pieces fly the way you swiped.',
       scene: () => { tour.b = put(1, 0.5, 0.3, 35, 0); } },
     { title: 'Chain pops', target: 'arena', input: true, waits: () => P0().chained >= 1,
-      body: 'Tiny bubbles set each other off. Pop one and every tiny bubble close to it pops too.',
+      body: 'Pop one tiny bubble and its neighbours go too.',
       todo: 'Tap any tiny bubble in the bunch.',
-      done: 'One tap, the whole bunch. Let the tiny ones gather before you pop them.',
+      done: 'One tap, the whole bunch.',
       scene: () => { [[0.4, 0.24], [0.47, 0.2], [0.54, 0.24], [0.47, 0.28], [0.6, 0.2]].forEach(([u, v]) => put(3, u, v, 35, 0)); } },
     { title: 'The hinge bites', target: 'hinge', waits: () => P0().crossings >= 1,
-      body: 'Now watch what happens when a larger bubble reaches the hinge.',
+      body: 'Watch a big bubble reach the line.',
       todo: 'Watch the bubble.',
-      done: 'It split for free, but you pay for it: no points, your combo resets, and the overload meter gains a charge. Sometimes that is still worth it when you have too much to handle.',
+      done: 'That cost a whole shield. Bigger bubbles hit harder.',
       scene: () => { put(0, 0.3, 0.34, 70, 0.8); } },
     { title: 'The overload meter', target: '#p0 .meter', before: () => { P0().meter = 2; },
-      body: 'This is the meter. Each crossing fills one of its ' + M + ' segments, and the hinge changes from blue to violet to red as it fills. When the last segment fills, you lose a shield and the meter empties. It is showing 2 of ' + M + ' as an example.',
+      body: 'Crossings fill this. When it fills, you lose a shield.',
       scene: () => {} },
     { title: 'Shields', target: '#p0 .pips.shields', before: () => { P0().shields = 2; },
-      body: 'You start each level with ' + CFG.shields + ' shields. Lose the last one and the level starts again, with your score back to where it began. It is showing 2 of ' + CFG.shields + ' as an example.',
+      body: 'Lose all ' + CFG.shields + ' and the level restarts.',
       scene: () => {} },
-    { title: 'The hinge helps with the smallest', target: 'hinge', waits: () => P0().zaps >= 1,
-      body: 'Here is the good news. Watch the smallest bubble reach the hinge.',
+    { title: 'Tiny = free', target: 'hinge', waits: () => P0().zaps >= 1,
+      body: 'Good news: watch a tiny one reach the line.',
       todo: 'Watch the bubble.',
-      done: 'It popped for a flat 500 points, and the meter, combo and streak did not change. So you can leave the smallest ones to the hinge, or even aim them at it. Tapping one scores more, because the combo multiplies it.',
+      done: 'Free points, no cost.',
       scene: () => { put(3, 0.5, 0.36, 70, 0.5); put(0, 0.2, 0.14, 35, 0); } },
     { title: 'Win shields back', target: '#p0 .charge', before: () => { P0().shields = 2; P0().streak = 5; },
-      body: 'This thin bar is your streak. Tap ' + R + ' times in a row with no crossing and you win back a lost shield. At full shields, the streak clears the meter instead. Any crossing empties the bar. It is showing 5 of ' + R + ' as an example.',
+      body: R + ' taps with no crossing wins a shield back.',
       scene: () => {} },
     { title: 'Score and combo', target: '#p0 .readout', before: () => { P0().score = 1450; P0().combo = 3; },
-      body: 'Each tap multiplies a bubble\'s points by your combo. Every tap adds x0.5, up to x10. It ends if ' + CFG.comboWindow + ' seconds pass with no tap, or on any crossing. Clear a level with no crossings for a 25% bonus.',
+      body: 'Keep tapping to build your combo, up to x10.',
       scene: () => {} },
-    { title: 'Help is always here', target: '#hud', last: 'Play level 1',
-      body: 'During play, tap the shields, the meter or the score for a full explanation with your live numbers. The game holds still while you read. The round button pauses, and results and settings can be tapped for details too. You can replay this tour under How to play.',
+    { title: "You're ready", target: '#hud', last: 'Play level 1',
+      body: 'Catch any guest stars who drop by. Tap anything up top for details.',
       scene: () => {} },
   ];
   const left = () => sim.players[0], right = () => sim.players[1];
   const TWO_TOUR = [
     { title: 'Two players, one hinge', target: 'hinge',
-      body: 'The hinge splits the screen in two. The left player owns the left side, and the right player owns the right. Each player has their own shields, meter and score at the top. A phone has more room held sideways, and a tablet can lie flat between you.',
+      body: 'One side each, with your own shields and score.',
       scene: () => { put(0, 0.5, 0.2, 35, 0); put(0, 0.5, 0.8, 35, 0); } },
     { title: 'Stay on your side', target: 'arena', input: true, waits: () => left().taps + right().taps >= 1,
-      body: 'A touch only reaches bubbles on the side it lands on, so you cannot steal your rival\'s bubbles. Both of you can tap at the same time.',
+      body: 'Touches only reach your own side.',
       todo: 'Tap a bubble.',
-      done: 'That point goes to whoever owns the side. Same moves as solo: tap to split, flick to aim.',
+      done: 'Same moves as solo.',
       scene: () => { put(0, 0.25, 0.2, 35, 0); put(0, 0.25, 0.8, 35, 0); } },
     { title: 'Crossings land on your rival', target: 'hinge', waits: () => left().crossings >= 1,
       body: 'Watch this bubble leave the left side.',
       todo: 'Watch the bubble.',
-      done: 'The left player paid a meter charge. The two pieces landed on the right side, so the right player now has more to clear, and more points to earn. A deliberate crossing can pile on pressure, but it costs you.',
+      done: 'It cost the left player, and the pieces landed on the right.',
       scene: () => { put(0, 0.45, 0.36, 60, 0.8); } },
     { title: 'Two ways to win', target: '#hud', last: 'Start match',
-      body: 'Take your rival\'s last shield and you win on the spot, whatever the score. If every bubble gets cleared first, the higher score wins. The smallest bubbles still pop free on the hinge, and the points go to the side they came from. Tap anything up here during a match for details.',
+      body: 'Last shield standing wins. If all clear, top score wins.',
       scene: () => {} },
   ];
   const steps = () => (tour.kind === 'two' ? TWO_TOUR : SOLO_TOUR);
@@ -1329,6 +1570,31 @@ function createSim(opts) {
 
   function drainEvents() {
     for (const e of sim.events) {
+      if (e.x !== undefined && (e.type === 'split' || e.type === 'pop' || e.type === 'cross' || e.type === 'zap' || e.type === 'cameoCaught' || e.type === 'cameoBlink')) addRipple(e.x, e.y);
+      if (e.type === 'won') { skyBloom = 1.6; addRipple(W / 2, H / 2); }
+      if (e.type === 'cameoArrive') {
+        const info = CAMEO_INFO[e.cameo];
+        if (mode === 'play') coach(info[0] + '! Catch for ' + info[1], 3000);
+        blip(740, 0.1, 'sine', 0.1); blip(990, 0.16, 'sine', 0.1);
+        continue;
+      }
+      if (e.type === 'cameoCaught') {
+        const info = CAMEO_INFO[e.cameo];
+        skyBloom = 0.9;
+        fx.push({ kind: 'ring', x: e.x, y: e.y, r: 44, t: 0, life: 0.5, color: '#ffd84c' });
+        fx.push({ kind: 'text', x: e.x, y: e.y, t: 0, life: 0.9, text: '+' + e.pts.toLocaleString(), pts: e.pts, color: '#ffd84c' });
+        blip(660, 0.1, 'triangle', 0.14); blip(1320, 0.22, 'sine', 0.12);
+        coach('\u201c' + info[2] + '\u201d', 3000);
+        const store = readStore(), met = new Set(store.cameos || []);
+        met.add(e.cameo);
+        writeStore({ cameos: [...met] });
+        continue;
+      }
+      if (e.type === 'cameoDodge' || e.type === 'cameoBlink') {
+        fx.push({ kind: 'ring', x: e.fromX ?? e.x, y: e.fromY ?? e.y, r: 30, t: 0, life: 0.4, color: '#ffe28c' });
+        blip(1200, 0.05, 'sine', 0.06);
+        continue;
+      }
       if (e.type === 'split' || e.type === 'pop') {
         fx.push({ kind: 'ring', x: e.x, y: e.y, r: e.r, t: 0, life: 0.35, color: BUBBLE[e.g] });
         fx.push({ kind: 'text', x: e.x, y: e.y, t: 0, life: 0.85, text: '+' + e.pts.toLocaleString(), pts: e.pts, color: BUBBLE[e.g] });
@@ -1380,24 +1646,125 @@ function createSim(opts) {
     ctx.fillStyle = 'rgba(0,0,0,.26)';
     if (sim.vertical) ctx.fillRect(pos - 9, sim.top, 18, H - sim.top);
     else ctx.fillRect(0, pos - 9, W, 18);
-    const steps = 56, amp = reduced ? 0 : 1 + hingePulse * 5 + meter * 0.45;
-    ctx.strokeStyle = col; ctx.lineWidth = 2 + hingePulse * 2; ctx.lineJoin = 'round';
-    ctx.shadowColor = col; ctx.shadowBlur = 8 + hingePulse * 18;
+    const steps = 40, amp = reduced ? 0 : 1 + hingePulse * 5 + meter * 0.45;
     ctx.beginPath();
     for (let i = 0; i <= steps; i++) {
       const along = start + ((end - start) * i) / steps;
-      const off = i === 0 || i === steps ? 0 : Math.sin(i * 0.42 + now * 0.005) * amp * Math.sin(i * 0.17 - now * 0.003);
+      const off = i === 0 || i === steps ? 0 : Math.sin(i * 0.58 + now * 0.005) * amp * Math.sin(i * 0.24 - now * 0.003);
       if (sim.vertical) { if (i) ctx.lineTo(pos + off, along); else ctx.moveTo(pos + off, along); }
       else if (i) ctx.lineTo(along, pos + off); else ctx.moveTo(along, pos + off);
     }
-    ctx.stroke();
-    ctx.shadowBlur = 0;
+    // Layered strokes make the glow. Canvas shadows look the same and cost many times more.
+    ctx.lineJoin = 'round';
+    ctx.strokeStyle = col;
+    ctx.globalCompositeOperation = 'lighter';
+    for (const [width, alpha] of [[22 + hingePulse * 22, 0.1], [11 + hingePulse * 10, 0.18], [5 + hingePulse * 4, 0.4]]) {
+      ctx.globalAlpha = alpha; ctx.lineWidth = width; ctx.stroke();
+    }
+    ctx.globalCompositeOperation = 'source-over';
+    ctx.globalAlpha = 1;
+    ctx.strokeStyle = '#fff'; ctx.lineWidth = 2 + hingePulse * 1.5; ctx.stroke();
+  }
+
+  // ---- The sky: three aurora curtains in their own small canvas, stretched by the browser. It redraws 15 times a
+  // second and the game canvas never touches it, so it costs almost nothing. Pops bend it, combos brighten it, and a
+  // filling meter warms it toward red.
+  const skyCanvas = $('sky'), skyW = 30, skyH = 52;
+  skyCanvas.width = skyW; skyCanvas.height = skyH;
+  const skyCtx = skyCanvas.getContext('2d'), skyImage = skyCtx.createImageData(skyW, skyH);
+  const skyWaves = [];
+  let skyEnergy = 0, skyBloom = 0, skyClock = 1;
+  const skyTints = [[60, 225, 255], [110, 110, 255], [70, 255, 190]];
+  const addRipple = (x, y) => { if (reduced || W <= 0) return; if (skyWaves.length >= 3) skyWaves.shift(); skyWaves.push({ u: x / W, v: y / H, t: 0 }); };
+  function paintSky(now, dt) {
+    for (let i = skyWaves.length - 1; i >= 0; i--) { skyWaves[i].t += dt / 0.95; if (skyWaves[i].t >= 1) skyWaves.splice(i, 1); }
+    const combo = Math.max(...sim.players.map((p) => p.combo));
+    skyEnergy += (Math.min(1, (combo - 1) / 6) - skyEnergy) * Math.min(1, dt * 3);
+    skyBloom = Math.max(0, skyBloom - dt * 1.1);
+    skyClock += dt;
+    if (skyClock < 1 / 15) return;
+    skyClock = 0;
+    const t = (reduced ? 40000 : now) / 1000 * (1 + skyEnergy * 1.2), d = skyImage.data;
+    const heat = Math.min(1, Math.max(...sim.players.map((p) => p.meter)) / Math.max(1, CFG.meterMax - 1));
+    const gain = 0.56 + (skyEnergy + skyBloom) * 0.5;
+    const hinge = sim.vertical ? 0.5 : sim.line() / H;
+    const b0 = hinge * 0.42, b1 = hinge, b2 = hinge + (1 - hinge) * 0.56;
+    const hasWaves = skyWaves.length > 0;
+    let i = 0;
+    for (let py = 0; py < skyH; py++) {
+      const v = py / skyH;
+      for (let px = 0; px < skyW; px++) {
+        const u = px / skyW;
+        let rip = 0;
+        if (hasWaves) for (const w of skyWaves) {
+          const dx = (u - w.u) * 0.6, dy = v - w.v, off = (Math.sqrt(dx * dx + dy * dy) - w.t * 0.62) * 11;
+          rip += Math.exp(-off * off) * (1 - w.t);
+        }
+        const y = v + rip * 0.05;
+        const d0 = y - b0 - 0.05 * Math.sin(u * 6.4 + t * 0.3), d1 = y - b1 - 0.07 * Math.sin(u * 8.4 + t * 0.35 + 2.1), d2 = y - b2 - 0.07 * Math.sin(u * 10.4 + t * 0.4 + 4.2);
+        const f0 = (d0 > 0 ? Math.exp(-d0 * d0 * 26) : Math.exp(-d0 * d0 * 150)) * (0.72 + 0.28 * Math.sin(u * 26 + t * 0.5));
+        const f1 = (d1 > 0 ? Math.exp(-d1 * d1 * 26) : Math.exp(-d1 * d1 * 150)) * (0.72 + 0.28 * Math.sin(u * 35 + t * 0.55));
+        const f2 = (d2 > 0 ? Math.exp(-d2 * d2 * 26) : Math.exp(-d2 * d2 * 150)) * (0.72 + 0.28 * Math.sin(u * 44 + t * 0.6));
+        let r = (skyTints[0][0] * f0 + skyTints[1][0] * f1 + skyTints[2][0] * f2) * gain + 90 * rip;
+        let g = (skyTints[0][1] * f0 + skyTints[1][1] * f1 + skyTints[2][1] * f2) * gain + 150 * rip;
+        let b = (skyTints[0][2] * f0 + skyTints[1][2] * f1 + skyTints[2][2] * f2) * gain + 170 * rip;
+        if (heat > 0) { const luma = (r + g + b) / 3; r += (luma * 1.7 - r) * heat * 0.8; g += (luma * 0.4 - g) * heat * 0.8; b += (luma * 0.5 - b) * heat * 0.8; }
+        // Light on a transparent layer: the brightest channel sets how much shows.
+        const peak = Math.max(r, g, b, 1), k = 255 / peak;
+        d[i] = r * k; d[i + 1] = g * k; d[i + 2] = b * k; d[i + 3] = Math.min(255, peak);
+        i += 4;
+      }
+    }
+    skyCtx.putImageData(skyImage, 0, 0);
+  }
+
+  // Guests use the same art as the app. If it can't load (the bare preview), each is a coloured bubble with an initial.
+  const cameoArt = {};
+  const CAMEO_INFO = {
+    captainFizz: ['Captain Fizz', 'a shield back', 'Up, up and a-pop!', '#20d6b0'],
+    docFlux: ['Doc Flux', 'an empty meter', "Where we're popping, we don't need hinges.", '#ff9c3c'],
+    sirGlowstick: ['Sir Glowstick', 'a slash through the crowd', "These aren't the bubbles you're looking for.", '#e0bc8a'],
+    chosenFizz: ['The Chosen Fizz', 'slow motion', 'There is no bubble.', '#1e3028'],
+    merlinFizz: ['Merlin Fizz', 'auto-popping magic', 'You shall not cross!', '#8c5cf0'],
+    bigBurp: ['Big Burp', 'a giant stomp', 'Sorry about the city.', '#74dc3c'],
+    booBubble: ['Boo Bubble', 'double points', 'Who you gonna pop?', '#f4fbff'],
+    discoDot: ['Disco Dot', 'a combo boost', "Stayin' afloat, stayin' afloat.", '#ff5ce0'],
+  };
+  for (const name of CFG.cameos) loadArt('cameo-' + name + '.webp', (img) => { cameoArt[name] = img; });
+  function drawVisitors(alpha) {
+    for (const v of sim.visitors) {
+      const x = v.px + (v.x - v.px) * alpha, y = v.py + (v.y - v.py) * alpha;
+      const r = CFG.cameoRadius * Math.max(0.85, Math.min(2.4, Math.min(sim.w, sim.h - sim.top) / 400));
+      ctx.globalAlpha = Math.max(0.12, v.presence) * Math.min(1, v.life / 1.5);
+      ctx.save();
+      ctx.translate(x, y);
+      if (!reduced) ctx.rotate(Math.sin(v.age * 2.1) * 0.14);
+      const art = cameoArt[v.cameo];
+      if (art) {
+        const d = (r * 2) / 0.72;
+        ctx.drawImage(art, -d / 2, -d / 2, d, d);
+      } else {
+        const info = CAMEO_INFO[v.cameo];
+        ctx.fillStyle = info[3];
+        ctx.beginPath(); ctx.arc(0, 0, r, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = v.cameo === 'booBubble' ? '#18203a' : '#fff';
+        ctx.font = '700 ' + Math.round(r) + 'px ' + css.getPropertyValue('--body');
+        ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        ctx.fillText(info[0].replace('The ', '')[0], 0, 0);
+        ctx.textBaseline = 'alphabetic';
+      }
+      ctx.restore();
+      ctx.globalAlpha = 1;
+    }
   }
 
   function draw(now, dt) {
     ctx.clearRect(0, 0, W, H);
+    paintSky(now, dt);
+    const alpha = Math.min(1, acc / STEP);
     ctx.save();
-    if (shake > 0) ctx.translate((Math.random() - 0.5) * 12 * shake, (Math.random() - 0.5) * 12 * shake);
+    // A damped wobble instead of random jitter, so a hit reads as a shove and not as dropped frames.
+    if (shake > 0 && !reduced) ctx.translate(Math.sin(now * 0.047) * 6 * shake, Math.cos(now * 0.059) * 6 * shake);
     if (sim.versus) {
       ctx.fillStyle = 'rgba(79,216,255,.05)';
       ctx.fillRect(0, sim.top, W / 2, H - sim.top);
@@ -1417,7 +1784,7 @@ function createSim(opts) {
         const scale = Math.min(devicePixelRatio || 1, 2.5);
         const size = (b.r * 2) / SPRITE_BODY, sprite = bakedBubble(size * scale), d = ((size * r) / b.r);
         ctx.save();
-        ctx.translate(b.x, b.y);
+        ctx.translate(b.px + (b.x - b.px) * alpha, b.py + (b.y - b.py) * alpha);
         if (q) { ctx.rotate(b.sqA); ctx.scale(1 - q, 1 + q); ctx.rotate(-b.sqA); }
         ctx.drawImage(sprite, -d / 2, -d / 2, d, d);
         ctx.restore();
@@ -1436,6 +1803,8 @@ function createSim(opts) {
       ctx.fill();
       ctx.globalAlpha = 1;
     }
+
+    drawVisitors(alpha);
 
     trails = trails.filter((l) => (l.t += dt) < 0.28);
     ctx.lineCap = 'round';
@@ -1574,7 +1943,10 @@ function createSim(opts) {
   canvas.addEventListener('pointerdown', (e) => {
     if (mode === 'tour' ? !tour.input : mode !== 'play') return;
     e.preventDefault();
-    const p = point(e), b = sim.hit(p.x, p.y);
+    const p = point(e);
+    const guest = mode === 'play' ? sim.hitVisitor(p.x, p.y) : null;
+    if (guest) { sim.catchVisitor(guest); return; }
+    const b = sim.hit(p.x, p.y);
     if (!sim.flick && mode !== 'tour') { if (b) sim.tap(b); return; }
     try { canvas.setPointerCapture(e.pointerId); } catch (err) { /* capture optional */ }
     active.set(e.pointerId, { b, x0: p.x, y0: p.y, lastX: p.x, lastY: p.y, slicing: false, skip: new Set() });

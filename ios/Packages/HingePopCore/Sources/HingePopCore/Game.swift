@@ -23,9 +23,17 @@ public final class Bubble: Identifiable {
   public internal(set) var armor = 0
   public internal(set) var bossHits = 0
   public internal(set) var bossPhase = 0
+  public internal(set) var bossGuard = 0.0
+  /// Seconds left in a wind-up, while it glows and slows before dashing.
+  public internal(set) var bossWindup = 0.0
+  public internal(set) var bossDashing = false
+  var bossClock = 0.0
+  /// Where it was one physics step ago, so drawing can land between steps.
+  public internal(set) var prevX = 0.0
+  public internal(set) var prevY = 0.0
   var contactCooldown = 0.0
   init(id: Int, kind: ActorKind, size: Int, x: Double, y: Double, vx: Double, vy: Double, r: Double, grace: Double) {
-    self.id = id; self.kind = kind; self.size = size; self.x = x; self.y = y; self.vx = vx; self.vy = vy; self.r = r; self.grace = grace; side = 0
+    self.id = id; self.kind = kind; self.size = size; self.x = x; self.y = y; self.vx = vx; self.vy = vy; self.r = r; self.grace = grace; side = 0; prevX = x; prevY = y
   }
 }
 
@@ -34,6 +42,22 @@ public struct Pickup: Identifiable, Sendable {
   public let kind: PowerUp
   public var x: Double, y: Double
   public var life: Double
+}
+
+/// A guest passing through. Not a bubble: it never blocks a clear and never touches the meter.
+public struct Visitor: Identifiable, Sendable {
+  public let id: Int
+  public let cameo: Cameo
+  public var x: Double, y: Double
+  public var prevX: Double, prevY: Double
+  public var age = 0.0
+  public var life: Double
+  /// Fades in and out for the ghost, and is 1 for everyone else.
+  public var presence = 1.0
+  var startX: Double, baseY: Double, dir: Double
+  var blink = 0.0
+  var dodgesLeft = 0
+  public var dodgesLeftForTest: Int { dodgesLeft }
 }
 
 public struct Gate: Sendable {
@@ -60,6 +84,7 @@ public struct Player: Sendable {
   public var slices = 0
   public var overcharge = 0.0
   public var pickups = 0
+  public var cameos = 0
 }
 
 public enum GameEvent: Equatable, Sendable {
@@ -73,6 +98,13 @@ public enum GameEvent: Equatable, Sendable {
   case bossHit(x: Double, y: Double, r: Double, points: Int, phase: Int)
   case bossPhase(x: Double, y: Double, r: Double, phase: Int)
   case bossSlam(x: Double, y: Double, r: Double, player: Int)
+  case bossWindup(x: Double, y: Double, r: Double)
+  case bossStagger(x: Double, y: Double, r: Double, points: Int)
+  case bossBlocked(x: Double, y: Double, r: Double)
+  case cameoArrived(Cameo, x: Double, y: Double)
+  case cameoCaught(Cameo, x: Double, y: Double, points: Int, player: Int)
+  case cameoDodged(Cameo, x: Double, y: Double)
+  case cameoBlink(Cameo, fromX: Double, fromY: Double, x: Double, y: Double)
   case bump(strength: Double, size: Int)
   case shieldLost(player: Int)
   case recharge(player: Int)
@@ -101,6 +133,7 @@ public final class Game {
   public var graceOn = true
   public private(set) var bubbles: [Bubble] = []
   public private(set) var pickups: [Pickup] = []
+  public private(set) var visitors: [Visitor] = []
   public private(set) var gates: [Gate] = []
   public var players: [Player]
   public private(set) var status = GameStatus.playing
@@ -114,6 +147,13 @@ public final class Game {
   public var events: [GameEvent] = []
   private var focusClock = 0.0
   private var waveClock = 8.0
+  /// Bubbles still waiting to come in, and how long since the last one did.
+  private var arrivals: [Spawn] = []
+  private var arrivalClock = 0.0
+  public var bubblesToCome: Int { arrivals.count }
+  private var cameoClock = 0.0
+  private var cameoRng = SplitMix(seed: 1)
+  private var cameoTurn = 0
   private var nextId = 1
   private var rng: SplitMix
   private let isVersus: Bool
@@ -142,6 +182,9 @@ public final class Game {
     }
     meterMax = spec.meterMax
     self.hinge = fixedHinge ?? defaultHinge()
+    cameoRng = SplitMix(seed: UInt64(max(1, spec.number)) &+ seed &* 131)
+    cameoClock = tuning.cameoFirst + cameoRng.unit() * 4
+    cameoTurn = spec.number
     spawnLevel()
     for i in 0..<spec.gates {
       let span = alongSpan
@@ -166,8 +209,10 @@ public final class Game {
     b.kind == .boss ? tuning.bossMass : tuning.mass[b.size] * b.kind.massFactor
   }
   private func cruise(_ b: Bubble) -> Double {
-    let phaseBoost = b.kind == .boss ? 1 + 0.2 * Double(b.bossPhase) : 1
-    return tuning.speeds[b.size] * scale * spec.speed * b.kind.speedFactor * phaseBoost
+    guard b.kind == .boss else { return tuning.speeds[b.size] * scale * spec.speed * b.kind.speedFactor }
+    let phaseBoost = 1 + tuning.bossPhaseSpeed * Double(b.bossPhase)
+    let state = b.bossWindup > 0 ? 0.15 : b.bossDashing ? tuning.bossDashSpeed : 1
+    return tuning.speeds[b.size] * scale * spec.speed * b.kind.speedFactor * phaseBoost * state
   }
 
   // MARK: Building
@@ -209,11 +254,17 @@ public final class Game {
       }
       return
     }
-    let near = Int((Double(spec.spawns.count) / 2).rounded(.up))
+    // Only what a person can handle comes in first. The rest follows as the arena clears.
+    var opening: [Spawn] = [], work = 0
     for (i, s) in spec.spawns.enumerated() {
+      let cost = Campaign.work(of: [s])
+      if i == 0 || work + cost <= tuning.arrivalOpening { opening.append(s); work += cost } else { arrivals.append(s) }
+    }
+    let near = Int((Double(opening.count) / 2).rounded(.up))
+    for (i, s) in opening.enumerated() {
       let inNear = i < near
       let row = inNear ? i : i - near
-      let count = inNear ? near : spec.spawns.count - near
+      let count = inNear ? near : opening.count - near
       let u = s.kind == .boss ? 0.5 : Double(row + 1) / Double(count + 1)
       let stagger = row % 2 == 0 ? 0.0 : 0.09
       let v = inNear ? 0.2 + stagger : 0.8 - stagger
@@ -222,8 +273,25 @@ public final class Game {
     }
   }
 
+  private func stepArrivals(_ real: Double) {
+    guard !arrivals.isEmpty else { return }
+    arrivalClock += real
+    let onScreen = bubbles.reduce(0) { $0 + ($1.kind == .boss ? 16 : Campaign.work[$1.size]) }
+    guard onScreen <= tuning.arrivalWork || arrivalClock >= tuning.arrivalGap else { return }
+    bringNext()
+  }
+
+  private func bringNext() {
+    guard !arrivals.isEmpty else { return }
+    arrivalClock = 0
+    let s = arrivals.removeFirst()
+    let near = rng.int(2) == 0
+    let b = put(s.kind, size: s.size, u: 0.15 + rng.unit() * 0.7, v: near ? 0.12 : 0.88, degrees: 25 + rng.unit() * 130)
+    b.grace = tuning.graceHinge
+  }
+
   public func clearScene() {
-    bubbles.removeAll(); pickups.removeAll(); gates.removeAll(); events.removeAll(); ready = 0
+    bubbles.removeAll(); pickups.removeAll(); gates.removeAll(); visitors.removeAll(); events.removeAll(); ready = 0
   }
   public func addPickup(_ kind: PowerUp, x: Double, y: Double) {
     pickups.append(Pickup(id: nextId, kind: kind, x: x, y: y, life: tuning.pickupLife)); nextId += 1
@@ -308,8 +376,12 @@ public final class Game {
     players[owner].taps += 1
     if dirX != nil { players[owner].flicks += 1 }
     if b.kind == .boss {
+      if b.bossGuard > 0 {
+        events.append(.bossBlocked(x: b.x, y: b.y, r: b.r))
+        return true
+      }
+      // A boss hit doesn't feed the streak, or the fight would refill its own shields.
       hitBoss(b, by: owner)
-      advanceStreak(owner)
       checkEnd()
       return true
     }
@@ -357,6 +429,12 @@ public final class Game {
     }
     hits.sort { $0.1 < $1.1 }
     var count = 0
+    for v in visitors where !skip.contains(v.id) && v.presence > 0.35 {
+      let t = max(0, min(1, ((v.x - x0) * dx + (v.y - y0) * dy) / len2))
+      guard hypot(v.x - (x0 + dx * t), v.y - (y0 + dy * t)) <= visitorRadius + reach else { continue }
+      skip.insert(v.id)
+      catchVisitor(v.id, owner: 0)
+    }
     for (b, _) in hits where status == .playing {
       skip.insert(b.id)
       if tap(b, dirX: dx * 3, dirY: dy * 3) { count += 1 }
@@ -412,25 +490,38 @@ public final class Game {
       : .pop(x: b.x, y: b.y, r: b.r, size: b.size, points: pts, kind: b.kind))
   }
 
+  /// Bosses get tougher chapter by chapter.
+  public var bossHitsPerPhase: Int { max(1, min(tuning.bossHitsPerPhase + 3, tuning.bossHitsPerPhase - 1 + max(1, spec.chapter))) }
+
   private func hitBoss(_ b: Bubble, by owner: Int) {
-    let pts = Int(Double(tuning.points[1]) * players[owner].combo) * (players[owner].overcharge > 0 ? 2 : 1)
+    let staggered = b.bossWindup > 0
+    if staggered { b.bossWindup = 0; b.bossDashing = false; b.bossClock = 0 }
+    let damage = staggered ? 2 : 1
+    let pts = Int(Double(tuning.points[1]) * players[owner].combo) * (players[owner].overcharge > 0 ? 2 : 1) * damage
     players[owner].score += pts
     bumpCombo(&players[owner])
-    b.bossHits += 1
+    b.bossHits += damage
+    b.bossGuard = tuning.bossGuard
     impact(b, 0, cruise(b) * 2)
-    events.append(.bossHit(x: b.x, y: b.y, r: b.r, points: pts, phase: b.bossPhase))
-    guard b.bossHits >= tuning.bossHitsPerPhase else { return }
+    events.append(staggered ? .bossStagger(x: b.x, y: b.y, r: b.r, points: pts) : .bossHit(x: b.x, y: b.y, r: b.r, points: pts, phase: b.bossPhase))
+    guard b.bossHits >= bossHitsPerPhase else { return }
     b.bossHits = 0
     b.bossPhase += 1
+    b.bossWindup = 0; b.bossDashing = false; b.bossClock = 0
     events.append(.bossPhase(x: b.x, y: b.y, r: b.r, phase: b.bossPhase))
-    for sign in [-1.0, 1.0] {
-      add(.fast, size: 2, x: b.x + sign * b.r, y: b.y, angle: sign > 0 ? 0.4 : .pi - 0.4, grace: tuning.graceTap)
-    }
-    addPickup(.chainBurst, x: b.x, y: b.y)
     if b.bossPhase >= max(1, spec.bossPhases) {
       remove(b)
       players[owner].score += tuning.points[3] * 4
+      return
     }
+    // Each phase calls in more help, armored from the third on. The first also leaves a Chain Burst to deal with it.
+    let helpers = tuning.bossMinions + b.bossPhase - 1
+    for i in 0..<helpers {
+      let a = Double(i) / Double(helpers) * 2 * .pi + 0.4
+      let kind: ActorKind = b.bossPhase >= 3 && i == 0 ? .armored : .fast
+      add(kind, size: kind == .armored ? 1 : 2, x: b.x + cos(a) * b.r, y: b.y + sin(a) * b.r, angle: a, grace: tuning.graceTap)
+    }
+    if b.bossPhase == 1 { addPickup(.chainBurst, x: b.x, y: b.y) }
   }
 
   private func maybeDrop(x: Double, y: Double, size: Int) {
@@ -502,12 +593,23 @@ public final class Game {
         add(childKind, size: childSize, x: b.x, y: b.y, angle: heading + sign * 0.96)
       }
     }
-    charge(owner, players[owner].overcharge > 0 ? 2 : 1)
+    charge(owner, crossingCost(size: b.size) * (players[owner].overcharge > 0 ? 2 : 1))
     checkEnd()
+  }
+
+  /// Heavier bubbles hit harder. A big one fills the meter by itself, and each generation of its pieces costs
+  /// a full meter again, so a big bubble left completely alone always takes all three shields with it.
+  public func crossingCost(size: Int) -> Int {
+    switch size {
+    case 0: meterMax
+    case 1: (meterMax + 1) / 2
+    default: 1
+    }
   }
 
   private func checkEnd() {
     guard status == .playing, bubbles.isEmpty else { return }
+    if !arrivals.isEmpty { bringNext(); return }
     switch mode {
     case .sandbox: return
     case .arcade: spawnWave(); return
@@ -555,7 +657,10 @@ public final class Game {
     }
     stepFocus(real)
     stepPickups(real)
+    stepVisitors(real)
+    stepArrivals(real)
     stepGates(dt)
+    stepBosses(dt)
     applyFields(dt)
     move(dt)
     collideAll()
@@ -575,6 +680,160 @@ public final class Game {
     if let b = bubbles.filter({ $0.size == 3 }).first ?? bubbles.filter({ $0.size == 2 && $0.armor == 0 }).first {
       burst(b, by: playerIndex(of: b))
       checkEnd()
+    }
+  }
+
+  /// The wind-up telegraphs a dash straight at the hinge. Hit it in time and it staggers instead.
+  private func stepBosses(_ dt: Double) {
+    for b in bubbles where b.kind == .boss {
+      if b.bossGuard > 0 { b.bossGuard -= dt }
+      if b.bossWindup > 0 {
+        b.bossWindup -= dt
+        guard b.bossWindup <= 0 else { continue }
+        b.bossWindup = 0
+        b.bossDashing = true
+        let toHinge = hinge - across(b) > 0 ? 1.0 : -1.0
+        let sp = cruise(b)
+        if vertical { b.vx = toHinge * sp * 0.92; b.vy = (b.vy >= 0 ? 1 : -1) * sp * 0.39 }
+        else { b.vy = toHinge * sp * 0.92; b.vx = (b.vx >= 0 ? 1 : -1) * sp * 0.39 }
+      } else if !b.bossDashing {
+        b.bossClock += dt
+        if b.bossClock >= max(3, tuning.bossWindupEvery - tuning.bossWindupEveryPhase * Double(b.bossPhase)) {
+          b.bossClock = 0
+          b.bossWindup = tuning.bossWindupTime
+          events.append(.bossWindup(x: b.x, y: b.y, r: b.r))
+        }
+      }
+    }
+  }
+
+  // MARK: Cameos
+
+  public var visitorRadius: Double { tuning.cameoRadius * scale }
+  public func hitVisitor(x: Double, y: Double) -> Visitor? {
+    visitors.first { $0.presence > 0.35 && hypot($0.x - x, $0.y - y) <= visitorRadius + 12 }
+  }
+
+  /// A touch on a visitor. The Chosen Fizz sees the first one coming.
+  @discardableResult
+  public func catchVisitor(_ id: Int, owner: Int = 0) -> Bool {
+    guard status == .playing, ready <= 0, let i = visitors.firstIndex(where: { $0.id == id }) else { return false }
+    if visitors[i].dodgesLeft > 0 {
+      visitors[i].dodgesLeft -= 1
+      let from = (visitors[i].x, visitors[i].y)
+      visitors[i].baseY = max(top + 70 * scale, min(h - 70 * scale, visitors[i].baseY + (visitors[i].baseY > top + (h - top) / 2 ? -1 : 1) * 130 * scale))
+      visitors[i].y = visitors[i].baseY
+      visitors[i].prevY = visitors[i].baseY
+      events.append(.cameoDodged(visitors[i].cameo, x: from.0, y: from.1))
+      return true
+    }
+    let v = visitors.remove(at: i)
+    let pts = Int(Double(tuning.cameoPoints) * players[owner].combo)
+    players[owner].score += pts
+    players[owner].cameos += 1
+    bumpCombo(&players[owner])
+    events.append(.cameoCaught(v.cameo, x: v.x, y: v.y, points: pts, player: owner))
+    gift(v, owner: owner)
+    checkEnd()
+    return true
+  }
+
+  private func gift(_ v: Visitor, owner: Int) {
+    switch v.cameo {
+    case .captainFizz:
+      if players[owner].shields < tuning.shields { players[owner].shields += 1; players[owner].recharges += 1; events.append(.recharge(player: owner)) }
+      else { players[owner].meter = 0; events.append(.cooled(player: owner)) }
+    case .docFlux:
+      players[owner].meter = 0
+      events.append(.cooled(player: owner))
+    case .sirGlowstick, .bigBurp:
+      let radius = tuning.chainRadius * scale * (v.cameo == .bigBurp ? 1.3 : 1)
+      for b in bubbles where b.kind != .boss && hypot(b.x - v.x, b.y - v.y) <= radius { burst(b, by: owner) }
+      if let boss = bubbles.first(where: { $0.kind == .boss && hypot($0.x - v.x, $0.y - v.y) <= radius + $0.r }), boss.bossGuard <= 0 { hitBoss(boss, by: owner) }
+    case .chosenFizz: freeze = tuning.freezeTime
+    case .merlinFizz: focus = tuning.focusTime; focusClock = 0
+    case .booBubble: players[owner].overcharge = tuning.overchargeTime
+    case .discoDot:
+      players[owner].combo = min(tuning.comboMax, players[owner].combo + 3)
+      players[owner].bestCombo = max(players[owner].bestCombo, players[owner].combo)
+      players[owner].comboT = tuning.comboWindow * 2
+    }
+  }
+
+  /// Brings a chosen guest on stage, part way across. For store captures and the guide.
+  public func summon(_ cameo: Cameo) {
+    cameoTurn = Cameo.allCases.firstIndex(of: cameo) ?? 0
+    spawnVisitor()
+    if let i = visitors.indices.last {
+      visitors[i].age = tuning.cameoLife * 0.42
+      visitors[i].life = tuning.cameoLife * 0.58
+    }
+  }
+
+  private func spawnVisitor() {
+    let list = Cameo.allCases
+    let cameo = list[((cameoTurn % list.count) + list.count) % list.count]
+    cameoTurn += 1
+    let dir: Double = cameoRng.int(2) == 0 ? 1 : -1
+    let margin = 60 * scale
+    let startX = dir > 0 ? -margin : w + margin
+    let lo = top + 90 * scale, hi = max(lo + 1, h - 90 * scale)
+    // The stomper walks the floor. Everyone else comes in at their own height.
+    let y = cameo == .bigBurp ? h - visitorRadius - 8 : lo + cameoRng.unit() * (hi - lo)
+    let v = Visitor(id: nextId, cameo: cameo, x: startX, y: y, prevX: startX, prevY: y, life: tuning.cameoLife, presence: cameo == .booBubble ? 0 : 1, startX: startX, baseY: y, dir: dir, dodgesLeft: cameo == .chosenFizz ? 1 : 0)
+    nextId += 1
+    visitors.append(v)
+    events.append(.cameoArrived(cameo, x: v.x, y: y))
+  }
+
+  /// Each guest moves its own way: a hero's swoop, a time traveller's jumps, a knight's glide, and so on.
+  private func stepVisitors(_ real: Double) {
+    if !isVersus, mode != .sandbox {
+      let allowed: Bool
+      if case .campaign(let n) = mode { allowed = n >= 2 } else { allowed = true }
+      if allowed, status == .playing {
+        cameoClock -= real
+        if cameoClock <= 0 {
+          cameoClock = tuning.cameoGap + cameoRng.unit() * 6
+          spawnVisitor()
+        }
+      }
+    }
+    for i in visitors.indices.reversed() {
+      visitors[i].prevX = visitors[i].x; visitors[i].prevY = visitors[i].y
+      visitors[i].age += real
+      visitors[i].life -= real
+      if visitors[i].life <= 0 { visitors.remove(at: i); continue }
+      let v = visitors[i], u = v.age / tuning.cameoLife, t = v.age
+      let run = (w + 120 * scale) * u * v.dir
+      var nx = v.startX + run, ny = v.baseY
+      switch v.cameo {
+      case .captainFizz: ny = v.baseY + sin(t * 1.6) * 70 * scale
+      case .docFlux:
+        // Jumps ahead in steps, leaving a trail of fire where it was.
+        let step = floor(u * 7) / 7
+        nx = v.startX + (w + 120 * scale) * step * v.dir
+        ny = v.baseY + sin(step * 19) * 60 * scale
+        if abs(nx - v.x) > 1 { events.append(.cameoBlink(v.cameo, fromX: v.x, fromY: v.y, x: nx, y: ny)) }
+      case .sirGlowstick: ny = v.baseY + sin(t * 0.6) * 12 * scale
+      case .chosenFizz: ny = v.baseY + sin(t * 2.4) * 8 * scale
+      case .merlinFizz:
+        let tri = abs((t * 0.9).truncatingRemainder(dividingBy: 2) - 1) * 2 - 1
+        ny = v.baseY + tri * 80 * scale
+      case .bigBurp:
+        // Heavy hops along the floor.
+        let hop = abs(sin(t * 2.2))
+        ny = h - visitorRadius - 8 - hop * hop * 90 * scale
+      case .booBubble:
+        ny = v.baseY + sin(t * 1.1) * 26 * scale
+        visitors[i].presence = 0.5 + 0.5 * sin(t * 1.9 - 1.2)
+      case .discoDot:
+        ny = v.baseY + sin(t * 3.4) * 50 * scale
+        nx += sin(t * 1.7) * 26 * scale
+      }
+      let lo = top + visitorRadius, hi = h - visitorRadius
+      visitors[i].x = nx
+      visitors[i].y = max(lo, min(hi, ny))
     }
   }
 
@@ -611,6 +870,7 @@ public final class Game {
 
   private func move(_ dt: Double) {
     for b in bubbles {
+      b.prevX = b.x; b.prevY = b.y
       let speed = hypot(b.vx, b.vy)
       if speed > 0.001 {
         let target = cruise(b)
@@ -682,16 +942,18 @@ public final class Game {
     }
   }
 
-  /// A boss is too big to cross. It slams the hinge and bounces, charging the meter.
+  /// A boss is too big to cross. It slams the hinge and bounces, charging the meter. A dash hits much harder.
   private func slamBoss(_ b: Bubble) {
+    let dashed = b.bossDashing
+    b.bossDashing = false
     if vertical { b.x = hinge + Double(b.side) * 1; b.vx = abs(b.vx) * Double(b.side) }
     else { b.y = hinge + Double(b.side) * 1; b.vy = abs(b.vy) * Double(b.side) }
     impact(b, vertical ? 0 : .pi / 2, cruise(b))
-    guard b.contactCooldown <= 0 else { return }
+    guard dashed || b.contactCooldown <= 0 else { return }
     b.contactCooldown = tuning.bossContactCooldown
     let owner = playerIndex(of: b)
     events.append(.bossSlam(x: b.x, y: b.y, r: b.r, player: owner))
-    charge(owner, 1)
+    charge(owner, dashed ? tuning.bossDashCharge : 1)
   }
 
   // MARK: Layout changes
@@ -717,7 +979,9 @@ public final class Game {
       b.vx *= ratio; b.vy *= ratio
       b.r = radius(of: b.kind, size: b.size)
       b.side = sideOf(b)
+      b.prevX = b.x; b.prevY = b.y
     }
+    visitors.removeAll()
     let span = alongSpan
     for i in gates.indices {
       gates[i].width = tuning.gateWidth * scale

@@ -15,7 +15,14 @@ public struct GameProgress: Codable, Equatable, Sendable {
   public var sound = true
   public var haptics = true
   public var arena: Arena? = nil
+  /// Optional so saves from before cameos existed still load.
+  private var cameoLog: [String]? = nil
   public init() {}
+
+  public func hasCaught(_ cameo: Cameo) -> Bool { cameoLog?.contains(cameo.rawValue) ?? false }
+  public mutating func caught(_ cameo: Cameo) {
+    if !hasCaught(cameo) { cameoLog = (cameoLog ?? []) + [cameo.rawValue] }
+  }
 
   public mutating func record(level: Int, stars newStars: Int, score: Int) {
     stars[level] = max(stars[level] ?? 0, newStars)

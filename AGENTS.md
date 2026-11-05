@@ -20,7 +20,16 @@ Arcade game with three parts: a parallax landing site that scrolls into the web 
 - Safe areas are respected in every orientation. Turning the device keeps the level and pauses it.
 - Tooltips open by tap, never by hover alone. Pinch zoom stays available outside active play.
 
+## Rules worth knowing
+
+- Crossing cost follows weight: big fills the meter, medium adds half, small adds 1. A big bubble left alone costs all three shields, so no level can be won without touching the screen. Tests enforce this.
+- Busy levels arrive in stages (`arrival*` in the tuning), and only two big bubbles come at once.
+- Bosses (native only) guard briefly after each hit, don't feed the streak, and telegraph a dash that a hit can stagger. Hits per phase rise by chapter.
+- Guest stars are `Visitor`s, not bubbles: they never block a clear or touch the meter, and they skip level 1, two-player and the tour. They are original genre nods. Keep them that way: no real characters, logos or names.
+
 ## Teaching the game
+
+Show, then tell. Lead with pictures on a bright aurora, keep each line to a few words, and put detail in a fold or behind a tap. Long explanations are what users complained about.
 
 The first Play and the first two-player match open a guided tour using real bubbles and real input. Add a step to `SOLO_TOUR` or `TWO_TOUR` when a new rule arrives, and add its explanation to `TIPS`. Tooltip text reads live numbers from the sim.
 
@@ -47,4 +56,7 @@ The first Play and the first two-player match open a guided tour using real bubb
 
 - `npm test`, `npm run test:e2e`, `npm run test:devices` and `npm run test:landing` pass. For native changes, `make -C ios core build` too.
 - Do not run two web test suites at once. Each rebuilds `dist/`.
+- Smoothness is measured, not guessed: `ios/scripts/perf.sh [simulator] [level]` for native, and `PERF_THROTTLE=6 node scripts/perf-web.mjs` for web. Always check web with the throttle, because desktop hides per-pixel costs.
+- Native effects are pooled and art is prewarmed off the main thread. Don't create nodes or render art mid-play, and don't use `SKShapeNode` or `SKLabelNode` per frame. On web, avoid `shadowBlur`.
+- The game scene fills the screen but play stays in the safe area: `world` sits at the safe corner, and touches go through `gamePoint`.
 - Launcher registration, for any new public mode with a deep link: mutaafaziz-site (`public/index.html` and the docs that list apps), `@mutaaf/launcher`, and Digital Craft `/labs`.

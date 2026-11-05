@@ -10,7 +10,7 @@ static inline float wave(float2 p, float t, float speed, float freq, float phase
 }
 
 [[ stitchable ]] half4 auroraLight(float2 pos, half4 color, float2 size, float t,
-                                   half4 c1, half4 c2, half4 c3, float strength, float heat) {
+                                   half4 c1, half4 c2, half4 c3, float strength, float heat, float raySoft) {
   float2 uv = pos / max(size, float2(1.0));
   float aspect = size.x / max(size.y, 1.0);
   float2 p = float2(uv.x * aspect, uv.y);
@@ -24,7 +24,7 @@ static inline float wave(float2 p, float t, float speed, float freq, float phase
     float center = heights[i] + 0.07 * wave(p, t, 0.17 + fi * 0.03, 2.2 + fi * 0.7, fi * 2.1);
     float d = p.y - center;
     float below = d > 0.0 ? exp(-d * d * 26.0) : exp(-d * d * 150.0);
-    float rays = 0.6 + 0.4 * sin(p.x * (34.0 + fi * 13.0) + 1.8 * wave(p, t, 0.31, 3.4, fi) + t * 0.22);
+    float rays = mix(0.6 + 0.4 * sin(p.x * (34.0 + fi * 13.0) + 1.8 * wave(p, t, 0.31, 3.4, fi) + t * 0.22), 0.9, raySoft);
     col += tints[i] * half(below * rays);
   }
 

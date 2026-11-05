@@ -113,7 +113,7 @@ struct HomeView: View {
       }
       Button("2 Players") { app.route = .play(.versus) }.buttonStyle(QuietStyle())
       HStack(spacing: 10) {
-        Button("Bubble Guide") { app.route = .guide }.buttonStyle(QuietStyle())
+        Button("How to play") { app.route = .guide }.buttonStyle(QuietStyle())
         Button("Settings") { app.route = .settings }.buttonStyle(QuietStyle())
       }
     }
@@ -279,65 +279,222 @@ struct InfinityRow: View {
 
 struct GuideView: View {
   @Environment(AppModel.self) private var app
+  @State private var open: String? = nil
   var body: some View {
     ZStack {
       ArenaBackground(arena: .space)
       VStack(spacing: 0) {
-        BackBar(title: "Bubble Guide")
+        BackBar(title: "How to play")
         ScrollView {
-          LazyVGrid(columns: [GridItem(.adaptive(minimum: 300), spacing: 12, alignment: .top)], spacing: 12) {
-            GuideBlock(title: "The rules") {
-              VStack(alignment: .leading, spacing: 8) {
-                ForEach(rules, id: \.self) { Text($0).font(.game(.subheadline, .medium)).foregroundStyle(Theme.ink).fixedSize(horizontal: false, vertical: true) }
+          VStack(spacing: 10) {
+            ViewThatFits(in: .horizontal) {
+              HStack(alignment: .top, spacing: 10) { heroCards }
+              VStack(spacing: 10) { heroCards }
+            }
+            Fold(title: "Bubbles", note: "\(ActorKind.allCases.count)", id: "bubbles", open: $open) {
+              IconGrid(items: ActorKind.allCases.map { k in .init(id: k.rawValue, title: k.title, blurb: k.blurb, detail: k.detail, art: .bubble(k.artKind)) })
+            }
+            Fold(title: "Power-ups", note: "\(PowerUp.allCases.count)", id: "powers", open: $open) {
+              IconGrid(items: PowerUp.allCases.map { p in .init(id: p.rawValue, title: p.title, blurb: p.blurb, detail: p.detail, art: .power(p.artKind)) })
+            }
+            Fold(title: "Guest stars", note: "\(caughtCount) of \(Cameo.allCases.count) caught", id: "guests", open: $open) {
+              IconGrid(items: Cameo.allCases.map { c in .init(id: c.rawValue, title: c.title, blurb: "Gives \(c.gift)", detail: "\(c.moves). “\(c.quip)”", art: .cameo(c.artKind), dimmed: !app.progress.hasCaught(c)) })
+            }
+            Fold(title: "Shields and meter", id: "meter", open: $open) { meterFacts }
+            Fold(title: "Scoring", id: "score", open: $open) { scoreFacts }
+            Fold(title: "Two players", id: "two", open: $open) {
+              FactRow(art: .glyph(.shieldOn), text: "One side each. Touches stay on your side.")
+              FactRow(art: .bubble(.fast), text: "What you miss lands on your rival.")
+              FactRow(art: .glyph(.starOn), text: "Last shield standing wins. Otherwise, top score.")
+            }
+            Fold(title: "Replay a tour", id: "tour", open: $open) {
+              ViewThatFits(in: .horizontal) {
+                HStack(spacing: 10) { soloTour; duoTour }
+                VStack(spacing: 10) { soloTour; duoTour }
               }
-            }
-            GuideBlock(title: "Sizes") {
-              HStack(alignment: .bottom, spacing: 12) {
-                ForEach(Array(zip([64.0, 46, 32, 24], [100, 200, 300, 500])), id: \.1) { pair in
-                  VStack(spacing: 4) {
-                    ArtImage(item: .bubble(.basic), size: pair.0)
-                    Text("\(pair.1)").font(.game(.footnote, .heavy)).foregroundStyle(Theme.ink)
-                  }
-                }
-              }
-              Text("Smaller is lighter, faster and bouncier. Each tap is worth that many points, times your combo.").font(.game(.footnote, .medium)).foregroundStyle(Theme.muted).fixedSize(horizontal: false, vertical: true)
-            }
-            ForEach(ActorKind.allCases, id: \.self) { k in
-              GuideRow(title: k.title, detail: k.detail) { ArtImage(item: .bubble(k.artKind), size: 72) }
-            }
-            ForEach(PowerUp.allCases, id: \.self) { p in
-              GuideRow(title: p.title, detail: p.detail) { ArtImage(item: .power(p.artKind), size: 60) }
-            }
-            GuideBlock(title: "Replay a tour") {
-              Button("The full tour") {
-                app.progress.seenTour = false
-                app.route = .play(.campaign(app.progress.unlocked))
-              }.buttonStyle(QuietStyle())
-              Button("Two-player tour") {
-                app.progress.seenVersusTour = false
-                app.route = .play(.versus)
-              }.buttonStyle(QuietStyle())
             }
           }
           .padding(.horizontal, 16)
           .padding(.bottom, 28)
-          .frame(maxWidth: 1000)
+          .frame(maxWidth: 760)
           .frame(maxWidth: .infinity)
         }
       }
     }
     #if DEBUG
-    .task { Debug.ready("root") }
+    .task {
+      open = Debug.string("-fold")
+      Debug.ready("root")
+    }
     #endif
   }
-  private let rules = [
-    "Tap a bubble to split it, or swipe to hit every bubble in a line. Clear every bubble to win.",
-    "Popping a tiny bubble sets off every tiny bubble close to it.",
-    "A larger bubble that crosses the hinge charges your overload meter. A full meter costs a shield.",
-    "The smallest bubbles pop on the hinge for free.",
-    "Tap 8 times in a row with no crossing to win a shield back.",
-    "2 Players: each player owns one side. A crossing charges whoever let it through and lands on the other side.",
-  ]
+
+  private var caughtCount: Int { Cameo.allCases.filter { app.progress.hasCaught($0) }.count }
+  private var soloTour: some View {
+    Button("The full tour") {
+      app.progress.seenTour = false
+      app.route = .play(.campaign(app.progress.unlocked))
+    }.buttonStyle(QuietStyle())
+  }
+  private var duoTour: some View {
+    Button("Two-player tour") {
+      app.progress.seenVersusTour = false
+      app.route = .play(.versus)
+    }.buttonStyle(QuietStyle())
+  }
+
+  /// The whole game in three pictures.
+  @ViewBuilder private var heroCards: some View {
+    HeroCard(arena: .classic, title: "Tap or swipe", caption: "Split them all") {
+      HStack(spacing: 6) {
+        ArtImage(item: .bubble(.basic), size: 66)
+        Image(systemName: "arrow.right").font(.system(size: 16, weight: .black)).foregroundStyle(.white)
+        VStack(spacing: -6) { ArtImage(item: .bubble(.basic), size: 44); ArtImage(item: .bubble(.basic), size: 44) }
+      }
+    }
+    HeroCard(arena: .neon, title: "Guard the line", caption: "A big one costs a shield") {
+      ZStack {
+        HingeLine(color: Theme.red)
+        ArtImage(item: .bubble(.basic), size: 70).offset(y: -18)
+        ArtImage(item: .glyph(.shieldOff), size: 30).offset(x: 54, y: 24)
+      }
+    }
+    HeroCard(arena: .forest, title: "Tiny = free", caption: "The line pops them for you") {
+      ZStack {
+        HingeLine(color: Theme.cyan)
+        HStack(spacing: 2) { ArtImage(item: .bubble(.basic), size: 36); ArtImage(item: .bubble(.basic), size: 30).offset(y: 9); ArtImage(item: .bubble(.basic), size: 36) }
+      }
+    }
+  }
+
+  @ViewBuilder private var meterFacts: some View {
+    FactRow(art: .glyph(.shieldOn), text: "3 shields. Lose them all and the level restarts.")
+    HStack(spacing: 12) {
+      ForEach(Array(zip([40.0, 30, 22], ["Full", "+2", "+1"])), id: \.1) { pair in
+        VStack(spacing: 3) {
+          ArtImage(item: .bubble(.basic), size: pair.0).frame(height: 44)
+          Text(pair.1).font(.game(.subheadline, .heavy)).foregroundStyle(Theme.sun)
+        }
+      }
+      Text("What each size adds when it crosses").font(.game(.footnote, .medium)).foregroundStyle(Theme.muted).fixedSize(horizontal: false, vertical: true)
+    }
+    FactRow(art: .glyph(.starOn), text: "8 taps with no crossing wins a shield back.")
+  }
+
+  @ViewBuilder private var scoreFacts: some View {
+    HStack(alignment: .bottom, spacing: 12) {
+      ForEach(Array(zip([56.0, 42, 30, 22], [100, 200, 300, 500])), id: \.1) { pair in
+        VStack(spacing: 4) {
+          ArtImage(item: .bubble(.basic), size: pair.0)
+          Text("\(pair.1)").font(.game(.footnote, .heavy)).foregroundStyle(Theme.ink)
+        }
+      }
+    }
+    FactRow(art: .bubble(.golden), text: "Keep tapping: combo goes up to x10.")
+    FactRow(art: .glyph(.starOn), text: "No crossings: +25%.")
+  }
+}
+
+/// A bright card for one of the few things worth remembering. Picture first, then at most a few words.
+private struct HeroCard<Art: View>: View {
+  let arena: Arena
+  let title: String
+  let caption: String
+  @ViewBuilder var art: Art
+  @Environment(\.horizontalSizeClass) private var width
+  var body: some View {
+    AuroraSpot(arena: arena) {
+      Group {
+        if width == .compact {
+          // On a phone each card is one short row, so the sections below stay on screen.
+          HStack(spacing: 12) {
+            art.frame(width: 118, height: 74).scaleEffect(0.74)
+            words(alignment: .leading)
+          }
+        } else {
+          VStack(spacing: 8) {
+            art.frame(height: 104).frame(maxWidth: .infinity)
+            words(alignment: .center)
+          }
+          .frame(minWidth: 210, maxWidth: .infinity)
+        }
+      }
+      .padding(10)
+      .frame(maxWidth: .infinity)
+    }
+    .accessibilityElement(children: .ignore)
+    .accessibilityLabel("\(title). \(caption).")
+  }
+  private func words(alignment: HorizontalAlignment) -> some View {
+    VStack(alignment: alignment, spacing: 1) {
+      Text(title).font(.game(.headline, .black)).foregroundStyle(.white)
+      Text(caption).font(.game(.footnote, .semibold)).foregroundStyle(.white.opacity(0.95)).fixedSize(horizontal: false, vertical: true)
+    }
+    .padding(.horizontal, 10).padding(.vertical, 6)
+    .frame(maxWidth: .infinity, alignment: alignment == .leading ? .leading : .center)
+    .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(.black.opacity(0.45)))
+  }
+}
+
+private struct HingeLine: View {
+  let color: Color
+  var body: some View {
+    Capsule().fill(.white).frame(height: 3).shadow(color: color, radius: 9).shadow(color: color, radius: 16)
+      .frame(maxWidth: 220)
+  }
+}
+
+private struct FactRow: View {
+  let art: ArtImage.Item
+  let text: String
+  var body: some View {
+    HStack(spacing: 12) {
+      ArtImage(item: art, size: 36)
+      Text(text).font(.game(.subheadline, .semibold)).foregroundStyle(Theme.ink).fixedSize(horizontal: false, vertical: true)
+      Spacer(minLength: 0)
+    }
+    .padding(.vertical, 3)
+  }
+}
+
+/// Icons with a few words. Tapping one reveals the full explanation in place.
+private struct IconGrid: View {
+  struct Item: Identifiable {
+    let id: String, title: String, blurb: String, detail: String
+    let art: ArtImage.Item
+    var dimmed = false
+  }
+  let items: [Item]
+  @State private var chosen: String?
+  @Environment(\.accessibilityReduceMotion) private var reduceMotion
+  var body: some View {
+    LazyVGrid(columns: [GridItem(.adaptive(minimum: 150), spacing: 8, alignment: .top)], spacing: 8) {
+      ForEach(items) { item in
+        Button {
+          withAnimation(reduceMotion ? nil : .snappy(duration: 0.22)) { chosen = chosen == item.id ? nil : item.id }
+        } label: {
+          VStack(alignment: .leading, spacing: 4) {
+            HStack(spacing: 8) {
+              ArtImage(item: item.art, size: 52).opacity(item.dimmed ? 0.55 : 1)
+              VStack(alignment: .leading, spacing: 1) {
+                Text(item.title).font(.game(.subheadline, .heavy)).foregroundStyle(Theme.ink).lineLimit(2).minimumScaleFactor(0.85)
+                Text(item.blurb).font(.game(.caption, .medium)).foregroundStyle(Theme.muted).fixedSize(horizontal: false, vertical: true)
+              }
+            }
+            if chosen == item.id {
+              Text(item.detail).font(.game(.footnote, .medium)).foregroundStyle(Theme.ink).fixedSize(horizontal: false, vertical: true).padding(.top, 2)
+            }
+          }
+          .frame(maxWidth: .infinity, minHeight: Theme.target, alignment: .leading)
+          .padding(8)
+          .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(chosen == item.id ? Theme.cyan.opacity(0.14) : .white.opacity(0.04)))
+          .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityHint("Shows more")
+      }
+    }
+  }
 }
 
 struct GuideBlock<Content: View>: View {

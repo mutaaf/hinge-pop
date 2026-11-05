@@ -21,6 +21,13 @@ public enum Art {
         }
     }
 
+    public static func cameo(_ kind: CameoKind, size: CGFloat, scale: CGFloat) -> CGImage {
+        cached(.cameo(kind), size, size, scale) {
+            let small = size < smallBelow
+            return unitSprite(pixels: px(size, scale)) { drawCameo(kind, $0, small: small) }
+        }
+    }
+
     public static func power(_ kind: PowerKind, size: CGFloat, scale: CGFloat) -> CGImage {
         cached(.power(kind), size, size, scale) {
             unitSprite(pixels: px(size, scale)) { drawPower(kind, $0) }
@@ -76,7 +83,7 @@ public enum Art {
     // MARK: Cache
 
     private enum Item: Hashable {
-        case bubble(BubbleKind), power(PowerKind), glyph(UIGlyph), fx(FXKind), arena(ArenaKind), logo, appIcon
+        case bubble(BubbleKind), cameo(CameoKind), power(PowerKind), glyph(UIGlyph), fx(FXKind), arena(ArenaKind), logo, appIcon
     }
     private struct Key: Hashable { let item: Item; let w: CGFloat; let h: CGFloat; let scale: CGFloat }
 

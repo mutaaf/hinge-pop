@@ -1,6 +1,7 @@
 import SwiftUI
 import HingePopArt
 import HingePopCore
+import simd
 
 extension Arena {
   /// The curtain colours for each arena.
@@ -14,6 +15,79 @@ extension Arena {
   }
 }
 
+extension Arena {
+  /// The same curtain colours, as numbers for the in-game sky shader.
+  var skyColors: [vector_float3] {
+    switch self {
+    case .classic: [.init(0.2, 0.85, 1), .init(0.4, 0.45, 1), .init(0.25, 1, 0.75)]
+    case .neon: [.init(0.9, 0.3, 1), .init(0.35, 0.5, 1), .init(1, 0.35, 0.7)]
+    case .forest: [.init(0.3, 1, 0.55), .init(0.2, 0.85, 0.8), .init(0.75, 1, 0.35)]
+    case .space: [.init(0.55, 0.35, 1), .init(0.2, 0.7, 1), .init(1, 0.45, 0.75)]
+    }
+  }
+}
+
+/// A bright curtain behind the one thing a screen wants you to look at, with a soft scrim for text.
+struct AuroraSpot<Content: View>: View {
+  var arena: Arena = .classic
+  var corner: CGFloat = 22
+  @ViewBuilder var content: Content
+  var body: some View {
+    content
+      .background {
+        ZStack {
+          Theme.panel
+          AuroraField(arena: arena, strength: 1.2, alwaysOn: true, soft: 0.85)
+        }
+        .clipShape(RoundedRectangle(cornerRadius: corner, style: .continuous))
+      }
+      .overlay(RoundedRectangle(cornerRadius: corner, style: .continuous).stroke(.white.opacity(0.28), lineWidth: 1))
+  }
+}
+
+/// A section that folds away. Only one is open at a time, wherever the state lives.
+struct Fold<Content: View>: View {
+  let title: String
+  var note: String? = nil
+  let id: String
+  @Binding var open: String?
+  var arena: Arena = .classic
+  @ViewBuilder var content: Content
+  @Environment(\.accessibilityReduceMotion) private var reduceMotion
+  private var isOpen: Bool { open == id }
+  var body: some View {
+    VStack(alignment: .leading, spacing: 0) {
+      Button {
+        withAnimation(reduceMotion ? nil : .snappy(duration: 0.26)) { open = isOpen ? nil : id }
+      } label: {
+        HStack(spacing: 10) {
+          Text(title).font(.game(.headline, .heavy)).foregroundStyle(Theme.ink)
+          if let note { Text(note).font(.game(.footnote, .semibold)).foregroundStyle(Theme.muted).lineLimit(1).minimumScaleFactor(0.8) }
+          Spacer(minLength: 4)
+          Image(systemName: "chevron.down")
+            .font(.system(size: 15, weight: .bold))
+            .foregroundStyle(isOpen ? Theme.sun : Theme.muted)
+            .rotationEffect(.degrees(isOpen ? 180 : 0))
+        }
+        .frame(minHeight: Theme.target)
+        .padding(.horizontal, 16)
+        .contentShape(Rectangle())
+      }
+      .buttonStyle(.plain)
+      .accessibilityAddTraits(isOpen ? [.isSelected] : [])
+      .accessibilityHint(isOpen ? "Collapses this section" : "Expands this section")
+      if isOpen {
+        VStack(alignment: .leading, spacing: 8) { content }
+          .padding(.horizontal, 16)
+          .padding(.bottom, 16)
+          .transition(.opacity.combined(with: .move(edge: .top)))
+      }
+    }
+    .background(RoundedRectangle(cornerRadius: 18, style: .continuous).fill(Theme.panel.opacity(isOpen ? 0.96 : 0.82)))
+    .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).stroke(isOpen ? Theme.cyan.opacity(0.7) : Theme.panelEdge, lineWidth: isOpen ? 1.5 : 1))
+  }
+}
+
 /// The aurora behind every screen: one full-screen Metal layer at no more than 30 fps. It pauses off
 /// screen, in the background and in Low Power Mode, and shows a still frame under Reduce Motion. Menus
 /// let it rest after a few seconds, while gameplay keeps it moving.
@@ -22,6 +96,8 @@ struct AuroraField: View {
   var heat: Double = 0
   var strength: Double = 0.42
   var alwaysOn = false
+  /// 0 keeps fine rays, 1 is a smooth glow, for small cards where rays read as stripes.
+  var soft = 0.0
   @Environment(\.accessibilityReduceMotion) private var reduceMotion
   @Environment(\.scenePhase) private var phase
   @State private var visible = false
@@ -35,7 +111,7 @@ struct AuroraField: View {
       GeometryReader { geo in
         let c = arena.aurora
         Rectangle()
-          .colorEffect(ShaderLibrary.auroraLight(.float2(geo.size), .float(t), .color(c[0]), .color(c[1]), .color(c[2]), .float(Float(strength)), .float(Float(heat))))
+          .colorEffect(ShaderLibrary.auroraLight(.float2(geo.size), .float(t), .color(c[0]), .color(c[1]), .color(c[2]), .float(Float(strength)), .float(Float(heat)), .float(Float(soft))))
       }
     }
     .blendMode(.plusLighter)
@@ -101,6 +177,7 @@ struct AuroraAssemble: View {
   private var cgImage: CGImage {
     switch item {
     case .bubble(let k): Art.bubble(k, size: size, scale: 1)
+    case .cameo(let k): Art.cameo(k, size: size, scale: 1)
     case .power(let k): Art.power(k, size: size, scale: 1)
     case .glyph(let g): Art.glyph(g, size: size, scale: 1)
     case .logo: Art.logo(width: size, scale: 1)

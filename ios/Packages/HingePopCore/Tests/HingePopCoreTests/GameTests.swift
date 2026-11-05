@@ -115,7 +115,8 @@ final class GameTests: XCTestCase {
     g.players[0].streak = 5; g.players[0].combo = 3; g.players[0].comboT = 1
     let before = g.bubbles.count
     send(g, g.bubbles[0])
-    XCTAssertEqual(g.players[0].meter, 1)
+    XCTAssertEqual(g.players[0].shieldsLost, 1, "a big bubble fills the meter by itself")
+    XCTAssertEqual(g.players[0].meter, 0)
     XCTAssertEqual(g.players[0].crossings, 1)
     XCTAssertEqual(g.players[0].streak, 0)
     XCTAssertEqual(g.players[0].combo, 1)
@@ -269,10 +270,11 @@ final class GameTests: XCTestCase {
     XCTAssertEqual(boss.side, side)
     XCTAssertTrue(g.bubbles.contains { $0 === boss })
     XCTAssertEqual(g.players[0].meter, 1)
-    for _ in 0..<g.tuning.bossHitsPerPhase { g.tap(boss) }
+    let wait = g.tuning.bossGuard + 0.01
+    for _ in 0..<g.bossHitsPerPhase { g.step(wait); g.tap(boss) }
     XCTAssertEqual(boss.bossPhase, 1)
     XCTAssertTrue(g.bubbles.contains { $0.kind == .fast })
-    for _ in 0..<(g.tuning.bossHitsPerPhase * (g.spec.bossPhases - 1)) { g.tap(boss) }
+    for _ in 0..<(g.bossHitsPerPhase * (g.spec.bossPhases - 1)) { g.step(wait); g.tap(boss) }
     XCTAssertFalse(g.bubbles.contains { $0 === boss })
     while let b = g.bubbles.first { g.tap(b) }
     XCTAssertEqual(g.status, .won)
@@ -299,7 +301,7 @@ final class GameTests: XCTestCase {
     let b = g.add(.basic, size: 3, x: 100, y: 200, angle: 0)
     g.tap(b)
     XCTAssertEqual(g.players[0].score, 1000)
-    let c = g.add(.basic, size: 0, x: 100, y: 200, angle: 0)
+    let c = g.add(.basic, size: 2, x: 100, y: 200, angle: 0)
     send(g, c)
     XCTAssertEqual(g.players[0].meter, 2)
   }
@@ -362,7 +364,7 @@ final class GameTests: XCTestCase {
     XCTAssertEqual(g.players.map(\.taps), [0, 1])
     let right = g.bubbles.filter { $0.side > 0 }.count
     send(g, g.bubbles.first { $0.side < 0 }!)
-    XCTAssertEqual(g.players.map(\.meter), [1, 0])
+    XCTAssertEqual(g.players.map(\.shieldsLost), [1, 0])
     XCTAssertEqual(g.bubbles.filter { $0.side > 0 }.count, right + 2)
   }
 
@@ -437,5 +439,149 @@ final class GameTests: XCTestCase {
     XCTAssertEqual(table, FoldLayout(vertical: false, hinge: 475.5))
     XCTAssertNil(FoldLayout.resolve(width: 669, height: 951, top: 60, fold: (0, 455.5, 669, 40), versus: true), "two players stay left and right")
     XCTAssertNil(FoldLayout.resolve(width: 390, height: 844, top: 60, fold: nil, versus: false))
+  }
+
+  // MARK: Nobody wins by watching
+
+  func testNoLevelCanBeWonWithoutTouchingTheScreen() {
+    // Every level is swept in release by `hp-balance`. This keeps a fast sample in the test suite.
+    for n in Array(1...10) + [19, 29, 35, 47, 50, 75] {
+      for seed in 1...2 {
+        let g = Game(mode: .campaign(n), width: 390, height: 760, top: 70, seed: UInt64(seed))
+        while g.status == .playing && g.time < 120 { g.step(1.0 / 30); g.events.removeAll() }
+        XCTAssertNotEqual(g.status, .won, "level \(n) seed \(seed) cleared itself")
+      }
+    }
+  }
+
+  func testHeavierBubblesCostMoreToLetThrough() {
+    let g = Game(mode: .campaign(1), width: 390, height: 760, top: 70)
+    XCTAssertEqual(g.crossingCost(size: 0), g.meterMax)
+    XCTAssertEqual(g.crossingCost(size: 1), 2)
+    XCTAssertEqual(g.crossingCost(size: 2), 1)
+  }
+
+  func testBusyLevelsArriveInStagesAndCantWinEarly() {
+    let g = Game(mode: .campaign(47), width: 390, height: 760, top: 70)
+    XCTAssertGreaterThan(g.bubblesToCome, 0)
+    XCTAssertLessThan(g.bubbles.count, g.spec.spawns.count)
+    g.ready = 0
+    let waiting = g.bubblesToCome
+    for b in g.bubbles { g.tap(b) }
+    for _ in 0..<(60 * 12) where g.bubblesToCome == waiting { g.step(1.0 / 60) }
+    XCTAssertLessThan(g.bubblesToCome, waiting)
+    XCTAssertEqual(g.status, .playing)
+  }
+
+  // MARK: Bosses
+
+  private func bossGame(_ n: Int = 10) -> (Game, Bubble) {
+    let g = Game(mode: .campaign(n), width: 390, height: 760, top: 70)
+    g.ready = 0
+    return (g, g.bubbles.first { $0.kind == .boss }!)
+  }
+
+  func testBossGuardsAfterAHitSoHammeringDoesNothing() {
+    let (g, boss) = bossGame()
+    g.tap(boss)
+    let hits = boss.bossHits
+    for _ in 0..<20 { g.tap(boss) }
+    XCTAssertEqual(boss.bossHits, hits)
+    XCTAssertTrue(g.events.contains { if case .bossBlocked = $0 { true } else { false } })
+  }
+
+  func testBossHitsDoNotFeedTheStreak() {
+    let (g, boss) = bossGame()
+    g.tap(boss)
+    XCTAssertEqual(g.players[0].streak, 0)
+    XCTAssertEqual(boss.bossHits, 1)
+  }
+
+  func testWindupThenDashCostsAWholeMeterUnlessStaggered() {
+    let (g, boss) = bossGame()
+    while boss.bossWindup <= 0 && g.time < 30 { g.step(1.0 / 120) }
+    XCTAssertGreaterThan(boss.bossWindup, 0)
+    let before = g.players[0].shields
+    while boss.bossWindup > 0 { g.step(1.0 / 120) }
+    XCTAssertTrue(boss.bossDashing)
+    while boss.bossDashing && g.time < 60 { g.step(1.0 / 120) }
+    XCTAssertLessThan(g.players[0].shields, before)
+
+    let (g2, boss2) = bossGame()
+    while boss2.bossWindup <= 0 && g2.time < 30 { g2.step(1.0 / 120) }
+    g2.tap(boss2)
+    XCTAssertEqual(boss2.bossHits, 2)
+    XCTAssertEqual(boss2.bossWindup, 0)
+    XCTAssertFalse(boss2.bossDashing)
+  }
+
+  func testLaterBossesTakeMoreHits() {
+    XCTAssertLessThan(bossGame(10).0.bossHitsPerPhase, bossGame(30).0.bossHitsPerPhase)
+  }
+
+  // MARK: Cameos
+
+  private func waitForVisitor(_ g: Game) -> Visitor? {
+    g.ready = 0
+    while g.visitors.isEmpty && g.time < 40 && g.status == .playing {
+      g.step(1.0 / 60)
+      for i in g.players.indices { g.players[i].meter = 0; g.players[i].shields = 3 }
+    }
+    return g.visitors.first
+  }
+
+  func testEveryCameoComesAroundAndLevelOneStaysSimple() {
+    var seen = Set<Cameo>()
+    for n in 2...9 {
+      if let v = waitForVisitor(Game(mode: .campaign(n), width: 390, height: 760, top: 70)) { seen.insert(v.cameo) }
+    }
+    XCTAssertEqual(seen.count, Cameo.allCases.count)
+    XCTAssertNil(waitForVisitor(Game(mode: .campaign(1), width: 390, height: 760, top: 70)))
+  }
+
+  func testVersusHasNoCameosSoNeitherPlayerGetsLucky() {
+    let g = Game(mode: .versus, width: 800, height: 600, top: 70)
+    XCTAssertNil(waitForVisitor(g))
+  }
+
+  func testCatchingAGuestScoresAndGivesItsGift() {
+    let g = Game(mode: .campaign(2), width: 390, height: 760, top: 70)
+    let v = waitForVisitor(g)!
+    let before = g.players[0].score
+    if v.dodgesLeftForTest > 0 { g.catchVisitor(v.id) }
+    XCTAssertTrue(g.catchVisitor(v.id))
+    XCTAssertTrue(g.visitors.isEmpty)
+    XCTAssertGreaterThan(g.players[0].score, before)
+    XCTAssertEqual(g.players[0].cameos, 1)
+  }
+
+  func testTheChosenFizzDodgesTheFirstTouch() {
+    var found: (Game, Visitor)?
+    for n in 2...9 {
+      let g = Game(mode: .campaign(n), width: 390, height: 760, top: 70)
+      if let v = waitForVisitor(g), v.cameo == .chosenFizz { found = (g, v); break }
+    }
+    let (g, v) = found!
+    g.catchVisitor(v.id)
+    XCTAssertEqual(g.visitors.count, 1)
+    XCTAssertEqual(g.players[0].cameos, 0)
+    g.catchVisitor(v.id)
+    XCTAssertEqual(g.players[0].cameos, 1)
+  }
+
+  func testGuestsNeverBlockAClearOrChargeTheMeter() {
+    let g = Game(mode: .campaign(2), width: 390, height: 760, top: 70)
+    _ = waitForVisitor(g)
+    XCTAssertFalse(g.visitors.isEmpty)
+    var guardCount = 0
+    while let b = g.bubbles.first, g.status == .playing, guardCount < 500 { g.tap(b); guardCount += 1 }
+    XCTAssertEqual(g.status, .won)
+  }
+
+  func testGuestsLeaveByThemselves() {
+    let g = Game(mode: .campaign(2), width: 390, height: 760, top: 70)
+    _ = waitForVisitor(g)
+    for _ in 0..<(60 * 9) { g.step(1.0 / 60); g.players[0].meter = 0; g.players[0].shields = 3 }
+    XCTAssertTrue(g.visitors.isEmpty)
   }
 }

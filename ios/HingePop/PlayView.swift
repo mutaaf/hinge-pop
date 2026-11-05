@@ -26,12 +26,18 @@ struct PlayView: View {
 
   init(mode: GameMode, app: AppModel) { _session = State(initialValue: Session(mode: mode, app: app)) }
 
+  private func applyInsets(_ proxy: GeometryProxy) {
+    let i = proxy.safeAreaInsets
+    scene?.insets = UIEdgeInsets(top: i.top, left: i.leading, bottom: i.bottom, right: i.trailing)
+  }
+
   var body: some View {
     GeometryReader { proxy in
       let fold = foldRect(proxy, duo: duo)
       ZStack(alignment: .top) {
         if let scene {
-          SpriteView(scene: scene, preferredFramesPerSecond: 120, options: [.allowsTransparency, .ignoresSiblingOrder])
+          SpriteView(scene: scene, preferredFramesPerSecond: 120, options: [.ignoresSiblingOrder])
+            .ignoresSafeArea()
             .accessibilityLabel("Game arena. Tap bubbles to split them.")
         }
         VStack(spacing: 4) {
@@ -40,7 +46,7 @@ struct PlayView: View {
           EffectRow(session: session)
         }
         ToastView(toast: session.toast)
-          .padding(.top, session.hudHeight + 16)
+          .padding(.top, session.hudHeight + (session.bossLeft == nil ? 16 : 44))
         overlays(size: proxy.size, fold: fold)
       }
       .coordinateSpace(name: "play")
@@ -54,14 +60,16 @@ struct PlayView: View {
           scene = s
         }
         session.layout(size: proxy.size, fold: fold)
+        applyInsets(proxy)
       }
-      .onChange(of: proxy.size) { _, new in session.layout(size: new, fold: fold) }
+      .onChange(of: proxy.size) { _, new in session.layout(size: new, fold: fold); applyInsets(proxy) }
+      .onChange(of: proxy.safeAreaInsets) { _, _ in applyInsets(proxy) }
       .onChange(of: fold) { _, new in session.layout(size: proxy.size, fold: new) }
     }
     .onChange(of: phase) { _, new in if new != .active { session.pause() } }
     .onAppear { UIApplication.shared.isIdleTimerDisabled = true }
     .onDisappear { UIApplication.shared.isIdleTimerDisabled = false }
-    .background(ArenaBackground(arena: session.game == nil ? .classic : session.arena, heat: session.heat, alwaysOn: true, strength: 0.34).animation(.easeInOut(duration: 0.5), value: session.heat))
+    .background(Theme.night.ignoresSafeArea())
     #if DEBUG
     .task {
       Debug.ready("root")
@@ -99,6 +107,8 @@ struct ArenaBackground: View {
   var heat: Double = 0
   var alwaysOn = false
   var strength = 0.42
+  /// Just the art, for behind the game scene, which draws its own sky.
+  var still = false
   @Environment(\.displayScale) private var scale
   var body: some View {
     ZStack {
@@ -108,7 +118,7 @@ struct ArenaBackground: View {
         }
       }
       .ignoresSafeArea()
-      AuroraField(arena: arena, heat: heat, strength: strength, alwaysOn: alwaysOn)
+      if !still { AuroraField(arena: arena, heat: heat, strength: strength, alwaysOn: alwaysOn) }
     }
     .background(Theme.night.ignoresSafeArea())
   }
@@ -414,6 +424,7 @@ struct Centered<Content: View>: View {
 struct MeetOverlay: View {
   let kind: ActorKind
   let close: () -> Void
+  @State private var showMore = false
   var body: some View {
     Centered {
       Sheet(maxWidth: 420) {
@@ -424,7 +435,9 @@ struct MeetOverlay: View {
             Text(kind.title).font(.game(.largeTitle, .black)).foregroundStyle(Theme.ink)
           }
         }
-        Text(kind.detail).font(.game(.body, .medium)).foregroundStyle(Theme.ink).fixedSize(horizontal: false, vertical: true)
+        Text(kind.blurb).font(.game(.title3, .bold)).foregroundStyle(Theme.ink).fixedSize(horizontal: false, vertical: true)
+        Button(showMore ? "Less" : "More") { showMore.toggle() }.buttonStyle(.plain).font(.game(.subheadline, .bold)).foregroundStyle(Theme.cyan).frame(minHeight: Theme.target)
+        if showMore { Text(kind.detail).font(.game(.subheadline, .medium)).foregroundStyle(Theme.muted).fixedSize(horizontal: false, vertical: true) }
         Button("Got it", action: close).buttonStyle(ChunkyStyle())
       }
     }
@@ -457,35 +470,47 @@ struct ResultOverlay: View {
   let session: Session
   @State private var shown = 0
   @State private var starsIn = 0
+  @State private var details: String? = nil
 
   var body: some View {
     let g = session.game!
     let player = g.versus ? (g.winner.map { g.players[$0] } ?? g.players[0]) : g.players[0]
     Centered {
       Sheet(maxWidth: 460) {
-        Text(heading(g)).font(.game(.largeTitle, .black)).foregroundStyle(Theme.ink).fixedSize(horizontal: false, vertical: true)
-        Text(sub(g)).font(.game(.subheadline, .medium)).foregroundStyle(Theme.muted).fixedSize(horizontal: false, vertical: true)
-        if case .campaign = session.mode, g.status == .won {
-          HStack(spacing: 8) {
-            ForEach(0..<3, id: \.self) { i in
-              if i < starsIn {
-                AuroraAssemble(item: .glyph(.starOn), size: 44, count: 220)
-              } else {
-                ArtImage(item: .glyph(.starOff), size: 44)
+        // The result in one glance: a bright field, the verdict, the stars, the score.
+        AuroraSpot(arena: session.arena) {
+          VStack(spacing: 8) {
+            Text(heading(g)).font(.game(.title, .black)).foregroundStyle(.white).multilineTextAlignment(.center).fixedSize(horizontal: false, vertical: true)
+            if case .campaign = session.mode, g.status == .won {
+              HStack(spacing: 8) {
+                ForEach(0..<3, id: \.self) { i in
+                  if i < starsIn {
+                    AuroraAssemble(item: .glyph(.starOn), size: 44, count: 220)
+                  } else {
+                    ArtImage(item: .glyph(.starOff), size: 44)
+                  }
+                }
               }
+              .accessibilityElement().accessibilityLabel("\(g.stars) of 3 stars")
+            }
+            Text(shown.formatted())
+              .font(.system(size: 50, weight: .black, design: .rounded))
+              .monospacedDigit()
+              .foregroundStyle(LinearGradient(colors: [.white, Theme.sun], startPoint: .top, endPoint: .bottom))
+              .contentTransition(.numericText(value: Double(shown)))
+              .minimumScaleFactor(0.6).lineLimit(1)
+            if let note = note(g) {
+              Text(note).font(.game(.footnote, .heavy)).foregroundStyle(.white)
+                .padding(.horizontal, 10).padding(.vertical, 4)
+                .background(Capsule().fill(.black.opacity(0.42)))
             }
           }
-          .accessibilityElement().accessibilityLabel("\(g.stars) of 3 stars")
+          .padding(16)
+          .frame(maxWidth: .infinity)
         }
-        Text(shown.formatted())
-          .font(.system(size: 46, weight: .black, design: .rounded))
-          .monospacedDigit()
-          .foregroundStyle(LinearGradient(colors: [Theme.sun, Theme.orange], startPoint: .top, endPoint: .bottom))
-          .contentTransition(.numericText(value: Double(shown)))
-          .minimumScaleFactor(0.6).lineLimit(1)
-        if let note = note(g) { Text(note).font(.game(.footnote, .semibold)).foregroundStyle(Theme.cyan) }
-        StatGrid(session: session)
+        Text(sub(g)).font(.game(.subheadline, .semibold)).foregroundStyle(Theme.muted).frame(maxWidth: .infinity).multilineTextAlignment(.center).fixedSize(horizontal: false, vertical: true)
         actions(g)
+        Fold(title: "Details", id: "stats", open: $details) { StatGrid(session: session) }
       }
     }
     .task {
@@ -511,15 +536,15 @@ struct ResultOverlay: View {
   }
   private func sub(_ g: Game) -> String {
     switch session.mode {
-    case .versus: return g.players.contains { $0.shields <= 0 } ? "The hinge took the last shield." : "Every bubble cleared. Higher score wins."
+    case .versus: return g.players.contains { $0.shields <= 0 } ? "Last shield gone." : "All clear. Top score wins."
     case .campaign(let n):
       if g.status == .won {
         let next = Campaign.level(n + 1)
         return "Next: \(next.isBoss ? "a boss" : "\(next.spawns.count) \(next.spawns.count == 1 ? "bubble" : "bubbles")"), in \(Campaign.chapter(of: n + 1).title)."
       }
-      return "The hinge took your last shield. The level starts again from the score you began it with."
+      return "Out of shields. One more go?"
     case .arcade: return "You lasted \(g.waves) \(g.waves == 1 ? "wave" : "waves")."
-    default: return g.status == .won ? "Same level for everyone today. Come back tomorrow for a new one." : "The hinge took your last shield. You can try again today."
+    default: return g.status == .won ? "New level tomorrow." : "Out of shields. You can try again today."
     }
   }
   private func note(_ g: Game) -> String? {
@@ -583,12 +608,12 @@ struct StatGrid: View {
     }
     let p = g.players[0]
     return [
-      ("Time", String(format: "%.0fs", g.time), "How long the bubbles were moving. Pauses and open tooltips do not count."),
-      ("Taps", "\(p.taps)", "Every tap and flick that hit a bubble. One large bubble takes 15 taps by hand, and fewer if the hinge pops the smallest pieces."),
-      ("Crossings", "\(p.crossings)", "Larger bubbles that crossed the hinge. Each charged the meter and reset the combo and streak. Clear a level with at most 2 and no lost shields for 3 stars."),
-      ("Hinge pops", "\(p.zaps)", "Smallest bubbles that popped on the hinge. Each scores a flat 500 and costs nothing."),
-      ("Recharged", "\(p.recharges)", "Shields won back with a streak of \(g.tuning.rechargeStreak) taps and no crossing."),
-      ("Top combo", "x\(p.bestCombo.formatted())", "The highest multiplier you reached. It adds x0.5 per tap, up to x10."),
+      ("Time", String(format: "%.0fs", g.time), "Time the bubbles were moving."),
+      ("Taps", "\(p.taps)", "Touches that hit a bubble."),
+      ("Crossings", "\(p.crossings)", "Bubbles that got past you."),
+      ("Hinge pops", "\(p.zaps)", "Tiny ones the line popped for free."),
+      ("Recharged", "\(p.recharges)", "Shields won back."),
+      ("Top combo", "x\(p.bestCombo.formatted())", "Your best multiplier."),
     ]
   }
 }

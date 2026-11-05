@@ -20,6 +20,7 @@ for (const a of ['classic', 'neon', 'forest', 'space']) {
   webp(`arena-${a}-tall`, 0, 58);
   webp(`arena-${a}-wide`, 0, 58);
 }
+for (const c of ['captainFizz', 'docFlux', 'sirGlowstick', 'chosenFizz', 'merlinFizz', 'bigBurp', 'booBubble', 'discoDot']) webp('cameo-' + c, 200, 82);
 webp('logo', 1000, 82);
 webp('fx-particleStar', 64, 80, 'star');
 webp('fx-popBurst', 240, 74, 'burst');

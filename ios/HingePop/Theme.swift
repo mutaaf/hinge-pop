@@ -77,13 +77,14 @@ struct Sheet<Content: View>: View {
 
 /// Art as a SwiftUI image. The scale matches the screen so it stays crisp.
 struct ArtImage: View {
-  enum Item { case bubble(BubbleKind), power(PowerKind), glyph(UIGlyph), logo }
+  enum Item { case bubble(BubbleKind), cameo(CameoKind), power(PowerKind), glyph(UIGlyph), logo }
   let item: Item
   let size: CGFloat
   @Environment(\.displayScale) private var scale
   var body: some View {
     switch item {
     case .bubble(let k): Image(decorative: Art.bubble(k, size: size, scale: scale), scale: scale)
+    case .cameo(let k): Image(decorative: Art.cameo(k, size: size, scale: scale), scale: scale)
     case .power(let k): Image(decorative: Art.power(k, size: size, scale: scale), scale: scale)
     case .glyph(let g): Image(decorative: Art.glyph(g, size: size, scale: scale), scale: scale)
     case .logo: Image(decorative: Art.logo(width: size, scale: scale), scale: scale)
@@ -91,7 +92,52 @@ struct ArtImage: View {
   }
 }
 
+extension Cameo {
+  var artKind: CameoKind { CameoKind(rawValue: rawValue) ?? .captainFizz }
+  var title: String {
+    switch self {
+    case .captainFizz: "Captain Fizz"; case .docFlux: "Doc Flux"; case .sirGlowstick: "Sir Glowstick"; case .chosenFizz: "The Chosen Fizz"
+    case .merlinFizz: "Merlin Fizz"; case .bigBurp: "Big Burp"; case .booBubble: "Boo Bubble"; case .discoDot: "Disco Dot"
+    }
+  }
+  /// Original lines that wink at their genre.
+  var quip: String {
+    switch self {
+    case .captainFizz: "Up, up and a-pop!"
+    case .docFlux: "Where we're popping, we don't need hinges."
+    case .sirGlowstick: "These aren't the bubbles you're looking for."
+    case .chosenFizz: "There is no bubble."
+    case .merlinFizz: "You shall not cross!"
+    case .bigBurp: "Sorry about the city."
+    case .booBubble: "Who you gonna pop?"
+    case .discoDot: "Stayin' afloat, stayin' afloat."
+    }
+  }
+  var gift: String {
+    switch self {
+    case .captainFizz: "a shield back"; case .docFlux: "an empty meter"; case .sirGlowstick: "a slash through the crowd"
+    case .chosenFizz: "slow motion"; case .merlinFizz: "auto-popping magic"; case .bigBurp: "a giant stomp"
+    case .booBubble: "double points"; case .discoDot: "a combo boost"
+    }
+  }
+  var moves: String {
+    switch self {
+    case .captainFizz: "Swoops across"; case .docFlux: "Jumps through time"; case .sirGlowstick: "Glides slowly"
+    case .chosenFizz: "Dodges your first tap"; case .merlinFizz: "Zigzags"; case .bigBurp: "Stomps along the floor"
+    case .booBubble: "Fades in and out"; case .discoDot: "Grooves in loops"
+    }
+  }
+}
+
 extension ActorKind {
+  /// A few words for the guide. `detail` is there for anyone who opens it.
+  var blurb: String {
+    switch self {
+    case .basic: "Splits in two"; case .fast: "Quick, and so are its pieces"; case .armored: "Helmet takes one hit"
+    case .magnetic: "Pulls bubbles in"; case .repel: "Pushes bubbles away"; case .golden: "5x points"
+    case .frozen: "Slow and heavy"; case .boss: "Hit it when it glows red"
+    }
+  }
   var artKind: BubbleKind { BubbleKind(rawValue: rawValue) ?? .basic }
   var title: String {
     switch self {
@@ -109,12 +155,18 @@ extension ActorKind {
     case .repel: "Pushes nearby bubbles on its side away from it, sometimes straight at the hinge. Split it early if it is near the line."
     case .golden: "Worth 5 times the points, and it splits into basic bubbles. It moves fast, so grab it while your combo is high."
     case .frozen: "Slow and heavy, so it gives you time, but it is hard to knock off course once it is heading for the hinge."
-    case .boss: "Too big to cross. Each slam on the hinge charges your meter. Tap it to wear down each phase. Every phase it gets faster, sends out fast bubbles and drops a Chain Burst."
+    case .boss: "Too big to cross, and each slam charges your meter. It shrugs off rapid taps. When it glows red it's about to dash: hit it then for double damage, or the dash costs a shield."
     }
   }
 }
 
 extension PowerUp {
+  var blurb: String {
+    switch self {
+    case .overcharge: "Double points, double risk"; case .freeze: "Slows everything"; case .focus: "Small ones pop themselves"
+    case .shield: "One shield back"; case .chainBurst: "Pops all around it"
+    }
+  }
   var artKind: PowerKind { PowerKind(rawValue: rawValue) ?? .shield }
   var title: String {
     switch self {

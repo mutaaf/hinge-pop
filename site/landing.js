@@ -217,20 +217,20 @@
   var SHAPES = {
     logo: { wide: [0, -6, 1.06, 1], narrow: [0, -9, 1.06, 1], pal: 'logo', tint: 'neon' },
     hinge: { wide: [0, 2, 1, 1], narrow: [0, 2, 1, 1], pal: 'classic', tint: 'classic' },
-    burst: { wide: [-22, 0, 1, 0.9], narrow: [14, -20, 0.8, 0.85], pal: 'classic', tint: 'classic' },
-    slice: { wide: [-20, 0, 1, 0.9], narrow: [0, -20, 0.9, 0.85], pal: 'logo', tint: 'neon' },
-    chain: { wide: [24, -2, 1, 0.9], narrow: [0, 24, 0.8, 0.85], pal: 'neon', tint: 'neon' },
-    bubble: { wide: [0, 0, 1.3, 0.5], narrow: [0, 0, 1.15, 0.45], pal: 'neon', tint: 'neon' },
-    star: { wide: [22, -8, 1.15, 0.7], narrow: [24, -24, 0.9, 0.6], pal: 'logo', tint: 'space' },
+    burst: { wide: [-22, 0, 1, 1.00], narrow: [14, -20, 0.8, 1.00], pal: 'classic', tint: 'classic' },
+    slice: { wide: [-20, 0, 1, 1.00], narrow: [0, -20, 0.9, 1.00], pal: 'logo', tint: 'neon' },
+    chain: { wide: [24, -2, 1, 1.00], narrow: [0, 24, 0.8, 1.00], pal: 'neon', tint: 'neon' },
+    bubble: { wide: [0, 0, 1.3, 0.85], narrow: [0, 0, 1.15, 0.77], pal: 'neon', tint: 'neon' },
+    star: { wide: [22, -8, 1.15, 1.00], narrow: [24, -24, 0.9, 1.00], pal: 'logo', tint: 'space' },
     num1: { wide: [24, 0, 1.25, 1], narrow: [0, -24, 0.95, 1], pal: 'classic', tint: 'classic' },
     num2: { wide: [-24, 0, 1.25, 1], narrow: [0, -24, 0.95, 1], pal: 'neon', tint: 'neon' },
     num3: { wide: [24, 0, 1.25, 1], narrow: [0, -24, 0.95, 1], pal: 'forest', tint: 'forest' },
     num4: { wide: [-24, 0, 1.25, 1], narrow: [0, -24, 0.95, 1], pal: 'space', tint: 'space' },
     num5: { wide: [24, 0, 1.25, 1], narrow: [0, -24, 0.95, 1], pal: 'neon', tint: 'neon' },
     infinity: { wide: [-22, 0, 1.2, 1], narrow: [0, -24, 0.9, 1], pal: 'space', tint: 'space' },
-    two: { wide: [0, -6, 1.2, 0.5], narrow: [0, -14, 1, 0.45], pal: 'hot', tint: 'classic' },
-    duo: { wide: [24, 8, 1, 0.45], narrow: [24, -8, 0.8, 0.3], pal: 'classic', tint: 'neon' },
-    'logo-app': { wide: [26, -14, 0.8, 0.45], narrow: [0, -26, 0.8, 0.28], pal: 'logo', tint: 'classic' },
+    two: { wide: [0, -6, 1.2, 0.85], narrow: [0, -14, 1, 0.77], pal: 'hot', tint: 'classic' },
+    duo: { wide: [24, 8, 1, 0.77], narrow: [24, -8, 0.8, 0.51], pal: 'classic', tint: 'neon' },
+    'logo-app': { wide: [26, -14, 0.8, 0.77], narrow: [0, -26, 0.8, 0.48], pal: 'logo', tint: 'classic' },
     seam: { wide: [0, 0, 1, 1], narrow: [0, 0, 1, 1], pal: 'classic', tint: 'classic' },
   };
   function place(name) {
@@ -358,7 +358,7 @@
         field = AF.create(cv, {
           container: box,
           shapes: Object.keys(SHAPES).filter(function (k) { return k !== 'logo-app' && k !== 'seam'; }).map(function (k) { return 'hp-' + k; }).concat(['hp-seam-h', 'hp-seam-v']),
-          rotation: ['hp-logo'], initial: 'hp-logo', cycle: 0, intro: 900, seed: 7, count: narrow ? 2200 : 4200, stars: narrow ? 0 : 40,
+          rotation: ['hp-logo'], initial: 'hp-logo', cycle: 0, intro: 900, seed: 7, count: narrow ? 3000 : 5600, stars: narrow ? 0 : 40,
           autonomy: 0.4, depth: 3.2, interactive: !narrow && matchMedia('(hover: hover)').matches, palette: PAL.logo, radius: radiusOf, maxDpr: narrow ? 2 : 1.75,
         });
         fieldReady = true;

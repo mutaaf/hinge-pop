@@ -41,8 +41,28 @@ public struct Tuning: Sendable {
   public var fieldForce = 240.0
   public var bossRadius = 1.75
   public var bossMass = 40.0
-  public var bossHitsPerPhase = 4
+  public var bossHitsPerPhase = 8
   public var bossContactCooldown = 0.8
+  /// After a hit a boss shrugs off touches for this long, so hammering the screen can't melt it.
+  public var bossGuard = 0.28
+  public var bossPhaseSpeed = 0.3
+  /// Every so often a boss winds up, then dashes at the hinge. A hit during the wind-up staggers it for double damage.
+  public var bossWindupEvery = 6.0
+  public var bossWindupEveryPhase = 1.2
+  public var bossWindupTime = 1.1
+  public var bossDashSpeed = 3.0
+  public var bossDashCharge = 4
+  public var bossMinions = 2
+  /// Cameos: visitors who wander through, ignore the hinge and leave a gift if you catch them.
+  public var cameoFirst = 5.0
+  public var cameoGap = 16.0
+  public var cameoLife = 8.5
+  public var cameoPoints = 1000
+  public var cameoRadius = 34.0
+  /// Busy levels arrive in stages: a new bubble comes when the arena has this little work left, or after the gap.
+  public var arrivalWork = 12
+  public var arrivalOpening = 22
+  public var arrivalGap = 9.0
   public var gateWidth = 150.0
   public var gateSpeed = 70.0
   public init() {}
