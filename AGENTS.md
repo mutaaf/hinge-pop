@@ -51,6 +51,7 @@ The first Play and the first two-player match open a guided tour using real bubb
 - Debug launch flags live in `Debug` in `AppModel.swift`. `-demo` keeps a game alive for captures and `-demoSwipe` holds a real slicing stroke on screen. None of this ships in Release.
 - Store art: `ios/scripts/store-capture.sh` writes `store/lobby/raw`, then `node ../lobby/bin/lobby build hinge-pop` and `push hinge-pop`. Always look at `store/lobby/out/sheet.png` before pushing. It has caught system banners, end screens and missing bosses.
 - Release: `ios/scripts/testflight.sh` uploads a build (`BETA_EXTERNAL=1` also starts Beta App Review). `node scripts/asc.mjs store-meta|store-rating|store-check` manage the listing. `submit --yes` submits for review.
+- After a rejection, the API keeps refusing with "not ready to be submitted". In App Store Connect, open the version, click Update Review, then Resubmit to App Review. Wait for preview videos to finish processing first.
 - Browser only: creating the app record and the App Privacy label ("Data Not Collected", because the app has no network code).
 - `ios/.env.testflight` holds the App Store Connect key path and is gitignored. Never print it.
 
