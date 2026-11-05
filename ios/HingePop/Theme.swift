@@ -100,17 +100,17 @@ extension Cameo {
     case .merlinFizz: "Merlin Fizz"; case .bigBurp: "Big Burp"; case .booBubble: "Boo Bubble"; case .discoDot: "Disco Dot"
     }
   }
-  /// Original lines that wink at their genre.
+  /// Our own jokes. Keep it that way: no lines borrowed or riffed from films, songs or shows.
   var quip: String {
     switch self {
-    case .captainFizz: "Up, up and a-pop!"
-    case .docFlux: "Where we're popping, we don't need hinges."
-    case .sirGlowstick: "These aren't the bubbles you're looking for."
-    case .chosenFizz: "There is no bubble."
-    case .merlinFizz: "You shall not cross!"
+    case .captainFizz: "Never fear, the fizz is here!"
+    case .docFlux: "I've seen how this level ends. Duck!"
+    case .sirGlowstick: "My staff is also a night light."
+    case .chosenFizz: "You blinked. I didn't."
+    case .merlinFizz: "Abraca-pop!"
     case .bigBurp: "Sorry about the city."
-    case .booBubble: "Who you gonna pop?"
-    case .discoDot: "Stayin' afloat, stayin' afloat."
+    case .booBubble: "Boo! Sorry, was that too much?"
+    case .discoDot: "Never stop the bop."
     }
   }
   var gift: String {

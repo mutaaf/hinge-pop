@@ -1767,14 +1767,14 @@ function createSim(opts) {
   // Guests use the same art as the app. If it can't load (the bare preview), each is a coloured bubble with an initial.
   const cameoArt = {};
   const CAMEO_INFO = {
-    captainFizz: ['Captain Fizz', 'a shield back', 'Up, up and a-pop!', '#20d6b0'],
-    docFlux: ['Doc Flux', 'an empty meter', "Where we're popping, we don't need hinges.", '#ff9c3c'],
-    sirGlowstick: ['Sir Glowstick', 'a slash through the crowd', "These aren't the bubbles you're looking for.", '#e0bc8a'],
-    chosenFizz: ['The Chosen Fizz', 'slow motion', 'There is no bubble.', '#1e3028'],
-    merlinFizz: ['Merlin Fizz', 'auto-popping magic', 'You shall not cross!', '#8c5cf0'],
+    captainFizz: ['Captain Fizz', 'a shield back', 'Never fear, the fizz is here!', '#20d6b0'],
+    docFlux: ['Doc Flux', 'an empty meter', "I've seen how this level ends. Duck!", '#ff9c3c'],
+    sirGlowstick: ['Sir Glowstick', 'a slash through the crowd', 'My staff is also a night light.', '#e0bc8a'],
+    chosenFizz: ['The Chosen Fizz', 'slow motion', "You blinked. I didn't.", '#1e3028'],
+    merlinFizz: ['Merlin Fizz', 'auto-popping magic', 'Abraca-pop!', '#8c5cf0'],
     bigBurp: ['Big Burp', 'a giant stomp', 'Sorry about the city.', '#74dc3c'],
-    booBubble: ['Boo Bubble', 'double points', 'Who you gonna pop?', '#f4fbff'],
-    discoDot: ['Disco Dot', 'a combo boost', "Stayin' afloat, stayin' afloat.", '#ff5ce0'],
+    booBubble: ['Boo Bubble', 'double points', 'Boo! Sorry, was that too much?', '#f4fbff'],
+    discoDot: ['Disco Dot', 'a combo boost', 'Never stop the bop.', '#ff5ce0'],
   };
   for (const name of CFG.cameos) loadArt('cameo-' + name + '.webp', (img) => { cameoArt[name] = img; });
   function drawVisitors(alpha) {

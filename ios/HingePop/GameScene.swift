@@ -211,6 +211,7 @@ final class GameScene: SKScene {
     session.pendingEvents.removeAll(keepingCapacity: true)
     pulse = max(0, pulse - dt * 3)
     shake = max(0, shake - dt * 3)
+    snapFlare = max(0, snapFlare - dt * 2)
     // A damped wobble instead of random jitter, so a hit reads as a shove and not as dropped frames.
     let origin = worldOrigin
     world.position = shake > 0 && !reduceMotion
@@ -334,7 +335,6 @@ final class GameScene: SKScene {
     // A recharging snap dims the line, so you can see at a glance whether it's ready.
     let cooling = game.players.allSatisfy { $0.snapLeft > 0 } ? 0.62 : 1
     ribbonGlow.floatValue = Float((0.85 + pulse * 0.7 + meter * 0.12 + glow * 0.4) * cooling + snapFlare * 1.6)
-    snapFlare = max(0, snapFlare - 1.0 / 30)
     let width = (84 + CGFloat(pulse) * 60 + CGFloat(glow) * 34 + CGFloat(snapFlare) * 150) * CGFloat(max(1, min(1.6, game.scale)))
     // The light runs edge to edge, past the safe area. Only play stops there.
     let length = game.vertical ? area.height - CGFloat(game.top) + insets.bottom : size.width
@@ -598,6 +598,7 @@ final class GameScene: SKScene {
   #if DEBUG
   /// `-perf` logs frame times to the ready file after a warm-up, so smoothness is measured rather than guessed.
   private var perfTimes: [Double] = []
+  private var demoSliceClock = 0.0
   private func perfSample(_ dt: Double) {
     guard Debug.has("-perf"), clock > 3 else { return }
     perfTimes.append(dt * 1000)
@@ -608,41 +609,29 @@ final class GameScene: SKScene {
     Debug.ready(String(format: "perf frames=900 p50=%.1f p95=%.1f p99=%.1f max=%.1f over25ms=%d nodes=%d", at(0.5), at(0.95), at(0.99), sorted.last ?? 0, long, world.children.count))
   }
 
-  /// Store captures: the line mid-snap, flare held on, with real snaps going off.
+  /// Store captures: real snaps going off often enough for a screenshot to catch one. Nothing is drawn specially.
   private func demoSnap(_ game: Game) {
     guard Debug.has("-demoSnap"), game.status == .playing else { return }
-    snapFlare = max(snapFlare, 0.75)
     game.players[0].snapLeft = 0
-    if clock > demoSliceClock { demoSliceClock = clock + 2.2; game.snap(along: Double(area.width / 2)) }
+    if clock > demoSliceClock { demoSliceClock = clock + 0.45; game.snap(along: Double(area.width / 2)) }
   }
 
-  /// Store captures: a held stroke across the arena that really slices, so the swipe shot shows a swipe.
-  private var demoStroke: SKNode?
-  private var demoSliceClock = 0.0
+  /// Store captures: a real swipe, replayed in a loop through the same slice and trail a finger uses.
+  private var demoPhase = 0.0
+  private var demoLast: CGPoint?
+  private var demoSkip = Set<Int>()
   private func demoSwipe(_ game: Game) {
     guard Debug.has("-demoSwipe"), game.status == .playing else { return }
-    let a = CGPoint(x: area.width * 0.12, y: area.height * 0.28)
-    let b = CGPoint(x: area.width * 0.88, y: area.height * 0.62)
-    if demoStroke == nil {
-      let path = CGMutablePath()
-      path.move(to: CGPoint(x: a.x, y: area.height - a.y))
-      path.addQuadCurve(to: CGPoint(x: b.x, y: area.height - b.y),
-                        control: CGPoint(x: area.width * 0.42, y: area.height - area.height * 0.36))
-      let line = SKShapeNode(path: path)
-      line.strokeColor = (session?.arena ?? .classic).sparkColors[0]
-      line.lineWidth = 8
-      line.lineCap = .round
-      line.glowWidth = 10
-      line.blendMode = .add
-      line.zPosition = 7
-      world.addChild(line)
-      demoStroke = line
+    demoPhase += 1.0 / 28
+    if demoPhase > 1.25 { demoPhase = 0; demoLast = nil; demoSkip.removeAll() }
+    guard demoPhase <= 1 else { return }
+    let t = demoPhase
+    let p = CGPoint(x: area.width * (0.12 + 0.76 * t), y: area.height * (0.28 + 0.34 * t * t))
+    if let last = demoLast {
+      game.slice(fromX: last.x, fromY: last.y, toX: p.x, toY: p.y, skip: &demoSkip)
+      trail(from: last, to: p)
     }
-    if clock > demoSliceClock {
-      demoSliceClock = clock + 2.5
-      var skip = Set<Int>()
-      _ = game.slice(fromX: a.x, fromY: a.y, toX: b.x, toY: b.y, skip: &skip)
-    }
+    demoLast = p
   }
   #endif
 

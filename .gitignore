@@ -4,3 +4,4 @@ test-results/
 .wrangler/
 .DS_Store
 store/lobby/out/
+store/private/

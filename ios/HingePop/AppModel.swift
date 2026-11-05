@@ -25,7 +25,7 @@ final class AppModel {
     if args.contains("-demo") {
       // Screenshots show the game, not the first-time cards.
       for k in ActorKind.allCases { progress.taught.insert("meet-\(k.rawValue)") }
-      progress.taught.formUnion(["gate", "cross", "small", "shield", "recharge", "combo", "chain", "drop", "slam", "phase", "nearfull", "gatepass"])
+      progress.taught.formUnion(["snapped", "windup", "stagger", "gate", "cross", "small", "shield", "recharge", "combo", "chain", "drop", "slam", "phase", "nearfull", "gatepass"])
       PowerUp.allCases.forEach { progress.taught.insert("got-\($0.rawValue)") }
     }
     if let n = Debug.int("-unlock") {

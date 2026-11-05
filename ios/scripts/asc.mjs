@@ -318,7 +318,7 @@ SNAP THE HINGE
 Drag your finger off the glowing line and it cracks like a whip, flinging every nearby bubble back the way it came. Lighter bubbles fly furthest. Then it dims and recharges, so the whole game is choosing your moment.
 
 GUARD THE LINE
-Weight decides what a mistake costs. Let a big bubble through and it takes a whole shield. A medium one costs less, a small one less again, and the tiny ones pop on the line for free, so you can steer them straight at it. Ignore a bubble completely and it will beat you.
+Weight decides what a mistake costs. Let a big bubble through and it takes a whole shield. A medium one costs less, a small one less again, and the tiny ones pop on the line for free, so you can steer them straight at it. Ignore a big one completely and it will beat you.
 
 GUEST STARS
 Eight original visitors wander through your levels, and each moves its own way. Captain Fizz swoops, Doc Flux jumps through time, The Chosen Fizz dodges your first tap, Big Burp stomps along the floor. Catch them for a gift, and tick them off in the guide.
@@ -327,7 +327,7 @@ BOSSES THAT FIGHT BACK
 Bosses shrug off button mashing and a snap won't move them. When one glows red, it's about to dash at the line. Hit it first for double damage, or lose a shield.
 
 ONE ARENA, TWO PLAYERS
-Share one screen, one side each. Whatever you let through lands on your rival. On iPhone Duo, the line sits on the real fold and each player gets a panel.
+Share one screen, one side each. Whatever you let through lands on your rival.
 
 TAP, SWIPE, CHAIN
 Tap to split a bubble. Swipe to slice a whole line of them and aim the pieces. Pop one tiny bubble and its neighbours go too.
@@ -341,8 +341,8 @@ Overcharge, Freeze, Focus, Shield and Chain Burst drop as you play. Grab them be
 CHAPTERS, ARCADE AND A DAILY LEVEL
 Five chapters of levels end in boss fights, then Infinity keeps generating more. It starts with a single slow bubble and teaches you as it goes. Arcade runs until your shields are gone, and the Daily is one new level every day.
 
-MADE FOR IPHONE DUO, IPAD AND IPHONE
-On iPhone Duo the game's hinge sits right on the real fold, and it glows as you fold it. Each player can take a panel. iPad and iPhone get their own layouts, in every orientation.
+IPHONE, IPAD AND IPHONE DUO
+Layouts for iPhone and iPad in every orientation. On iPhone Duo, the game places its line on the fold and each player can take a panel.
 
 NO ADS, NO ACCOUNTS
 No ads, no accounts, no in-app purchases and no tracking. Your progress stays on your device, and it all works offline.`,
@@ -363,7 +363,7 @@ CHANGES SINCE THE PREVIOUS SUBMISSION (guideline 4.3 feedback)
 5. Busy levels now arrive in stages. The aurora sky reacts to play. How to Play was rebuilt as pictures and folding sections.
 
 TO SEE IT QUICKLY
-Tap Play and follow the tour, which takes about a minute. Skip tour is at the top of the card. Sound is off by default and can be turned on in Settings. Two Players is on the home screen and works on one device. On iPhone Duo the line sits on the fold.`,
+Tap Play and follow the tour, which takes about a minute. Skip tour is at the top of the card. Screenshots are real game screens from a debug run with auto-play on. Sound is off by default and can be turned on in Settings. Two Players is on the home screen and works on one device. On iPhone Duo the app places the line on the fold. That has been tested on the simulator.`,
 };
 
 /** Required screenshot sets: display type → [width, height] (portrait) and the folder `make store-shots` fills. */
