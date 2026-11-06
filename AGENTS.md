@@ -65,3 +65,16 @@ The first Play and the first two-player match open a guided tour using real bubb
 - Native effects are pooled and art is prewarmed off the main thread. Don't create nodes or render art mid-play, and don't use `SKShapeNode` or `SKLabelNode` per frame. On web, avoid `shadowBlur`.
 - The game scene fills the screen but play stays in the safe area: `world` sits at the safe corner, and touches go through `gamePoint`.
 - Launcher registration, for any new public mode with a deep link: mutaafaziz-site (`public/index.html` and the docs that list apps), `@mutaaf/launcher`, and Digital Craft `/labs`.
+
+## Shipping: main requires green CI
+
+`main` is protected, with no admin bypass, so a direct push is rejected. Commit and push without asking, the same as always, but through a branch:
+
+```sh
+git switch -c <what-it-does> origin/main
+git push -u origin HEAD
+gh pr create --fill
+gh pr merge --auto --squash --delete-branch
+```
+
+It lands by itself once CI is green. If `git push` says a required status check is expected, this is why. If CI is red, fix the code. Never remove the protection to get something through.
