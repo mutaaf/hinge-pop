@@ -142,12 +142,12 @@ final class GameTests: XCTestCase {
     g.players[0].shields = 2
     for b in g.bubbles { b.vx = 0; b.vy = 0 }
     var taps = 0
-    while taps < 8, let b = g.bubbles.first(where: { $0.armor == 0 }) { g.tap(b); taps += 1 }
+    while taps < g.tuning.rechargeStreak, let b = g.bubbles.first(where: { $0.armor == 0 }) { g.tap(b); taps += 1 }
     XCTAssertEqual(g.players[0].shields, 3)
     XCTAssertEqual(g.players[0].recharges, 1)
     g.players[0].meter = 2
     taps = 0
-    while taps < 8, let b = g.bubbles.first(where: { $0.armor == 0 }) { g.tap(b); taps += 1 }
+    while taps < g.tuning.rechargeStreak, let b = g.bubbles.first(where: { $0.armor == 0 }) { g.tap(b); taps += 1 }
     XCTAssertEqual(g.players[0].shields, 3)
     XCTAssertEqual(g.players[0].meter, 0)
   }
@@ -662,5 +662,110 @@ final class GameTests: XCTestCase {
     g.ready = 0
     while g.status == .playing && g.time < 120 { g.snap(along: 100); g.step(1.0 / 30); g.events.removeAll() }
     XCTAssertNotEqual(g.status, .won)
+  }
+
+  // MARK: iPhone Duo page play
+
+  /// A Duo held like a book: the hinge on the fold, nothing on screen yet.
+  private func book(_ tuning: Tuning = Tuning(), level: Int = 5, fold: Bool = true) -> Game {
+    let g = Game(mode: .campaign(level), width: 844, height: 390, top: 60, vertical: true, hinge: 422, tuning: tuning)
+    g.clearScene()
+    g.foldPlay = fold
+    return g
+  }
+  private func still(_ g: Game, page: Int, gap: Double = 160, y: Double = 220, size: Int = 0) -> Bubble {
+    g.add(.basic, size: size, x: g.hinge + Double(page) * gap, y: y, angle: 0, speed: 0)
+  }
+  private func rushed(_ g: Game) -> Int? {
+    g.events.lazy.compactMap { if case .rushStart(let side) = $0 { side } else { nil } }.first
+  }
+
+  func testTheBusierPageRushesAndScoresDouble() {
+    var t = Tuning(); t.rushFirst = 0.05
+    let g = book(t)
+    let near = still(g, page: -1), far = still(g, page: 1, y: 160)
+    _ = still(g, page: 1, y: 300)
+    g.step(0.1)
+    XCTAssertEqual(rushed(g), 1)
+    XCTAssertTrue(g.onRush(far)); XCTAssertFalse(g.onRush(near))
+    g.tap(far)
+    XCTAssertEqual(g.players[0].score, 200)
+  }
+
+  func testRushingBubblesHurry() {
+    var t = Tuning(); t.rushFirst = 0.05; t.rushTime = 30
+    let g = book(t)
+    let near = g.add(.basic, size: 0, x: 120, y: 200, angle: .pi / 2)
+    let far = g.add(.basic, size: 0, x: 720, y: 200, angle: .pi / 2)
+    let far2 = g.add(.basic, size: 0, x: 720, y: 300, angle: .pi / 2)
+    _ = far2
+    // Big bubbles swim up to a new speed over a few seconds.
+    for _ in 0..<180 { g.step(1.0 / 60) }
+    XCTAssertEqual(g.rushSide, 1)
+    XCTAssertGreaterThan(hypot(far.vx, far.vy), hypot(near.vx, near.vy) * 1.12)
+  }
+
+  func testPagePlayNeedsAFoldAndASoloGame() {
+    var t = Tuning(); t.rushFirst = 0.05
+    let flat = book(t, fold: false)
+    _ = still(flat, page: 1)
+    for _ in 0..<30 { flat.step(1.0 / 30) }
+    XCTAssertNil(rushed(flat))
+    XCTAssertFalse(flat.clap())
+    let first = book(t, level: 1)
+    _ = still(first, page: 1)
+    for _ in 0..<30 { first.step(1.0 / 30) }
+    XCTAssertNil(rushed(first), "level 1 stays plain")
+    let g = Game(mode: .versus, width: 844, height: 390, top: 60, vertical: true, hinge: 422, tuning: t)
+    g.foldPlay = true; g.ready = 0
+    for _ in 0..<30 { g.step(1.0 / 30) }
+    XCTAssertNil(rushed(g))
+    XCTAssertNil(g.besideCrease(x: g.hinge + 20, y: 200))
+  }
+
+  func testPoppingAcrossTheCreaseBuildsACrossfold() {
+    let g = book()
+    let a = still(g, page: -1), b = still(g, page: -1, y: 300), c = still(g, page: 1)
+    g.tap(a)
+    XCTAssertEqual(g.players[0].combo, 1.5)
+    g.tap(b)
+    XCTAssertEqual(g.players[0].crossfolds, 0, "same page twice is just a combo")
+    g.tap(c)
+    XCTAssertEqual(g.players[0].crossfolds, 1)
+    XCTAssertEqual(g.players[0].combo, 3.0)
+    XCTAssertTrue(g.events.contains { if case .crossfold = $0 { true } else { false } })
+  }
+
+  func testACrossfoldNeedsTheComboStillGoing() {
+    let g = book()
+    let a = still(g, page: -1), c = still(g, page: 1)
+    g.tap(a)
+    g.step(g.tuning.comboWindow + 0.1)
+    g.tap(c)
+    XCTAssertEqual(g.players[0].crossfolds, 0)
+  }
+
+  func testClappingTheCreaseSweepsFurtherThanASnapAndSharesItsRecharge() {
+    let g = book()
+    let reachOfSnap = g.tuning.snapReach * g.scale
+    let left = still(g, page: -1, gap: reachOfSnap + 30), right = still(g, page: 1, gap: reachOfSnap + 30, y: 300)
+    XCTAssertEqual(g.besideCrease(x: g.hinge - 40, y: 200), -1)
+    XCTAssertEqual(g.besideCrease(x: g.hinge + 40, y: 200), 1)
+    XCTAssertNil(g.besideCrease(x: 20, y: 200))
+    XCTAssertTrue(g.clap())
+    XCTAssertLessThan(left.vx, -100); XCTAssertGreaterThan(right.vx, 100)
+    XCTAssertEqual(g.players[0].claps, 1)
+    XCTAssertFalse(g.snap(along: 200), "a clap uses the snap's charge")
+    XCTAssertFalse(g.clap())
+  }
+
+  func testTheFoldsAngleNeverEntersTheRules() {
+    // Page play reads only where the fold is. Two games on the same fold play out identically.
+    var t = Tuning(); t.rushFirst = 0.5
+    let a = book(t), b = book(t)
+    for g in [a, b] { _ = g.add(.basic, size: 0, x: 200, y: 200, angle: 0.7); _ = g.add(.fast, size: 1, x: 600, y: 150, angle: 2.2) }
+    for _ in 0..<300 { a.step(1.0 / 60); b.step(1.0 / 60) }
+    XCTAssertEqual(a.bubbles.map(\.x), b.bubbles.map(\.x))
+    XCTAssertEqual(a.rushSide, b.rushSide)
   }
 }

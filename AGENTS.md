@@ -28,6 +28,12 @@ Arcade game with three parts: a parallax landing site that scrolls into the web 
 - Guest stars are `Visitor`s, not bubbles: they never block a clear or touch the meter, and they skip level 1, two-player and the tour. They are original genre nods. Keep them that way: no real characters, logos or names.
 
 - Snap the Hinge is the game's signature: drag off the line and it flings nearby bubbles back, with a recharge. It's also how the game stands apart in the store (a 4.3 rejection said the first version didn't). Lead with it in store copy. The fold angle must stay effects-only, so it never triggers a snap.
+- Page play (iPhone Duo, native only) turns on when the hinge sits on a real fold (`Game.foldPlay`, set from the fold's reserved region, never its angle). Solo games from level 2 only:
+  - **Rush page:** every 13 s the busier page glows gold for 6 s. Its bubbles move 1.2× faster and score double.
+  - **Crossfold:** a pop on the other page from the last one, inside the combo window, adds an extra combo step.
+  - **Crease Clap:** one finger on each page beside the fold at once sweeps the whole line. It reaches further than a snap and shares its recharge.
+  - The angle only brightens the rush glow and the sky.
+- Difficulty (Nov 2026 pass): a 2 taps/s human bot wins about 70–95% of mid-game levels and 30–60% late, while levels 1–4 stay at 100% and idle at 0%. Measure with `make balance`. `swift run -c release hp-balance --duo <levels>` plays a book-held Duo with page play on, which runs about 10–20% harder.
 
 ## Teaching the game
 

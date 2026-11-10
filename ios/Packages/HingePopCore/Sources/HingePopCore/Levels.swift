@@ -104,10 +104,10 @@ public enum Campaign {
   private static let firstChapter: [[Int]] = [[0], [0, 2], [0, 1], [0, 1, 2], [0, 0], [0, 0, 2], [0, 0, 1], [0, 0, 1, 2], [0, 0, 1, 1, 2]]
 
   /// The budget climbs slowly inside a chapter, and eases back at each new one so its new bubble gets room.
-  private static func budget(chapter: Int, step k: Int) -> Int { min(66, 22 + chapter * 6 + (k - 1) * 3) }
+  private static func budget(chapter: Int, step k: Int) -> Int { min(76, 24 + chapter * 7 + (k - 1) * 3) }
 
   /// Speed barely moves for a long time. Later levels ask for more swiping before they ask for faster hands.
-  private static func speed(chapter: Int, step k: Int) -> Double { min(1, 0.5 + 0.05 * Double(chapter) + 0.012 * Double(k - 1)) }
+  private static func speed(chapter: Int, step k: Int) -> Double { min(1, 0.5 + 0.06 * Double(chapter) + 0.014 * Double(k - 1)) }
 
   /// Swaps some of a level's bubbles for special kinds. Fast and golden come in small, since they move quickly.
   private static func dressed(_ sizes: [Int], with kinds: [ActorKind]) -> [Spawn] {
@@ -128,8 +128,8 @@ public enum Campaign {
     if k == 10 {
       // Every chapter ends on a boss, with more phases and more company as the game goes on.
       var spawns = [Spawn(.boss)]
-      if index >= 2 { spawns.append(Spawn(.fast, size: 2)) }
-      if index >= 4 { spawns.append(Spawn(.armored, size: 1)) }
+      if index >= 1 { spawns.append(Spawn(.fast, size: 2)) }
+      if index >= 3 { spawns.append(Spawn(.armored, size: 1)) }
       return LevelSpec(number: n, chapter: ch.number, spawns: spawns, speed: pace, meterMax: 4, gates: 0, bossPhases: 3, arena: ch.arena)
     }
     if index == 0 {
@@ -157,6 +157,8 @@ public enum Campaign {
       let pool: [ActorKind] = [.fast, .armored, .repel, .magnetic, .golden, .frozen]
       kinds = (0..<min(sizes.count, 3 + k / 3)).map { pool[($0 + k * 2) % pool.count] }
     }
+    // From the third chapter on, the back half of each chapter runs a shorter meter.
+    if index >= 2 && k >= 6 { meter = 3 }
     var spawns = dressed(sizes, with: kinds)
     var phases = 0
     if index == 4 && k == 5 {
@@ -169,12 +171,14 @@ public enum Campaign {
   /// Procedural levels: the same number always gives the same level.
   public static func generated(_ n: Int, chapter ch: Chapter) -> LevelSpec {
     var rng = SplitMix(seed: UInt64(n) &* 0x1F3D)
-    let pace = min(1.15, 0.75 + 0.004 * Double(n - 50))
+    let pace = min(1.2, 0.8 + 0.005 * Double(n - 50))
     if n % 10 == 0 {
       return LevelSpec(number: n, chapter: ch.number, spawns: [Spawn(.boss), Spawn(.fast, size: 2), Spawn(.armored, size: 1)], speed: pace, meterMax: 4, gates: 0, bossPhases: 3, arena: ch.arena)
     }
-    let budget = min(90, 48 + (n - 50) / 4 + rng.int(12))
-    return mixed(number: n, chapter: ch.number, budget: budget, speed: pace, gates: rng.int(3) == 0 ? 1 : 0, arena: ch.arena, rng: &rng)
+    let budget = min(96, 52 + (n - 50) / 4 + rng.int(12))
+    var level = mixed(number: n, chapter: ch.number, budget: budget, speed: pace, gates: rng.int(3) == 0 ? 1 : 0, arena: ch.arena, rng: &rng)
+    if n % 3 == 0 { level.meterMax = 3 }
+    return level
   }
 
   public static func mixed(number: Int, chapter: Int, budget: Int, speed: Double, gates: Int, arena: Arena, rng: inout SplitMix) -> LevelSpec {

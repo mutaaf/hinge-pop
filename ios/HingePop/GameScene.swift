@@ -53,6 +53,17 @@ final class GameScene: SKScene {
   private var lastChain: CGPoint?
   private var lastChainClock = 0.0
   private var snapFlare = 0.0
+  /// iPhone Duo: the rushing page glows gold, brighter as the device folds (the angle only ever lights things).
+  private let rushNode = SKSpriteNode(color: .white, size: CGSize(width: 10, height: 10))
+  private let rushTime = SKUniform(name: "u_t", float: 0)
+  private let rushAlpha = SKUniform(name: "u_a", float: 0)
+  private let rushAxis = SKUniform(name: "u_axis", float: 0)
+  private let rushFlip = SKUniform(name: "u_flip", float: 0)
+  private var rushGlow = 0.0
+  private var rushFlash = 0.0
+  private var rushShown = 0
+  /// The last touch beside the crease, for spotting a clap: one finger on each page at once.
+  private var creaseTouch: (side: Int, at: Double)?
   private var lastTime: TimeInterval = 0
   private var pulse = 0.0
   private var shake = 0.0
@@ -136,6 +147,27 @@ final class GameScene: SKScene {
     ribbon.blendMode = .add
     ribbon.zPosition = 1
     world.addChild(ribbon)
+    let rush = SKShader(source: """
+    void main() {
+      vec2 uv = v_tex_coord;
+      float a = u_axis < 0.5 ? uv.x : uv.y;
+      float d = u_flip > 0.5 ? 1.0 - a : a;
+      float along = u_axis < 0.5 ? uv.y : uv.x;
+      float curtains = 0.55 + 0.45 * sin(along * 16.0 + u_t * 1.4 + 1.6 * sin(d * 5.0 - u_t * 0.8));
+      vec3 col = mix(vec3(1.0, 0.72, 0.16), vec3(1.0, 0.3, 0.62), clamp(d * 1.4, 0.0, 1.0));
+      float glow = exp(-d * 2.6) * 0.66 + 0.12;
+      float rim = smoothstep(0.0, 0.04, min(min(uv.x, 1.0 - uv.x), min(uv.y, 1.0 - uv.y)));
+      float al = clamp(glow * curtains * rim * u_a, 0.0, 0.74);
+      gl_FragColor = vec4(col * al, al);
+    }
+    """)
+    rush.uniforms = [rushTime, rushAlpha, rushAxis, rushFlip]
+    rushNode.shader = rush
+    // A tint, not added light, so the page reads gold even over a bright sky.
+    rushNode.blendMode = .alpha
+    rushNode.zPosition = -5
+    rushNode.isHidden = true
+    world.addChild(rushNode)
     dashLine.isHidden = true
     dashLine.blendMode = .add
     dashLine.zPosition = 3
@@ -218,6 +250,7 @@ final class GameScene: SKScene {
       ? CGPoint(x: origin.x + sin(clock * 47) * 6 * shake, y: origin.y + cos(clock * 59) * 6 * shake) : origin
     let alpha = session.stepAlpha
     drawSky(game, dt: dt, session: session)
+    drawRush(game, dt: dt)
     drawHinge(game)
     drawGates(game)
     drawBubbles(game, alpha: alpha)
@@ -235,6 +268,8 @@ final class GameScene: SKScene {
     for n in gateNodes { n.removeFromParent() }
     gateNodes.removeAll()
     active.removeAll()
+    rushGlow = 0; rushFlash = 0; rushShown = 0; creaseTouch = nil
+    rushNode.isHidden = true
     dashLine.isHidden = true
     prewarm(game)
     placeBackdrop()
@@ -300,12 +335,37 @@ final class GameScene: SKScene {
     skyTime.floatValue = Float(skyClock.truncatingRemainder(dividingBy: 2000))
     let windup = game.bubbles.contains { $0.bossWindup > 0 } ? 0.6 : 0
     skyHeat.floatValue = Float(max(session.heat, windup))
-    skyEnergy.floatValue = Float(min(1.6, energy + bloom))
+    skyEnergy.floatValue = Float(min(1.6, energy + bloom + hingeGlow() * 0.25))
     skyHinge.floatValue = game.vertical ? 0.5 : Float(game.hinge / max(1, game.h))
     for i in ripples.indices where ripples[i].z < 1 {
       ripples[i].z = min(1, ripples[i].z + Float(dt) / 0.95)
       skyRipples[i].vectorFloat3Value = ripples[i]
     }
+  }
+
+  private func drawRush(_ game: Game, dt: Double) {
+    let target = game.rushLeft > 0 ? min(1, game.rushLeft / 0.8) : 0
+    rushGlow += (target - rushGlow) * min(1, dt * 5)
+    rushFlash = max(0, rushFlash - dt * 1.5)
+    // Remember the page while the glow fades out after the rush ends.
+    if game.rushSide != 0 { rushShown = game.rushSide }
+    let side = rushShown
+    guard rushGlow > 0.01, side != 0 else { rushNode.isHidden = true; return }
+    rushNode.isHidden = false
+    let hinge = CGFloat(game.hinge), w = CGFloat(game.w), top = CGFloat(game.top), h = CGFloat(game.h)
+    if game.vertical {
+      let x0 = side < 0 ? 0 : hinge, width = side < 0 ? hinge : w - hinge
+      rushNode.size = CGSize(width: width, height: h - top)
+      rushNode.position = CGPoint(x: x0 + width / 2, y: y(Double(top)) - (h - top) / 2)
+      rushAxis.floatValue = 0; rushFlip.floatValue = side < 0 ? 1 : 0
+    } else {
+      let y0 = side < 0 ? top : hinge, height = side < 0 ? hinge - top : h - hinge
+      rushNode.size = CGSize(width: w, height: height)
+      rushNode.position = CGPoint(x: w / 2, y: y(Double(y0)) - height / 2)
+      rushAxis.floatValue = 1; rushFlip.floatValue = side < 0 ? 0 : 1
+    }
+    rushTime.floatValue = reduceMotion ? 0 : Float(clock.truncatingRemainder(dividingBy: 1000))
+    rushAlpha.floatValue = Float(rushGlow * (0.75 + 0.35 * hingeGlow()) + rushFlash * 0.8)
   }
 
   /// A pop shakes the sky: a ring of light runs out through the curtains from where it happened.
@@ -750,6 +810,39 @@ final class GameScene: SKScene {
       haptic.good()
     case .snapReady:
       sound.blip(880, 0.08, .sine, gain: 0.08)
+    case let .rushStart(side):
+      rushFlash = 1
+      if let game = session?.game {
+        let across = (Double(side) < 0 ? game.hinge / 2 : game.hinge + ((game.vertical ? game.w : game.h) - game.hinge) / 2)
+        ripple(game.vertical ? CGPoint(x: across, y: y((game.top + game.h) / 2)) : CGPoint(x: game.w / 2, y: y(across)))
+      }
+      sound.blip(520, 0.12, .triangle, gain: 0.12); sound.blip(780, 0.2, .triangle, gain: 0.1)
+      haptic.hit()
+    case .rushOver:
+      sound.blip(330, 0.14, .sine, gain: 0.06)
+    case let .crossfold(x, gy, combo):
+      if let game = session?.game {
+        let at = game.vertical ? CGPoint(x: CGFloat(game.hinge), y: y(gy)) : CGPoint(x: x, y: y(game.hinge))
+        sparks(at: at, r: 30, count: 14)
+      }
+      bloom = max(bloom, 0.35)
+      sound.blip(600 + min(8, combo) * 60, 0.08, .sine, gain: 0.1)
+    case let .creaseClap(flung):
+      snapFlare = 1.4
+      pulse = 1.8
+      shake = 0.7
+      bloom = 0.8
+      if let game = session?.game {
+        for u in stride(from: 0.06, through: 0.94, by: 0.11) {
+          let at = game.vertical ? CGPoint(x: CGFloat(game.hinge), y: y(game.top + (game.h - game.top) * u)) : CGPoint(x: area.width * CGFloat(u), y: y(game.hinge))
+          sparks(at: at, r: 60, count: 16)
+        }
+        let mid = game.vertical ? CGPoint(x: CGFloat(game.hinge), y: y((game.top + game.h) / 2)) : CGPoint(x: area.width / 2, y: y(game.hinge))
+        shockwave(at: mid, r: 160)
+        ripple(mid)
+      }
+      sound.blip(150, 0.25, .saw, gain: 0.2); sound.blip(1200 + Double(min(flung, 6)) * 80, 0.16, .square, gain: 0.08)
+      haptic.good()
     case let .bossWindup(x, gy, r):
       shockwave(at: CGPoint(x: x, y: y(gy)), r: CGFloat(r))
       sound.blip(140, 0.5, .saw, gain: 0.14)
@@ -833,6 +926,14 @@ final class GameScene: SKScene {
         if let pickup = game.hitPickup(x: p.x, y: p.y) { game.collect(pickup); continue }
       }
       let b = game.hit(x: p.x, y: p.y)
+      // One finger on each page beside the fold, together, claps the crease.
+      if b == nil, session.overlay != .tour, let side = game.besideCrease(x: p.x, y: p.y) {
+        if let last = creaseTouch, last.side != side, clock - last.at <= game.tuning.clapWindow, game.clap() {
+          creaseTouch = nil
+          continue
+        }
+        creaseTouch = (side, clock)
+      }
       if !game.flick && session.overlay != .tour {
         if let b { game.tap(b) }
       } else {

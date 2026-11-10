@@ -8,9 +8,14 @@ func timeToHinge(_ g: Game, _ b: Bubble) -> Double {
   let pos = g.vertical ? b.x : b.y, v = g.vertical ? b.vx : b.vy, gap = g.hinge - pos
   return gap * v > 0 ? gap / v : .infinity
 }
+/// `--duo` plays on an iPhone Duo held like a book, with page play on.
+let duo = CommandLine.arguments.contains("--duo")
 func play(_ n: Int, kind: String, rate: Double, seed: UInt64, w: Double = 390, h: Double = 760) -> Game {
   var r = SplitMix(seed: seed)
-  let g = Game(mode: .campaign(n), width: w, height: h, top: 70, seed: seed)
+  let g = duo
+    ? Game(mode: .campaign(n), width: 1300, height: 900, top: 70, vertical: true, hinge: 650, seed: seed)
+    : Game(mode: .campaign(n), width: w, height: h, top: 70, seed: seed)
+  g.foldPlay = duo
   var next = 0.8 + 0.4 * r.unit()
   while g.status == .playing && g.time < 300 {
     g.step(1.0 / 60)
@@ -23,7 +28,7 @@ func play(_ n: Int, kind: String, rate: Double, seed: UInt64, w: Double = 390, h
     if let v = g.visitors.first(where: { $0.presence > 0.35 && $0.x > 0 && $0.x < g.w }), r.unit() < 0.25 { g.catchVisitor(v.id); continue }
     if let boss = g.bubbles.first(where: { $0.bossWindup > 0 }), r.unit() < 0.5 { g.tap(boss); continue }
     // Once it's ready, they snap about a third of the time a big bubble is close to the line.
-    if g.players[0].snapLeft <= 0, r.unit() < 0.33, g.bubbles.contains(where: { $0.size == 0 && $0.kind != .boss && abs((g.vertical ? $0.x : $0.y) - g.hinge) < 100 }) { g.snap(along: 100); continue }
+    if g.players[0].snapLeft <= 0, r.unit() < 0.33, g.bubbles.contains(where: { $0.size == 0 && $0.kind != .boss && abs((g.vertical ? $0.x : $0.y) - g.hinge) < 100 }) { if duo { g.clap() } else { g.snap(along: 100) }; continue }
     guard !g.bubbles.isEmpty else { continue }
     let target: Bubble = r.unit() < 0.33 ? g.bubbles[r.int(g.bubbles.count)] : g.bubbles.min { timeToHinge(g, $0) < timeToHinge(g, $1) }!
     if kind == "slicer" {
