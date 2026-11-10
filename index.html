@@ -406,14 +406,14 @@ const CFG = {
   ],
   points: [100, 200, 300, 500],
   meterMax: 4,
-  rechargeStreak: 8,
+  rechargeStreak: 10,
   minCross: 0.25,
   hingePull: 0.6,
   shields: 3,
   comboStep: 0.5,
   comboMax: 10,
   comboWindow: 1.6,
-  graceHinge: 0.6,
+  graceHinge: 0.45,
   graceTap: 0.2,
   readyTime: 0.8,
   cleanBonus: 1.25,
@@ -430,9 +430,9 @@ const CFG = {
   versusPerSide: 3,
   versusSpeed: 0.85,
   // Busy levels arrive in stages: a new bubble comes when the arena has this little work left, or after the gap.
-  arrivalWork: 12,
-  arrivalOpening: 22,
-  arrivalGap: 9,
+  arrivalWork: 20,
+  arrivalOpening: 28,
+  arrivalGap: 7,
   // Guest stars wander through, ignore the hinge and leave a gift if you catch them.
   cameos: ['captainFizz', 'docFlux', 'sirGlowstick', 'chosenFizz', 'merlinFizz', 'bigBurp', 'booBubble', 'discoDot'],
   cameoFirst: 5,
@@ -468,11 +468,11 @@ function sizesForWork(budget) {
 // levels ask for more swiping before they ask for faster hands.
 function levelConfig(n) {
   const chapter = Math.floor((n - 1) / 10), k = (n - 1) % 10 + 1;
-  const speed = Math.min(CFG.maxSpeed, 0.5 + 0.05 * Math.min(chapter, 8) + 0.012 * (k - 1));
+  const speed = Math.min(CFG.maxSpeed, 0.5 + 0.06 * Math.min(chapter, 8) + 0.014 * (k - 1));
   if (n <= CFG.firstLevels.length) return { sizes: CFG.firstLevels[n - 1], speed };
   // Every tenth level is a breather: fewer bubbles, and a chance to reset.
   if (k === 10) return { sizes: sizesForWork(20 + chapter * 2), speed };
-  return { sizes: sizesForWork(Math.min(CFG.maxWork, 22 + chapter * 6 + (k - 1) * 3)), speed };
+  return { sizes: sizesForWork(Math.min(CFG.maxWork, 24 + chapter * 7 + (k - 1) * 3)), speed };
 }
 
 function createSim(opts) {

@@ -11,12 +11,12 @@ public struct Tuning: Sendable {
   public var bounce: [Double] = [0.7, 0.8, 0.9, 0.98]
   public var recover: [Double] = [0.9, 1.4, 2.2, 3]
   public var meterMax = 4
-  public var rechargeStreak = 8
+  public var rechargeStreak = 10
   public var shields = 3
   public var comboStep = 0.5
   public var comboMax = 10.0
   public var comboWindow = 1.6
-  public var graceHinge = 0.6
+  public var graceHinge = 0.45
   public var graceTap = 0.2
   public var readyTime = 0.8
   public var cleanBonus = 1.25
@@ -41,13 +41,13 @@ public struct Tuning: Sendable {
   public var fieldForce = 240.0
   public var bossRadius = 1.75
   public var bossMass = 40.0
-  public var bossHitsPerPhase = 8
+  public var bossHitsPerPhase = 9
   public var bossContactCooldown = 0.8
   /// After a hit a boss shrugs off touches for this long, so hammering the screen can't melt it.
-  public var bossGuard = 0.28
+  public var bossGuard = 0.32
   public var bossPhaseSpeed = 0.3
   /// Every so often a boss winds up, then dashes at the hinge. A hit during the wind-up staggers it for double damage.
-  public var bossWindupEvery = 6.0
+  public var bossWindupEvery = 5.0
   public var bossWindupEveryPhase = 1.2
   public var bossWindupTime = 1.1
   public var bossDashSpeed = 3.0
@@ -60,15 +60,28 @@ public struct Tuning: Sendable {
   public var cameoPoints = 1000
   public var cameoRadius = 34.0
   /// Busy levels arrive in stages: a new bubble comes when the arena has this little work left, or after the gap.
-  public var arrivalWork = 12
-  public var arrivalOpening = 22
-  public var arrivalGap = 9.0
+  public var arrivalWork = 20
+  public var arrivalOpening = 28
+  public var arrivalGap = 7.0
   /// Snap the Hinge: drag off the line and it cracks like a whip, flinging nearby bubbles away from it.
   public var snapCooldown = 7.0
   public var snapReach = 120.0
   public var snapForce = 620.0
   public var snapTouch = 26.0
-  public var gateWidth = 150.0
+  /// iPhone Duo. On a fold the two pages play differently. Every so often one page lights up as the rush page:
+  /// its bubbles speed up and score double. Popping back and forth across the crease builds a crossfold combo,
+  /// and touching both pages beside the crease at once claps it, sweeping the whole line. Only where the fold
+  /// sits counts. Its angle never changes play.
+  public var rushFirst = 6.0
+  public var rushEvery = 13.0
+  public var rushTime = 6.0
+  public var rushSpeed = 1.2
+  public var rushPoints = 2.0
+  public var crossfoldStep = 0.5
+  public var clapReach = 110.0
+  public var clapWindow = 0.3
+  public var clapSweep = 1.6
+  public var gateWidth = 120.0
   public var gateSpeed = 70.0
   public init() {}
 }

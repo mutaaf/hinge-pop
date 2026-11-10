@@ -98,6 +98,7 @@ final class Session {
     }
     let place = placement(size: size, fold: fold, top: Double(hudHeight))
     let turned = game.resize(width: size.width, height: size.height, top: Double(hudHeight), vertical: place?.vertical, hinge: place?.hinge)
+    game.foldPlay = place != nil
     if turned && overlay == .none && tip == nil && !versus { overlay = .paused }
     if overlay == .tour { enterTour(tourIndex) }
     generation += 1
@@ -120,6 +121,8 @@ final class Session {
     let g = Game(mode: m, width: size.width, height: size.height, top: Double(hudHeight), vertical: place?.vertical, hinge: place?.hinge, score: m == mode && isCampaign ? runScore : 0)
     g.flick = app.progress.flick
     g.graceOn = app.progress.hingeGrace
+    // Page play follows where the fold is. The fold's angle stays effects-only.
+    g.foldPlay = place != nil
     return g
   }
 
@@ -272,6 +275,11 @@ final class Session {
       case .bossPhase: teach("phase", "Next phase: faster, with friends.")
       case .hingeSnap(_, _, let flung):
         if flung > 0 { teach("snapped", "Snapped! It recharges in \(Int(game.tuning.snapCooldown)) seconds. The line dims until it's ready.") }
+      case .rushStart: teach("rush", "This page is rushing: faster bubbles, double points.")
+      case .crossfold: teach("crossfold", "Crossfold! Pop across the fold to build combo faster.")
+      case .creaseClap: teach("clap", "Crease clap! It sweeps the whole line.")
+      case .snapReady where game.foldPlay && game.players[0].claps == 0:
+        teach("clap-hint", "Touch both pages beside the fold at once to clap it.")
       case .cameoArrived(let c, _, _):
         show("\(c.title)! Catch for \(c.gift)", seconds: 3)
       case .cameoCaught(let c, _, _, _, _):

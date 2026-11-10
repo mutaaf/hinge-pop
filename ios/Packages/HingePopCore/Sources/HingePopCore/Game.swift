@@ -87,6 +87,8 @@ public struct Player: Sendable {
   public var cameos = 0
   public var snaps = 0
   public var snapLeft = 0.0
+  public var crossfolds = 0
+  public var claps = 0
 }
 
 public enum GameEvent: Equatable, Sendable {
@@ -105,6 +107,11 @@ public enum GameEvent: Equatable, Sendable {
   case bossBlocked(x: Double, y: Double, r: Double)
   case hingeSnap(along: Double, player: Int, flung: Int)
   case snapReady(player: Int)
+  /// iPhone Duo page play: a page lights up, then settles; a pop across the crease; both pages clapped at once.
+  case rushStart(side: Int)
+  case rushOver
+  case crossfold(x: Double, y: Double, combo: Double)
+  case creaseClap(flung: Int)
   case cameoArrived(Cameo, x: Double, y: Double)
   case cameoCaught(Cameo, x: Double, y: Double, points: Int, player: Int)
   case cameoDodged(Cameo, x: Double, y: Double)
@@ -135,6 +142,17 @@ public final class Game {
   private var fixedHinge: Double?
   public var flick = true
   public var graceOn = true
+  /// True when the hinge sits on a real fold, which turns on page play. The app sets it from where the fold is,
+  /// never from its angle.
+  public var foldPlay = false {
+    didSet { if !foldPlay { rushSide = 0; rushLeft = 0; lastPage = [0, 0] } }
+  }
+  /// The page that's rushing: -1 the near page, 1 the far one, 0 none.
+  public private(set) var rushSide = 0
+  public private(set) var rushLeft = 0.0
+  private var rushClock = 0.0
+  private var rushTurn = 0
+  private var lastPage = [0, 0]
   public private(set) var bubbles: [Bubble] = []
   public private(set) var pickups: [Pickup] = []
   public private(set) var visitors: [Visitor] = []
@@ -176,6 +194,7 @@ public final class Game {
     fixedHinge = hinge
     self.hinge = 0
     ready = tuning.readyTime
+    rushClock = tuning.rushFirst
     players = isVersus
       ? [Player(score: 0, shields: tuning.shields), Player(score: 0, shields: tuning.shields)]
       : [Player(score: score, shields: tuning.shields)]
@@ -208,6 +227,14 @@ public final class Game {
   private func sideOf(_ b: Bubble) -> Int { across(b) < hinge ? -1 : 1 }
   public func playerIndex(of b: Bubble) -> Int { isVersus && b.side > 0 ? 1 : 0 }
 
+  /// Page play only runs solo: in versus each page already belongs to a player.
+  private var pagePlay: Bool {
+    guard foldPlay, !isVersus, mode != .sandbox else { return false }
+    if case .campaign(let n) = mode { return n >= 2 }
+    return true
+  }
+  public func onRush(_ b: Bubble) -> Bool { rushLeft > 0 && b.side == rushSide }
+
   public func radius(of kind: ActorKind, size: Int) -> Double {
     tuning.radii[size] * scale * (kind == .boss ? tuning.bossRadius : 1)
   }
@@ -215,7 +242,7 @@ public final class Game {
     b.kind == .boss ? tuning.bossMass : tuning.mass[b.size] * b.kind.massFactor
   }
   private func cruise(_ b: Bubble) -> Double {
-    guard b.kind == .boss else { return tuning.speeds[b.size] * scale * spec.speed * b.kind.speedFactor }
+    guard b.kind == .boss else { return tuning.speeds[b.size] * scale * spec.speed * b.kind.speedFactor * (onRush(b) ? tuning.rushSpeed : 1) }
     let phaseBoost = 1 + tuning.bossPhaseSpeed * Double(b.bossPhase)
     let state = b.bossWindup > 0 ? 0.15 : b.bossDashing ? tuning.bossDashSpeed : 1
     return tuning.speeds[b.size] * scale * spec.speed * b.kind.speedFactor * phaseBoost * state
@@ -351,6 +378,7 @@ public final class Game {
     var value = Double(tuning.points[b.size]) * p.combo
     if b.kind == .golden { value *= Double(tuning.goldenMultiplier) }
     if p.overcharge > 0 { value *= 2 }
+    if onRush(b) { value *= tuning.rushPoints }
     return Int(value.rounded())
   }
 
@@ -358,6 +386,18 @@ public final class Game {
     p.combo = min(tuning.comboMax, p.combo + tuning.comboStep)
     p.bestCombo = max(p.bestCombo, p.combo)
     p.comboT = tuning.comboWindow
+  }
+
+  /// On a fold, a pop on the other page from the last one, inside the combo window, adds a crossfold step.
+  private func crossfold(_ b: Bubble, owner: Int, fresh: Bool) {
+    guard pagePlay else { return }
+    let page = b.side
+    defer { lastPage[owner] = page }
+    guard !fresh, lastPage[owner] != 0, page != lastPage[owner] else { return }
+    players[owner].combo = min(tuning.comboMax, players[owner].combo + tuning.crossfoldStep)
+    players[owner].bestCombo = max(players[owner].bestCombo, players[owner].combo)
+    players[owner].crossfolds += 1
+    events.append(.crossfold(x: b.x, y: b.y, combo: players[owner].combo))
   }
 
   private func advanceStreak(_ owner: Int) {
@@ -403,7 +443,9 @@ public final class Game {
     }
     let pts = points(b, &players[owner])
     players[owner].score += pts
+    let fresh = players[owner].comboT <= 0
     bumpCombo(&players[owner])
+    crossfold(b, owner: owner, fresh: fresh)
     advanceStreak(owner)
     remove(b)
     if b.size < 3 { splitPieces(b, dirX: dirX, dirY: dirY) }
@@ -560,7 +602,32 @@ public final class Game {
     guard status == .playing, ready <= 0, players[owner].snapLeft <= 0 else { return false }
     players[owner].snapLeft = tuning.snapCooldown
     players[owner].snaps += 1
-    let reach = tuning.snapReach * scale
+    let flung = fling(reach: tuning.snapReach * scale, owner: owner)
+    events.append(.hingeSnap(along: along, player: owner, flung: flung))
+    return true
+  }
+
+  /// True when a touch is beside the crease, close enough to clap it. Returns the page it's on.
+  public func besideCrease(x: Double, y: Double) -> Int? {
+    guard pagePlay, y >= top else { return nil }
+    let gap = (vertical ? x : y) - hinge
+    guard abs(gap) <= tuning.clapReach * max(1, scale) else { return nil }
+    return gap < 0 ? -1 : 1
+  }
+
+  /// Crease Clap, iPhone Duo only: both pages touched beside the fold at once. It throws back everything along
+  /// the whole line, further than a snap reaches, and shares the snap's recharge.
+  @discardableResult
+  public func clap() -> Bool {
+    guard pagePlay, status == .playing, ready <= 0, players[0].snapLeft <= 0 else { return false }
+    players[0].snapLeft = tuning.snapCooldown
+    players[0].claps += 1
+    let flung = fling(reach: tuning.snapReach * tuning.clapSweep * scale, owner: 0)
+    events.append(.creaseClap(flung: flung))
+    return true
+  }
+
+  private func fling(reach: Double, owner: Int) -> Int {
     var flung = 0
     for b in bubbles where b.kind != .boss && b.size < 3 {
       if isVersus && playerIndex(of: b) != owner { continue }
@@ -572,8 +639,7 @@ public final class Game {
       impact(b, vertical ? 0 : .pi / 2, push)
       flung += 1
     }
-    events.append(.hingeSnap(along: along, player: owner, flung: flung))
-    return true
+    return flung
   }
 
   private func inGate(_ b: Bubble) -> Bool {
@@ -695,6 +761,7 @@ public final class Game {
         if players[i].snapLeft <= 0 { players[i].snapLeft = 0; events.append(.snapReady(player: i)) }
       }
     }
+    stepRush(real)
     stepFocus(real)
     stepPickups(real)
     stepVisitors(real)
@@ -709,6 +776,24 @@ public final class Game {
       waveClock -= real
       if waveClock <= 0 { spawnWave() }
     }
+  }
+
+  /// Every so often the busier page lights up. Its bubbles hurry and score double until it settles.
+  private func stepRush(_ real: Double) {
+    guard pagePlay else { return }
+    if rushLeft > 0 {
+      rushLeft -= real
+      if rushLeft <= 0 { rushLeft = 0; rushSide = 0; events.append(.rushOver) }
+      return
+    }
+    rushClock -= real
+    guard rushClock <= 0, !bubbles.isEmpty else { return }
+    rushClock = tuning.rushEvery
+    let near = bubbles.filter { $0.side < 0 }.count, far = bubbles.count - near
+    rushTurn += 1
+    rushSide = near > far ? -1 : far > near ? 1 : (rushTurn % 2 == 0 ? -1 : 1)
+    rushLeft = tuning.rushTime
+    events.append(.rushStart(side: rushSide))
   }
 
   private func stepFocus(_ real: Double) {

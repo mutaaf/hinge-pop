@@ -302,6 +302,11 @@ struct GuideView: View {
             }
             Fold(title: "Shields and meter", id: "meter", open: $open) { meterFacts }
             Fold(title: "Scoring", id: "score", open: $open) { scoreFacts }
+            Fold(title: "On iPhone Duo", id: "duo", open: $open) {
+              FactRow(art: .bubble(.golden), text: "A page lights up: faster bubbles, double points.")
+              FactRow(art: .glyph(.starOn), text: "Pop across the fold for a crossfold combo.")
+              FactRow(art: .glyph(.shieldOn), text: "Touch both pages by the fold at once to clap it.")
+            }
             Fold(title: "Two players", id: "two", open: $open) {
               FactRow(art: .glyph(.shieldOn), text: "One side each. Touches stay on your side.")
               FactRow(art: .bubble(.fast), text: "What you miss lands on your rival.")
