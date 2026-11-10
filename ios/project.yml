@@ -11,13 +11,18 @@ settings:
     DEVELOPMENT_TEAM: Z73865R687
     CODE_SIGN_STYLE: Automatic
     SWIFT_VERSION: "5.0"
-    MARKETING_VERSION: "0.1.1"
+    MARKETING_VERSION: "0.1.2"
     CURRENT_PROJECT_VERSION: "1"
 targets:
   HingePop:
     type: application
     platform: iOS
-    sources: [HingePop]
+    sources:
+      - HingePop
+      # The update card reads the same notes TestFlight gets.
+      - path: release-notes
+        type: folder
+        buildPhase: resources
     dependencies:
       - { package: HingePopCore }
       - { package: HingePopArt }

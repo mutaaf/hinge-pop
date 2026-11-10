@@ -29,6 +29,12 @@ struct RootView: View {
       case .play(let mode): PlayView(mode: mode, app: app).id(String(describing: mode))
       }
     }
+    .overlay {
+      if let notes = app.updateNotes {
+        WhatsNewView(notes: notes) { withAnimation(.easeOut(duration: 0.2)) { app.dismissUpdateNotes() } }
+          .transition(.opacity)
+      }
+    }
     .animation(.easeInOut(duration: 0.2), value: app.route)
     .statusBarHidden(isPlaying)
     .persistentSystemOverlays(isPlaying ? .hidden : .automatic)

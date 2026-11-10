@@ -23,6 +23,10 @@ public struct GameProgress: Codable, Equatable, Sendable {
   public var arena: Arena? = nil
   /// Optional so saves from before cameos existed still load.
   private var cameoLog: [String]? = nil
+  /// The last version whose update notes were shown. Optional so older saves still load.
+  public var seenNotes: String? = nil
+  /// True once someone has played, so an update can tell them what changed.
+  public var playedBefore: Bool { seenTour || unlocked > 1 || arcadeBest > 0 || !stars.isEmpty }
   public init() {}
 
   public func hasCaught(_ cameo: Cameo) -> Bool { cameoLog?.contains(cameo.rawValue) ?? false }
