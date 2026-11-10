@@ -11,6 +11,10 @@ final class AppModel {
   var route = Route.home
   /// This version's update card, when there's one to show.
   var updateNotes: UpdateNotes?
+  /// The card was forced with -whatsNew (debug only), so closing it doesn't record the version.
+  @ObservationIgnored private var notesForced = false
+  /// A How to play section to open on arrival, set when an update callout sends you there.
+  var guideSection: String?
   var progress: GameProgress { didSet { save() } }
   @ObservationIgnored private let key = "hinge-pop-progress"
 
@@ -56,7 +60,7 @@ final class AppModel {
     #if DEBUG
     // Tests and store captures launch with flags and never see it, unless they ask with -whatsNew.
     let flagged = ProcessInfo.processInfo.arguments.dropFirst().contains { $0.hasPrefix("-") && !$0.hasPrefix("-NS") && !$0.hasPrefix("-Apple") }
-    if Debug.has("-whatsNew") { show = true } else if flagged { show = false }
+    if Debug.has("-whatsNew") { show = true; notesForced = true } else if flagged { show = false }
     #endif
     guard show, route == .home else {
       if progress.seenNotes == nil && !progress.playedBefore { progress.seenNotes = version }
@@ -69,8 +73,25 @@ final class AppModel {
   }
 
   func dismissUpdateNotes() {
-    if let v = updateNotes?.version { progress.seenNotes = v }
+    if let v = updateNotes?.version {
+      let seen = UpdateNotes.seenAfterClosing(seen: progress.seenNotes, shown: v, forced: notesForced)
+      if seen != progress.seenNotes { progress.seenNotes = seen }
+    }
     updateNotes = nil
+  }
+
+  /// A callout's tap: close the card, then open the place its news is about.
+  func follow(_ destination: UpdateNotes.Destination) {
+    dismissUpdateNotes()
+    switch destination {
+    case .map: route = .map
+    case .settings: route = .settings
+    case .guide(let section): guideSection = section; route = .guide
+    case .play: route = .play(.campaign(progress.unlocked))
+    case .arcade: route = .play(.arcade(seed: UInt64(Date().timeIntervalSince1970)))
+    case .daily: route = .play(today())
+    case .versus: route = .play(.versus)
+    }
   }
 
   func applySettings() {

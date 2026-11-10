@@ -85,6 +85,7 @@ struct Fold<Content: View>: View {
     }
     .background(RoundedRectangle(cornerRadius: 18, style: .continuous).fill(Theme.panel.opacity(isOpen ? 0.96 : 0.82)))
     .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).stroke(isOpen ? Theme.cyan.opacity(0.7) : Theme.panelEdge, lineWidth: isOpen ? 1.5 : 1))
+    .id(id) // so a screen can scroll a section into view
   }
 }
 

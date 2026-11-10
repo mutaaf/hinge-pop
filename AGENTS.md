@@ -51,7 +51,8 @@ The first Play and the first two-player match open a guided tour using real bubb
 ## Native app and App Store
 
 - Every version needs `ios/release-notes/<version>.md`. Put the `# Hinge Pop <v>: Headline` line first, then `## Bubble news` with 1–4 `- [sf.symbol] line` callouts, an optional `## More`, then the tester notes.
-  - The app bundles the file and shows it once per version as the update card (`WhatsNew.swift`, `UpdateNotes` in the core). The card never shows on a fresh install or under debug flags; `-whatsNew` forces it.
+  - A callout can end with `{destination}` (`{guide/duo}`, `{map}`, `{play}`…): it becomes a tap that closes the card and opens that place. Leave it off when the news has no screen. Tokens are listed in `ios/release-notes/README.md`.
+  - The app bundles the file and shows it once per version as the update card (`WhatsNew.swift`, `UpdateNotes` in the core). The card never shows on a fresh install or under debug flags; `-whatsNew` forces it (debug builds) without recording the version.
   - TestFlight gets the same file minus the Bubble news.
   - Nods are original only: no real titles, characters or quotes.
 
