@@ -9,6 +9,8 @@ enum Route: Equatable {
 @MainActor @Observable
 final class AppModel {
   var route = Route.home
+  /// This version's update card, when there's one to show.
+  var updateNotes: UpdateNotes?
   var progress: GameProgress { didSet { save() } }
   @ObservationIgnored private let key = "hinge-pop-progress"
 
@@ -44,6 +46,31 @@ final class AppModel {
     if args.contains("-daily") { route = .play(today()) }
     #endif
     applySettings()
+    checkUpdateNotes()
+  }
+
+  /// Shows the update card once per version. A fresh install marks the version seen without showing it.
+  private func checkUpdateNotes() {
+    let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? ""
+    var show = UpdateNotes.shouldShow(seen: progress.seenNotes, current: version, playedBefore: progress.playedBefore)
+    #if DEBUG
+    // Tests and store captures launch with flags and never see it, unless they ask with -whatsNew.
+    let flagged = ProcessInfo.processInfo.arguments.dropFirst().contains { $0.hasPrefix("-") && !$0.hasPrefix("-NS") && !$0.hasPrefix("-Apple") }
+    if Debug.has("-whatsNew") { show = true } else if flagged { show = false }
+    #endif
+    guard show, route == .home else {
+      if progress.seenNotes == nil && !progress.playedBefore { progress.seenNotes = version }
+      return
+    }
+    guard let url = Bundle.main.url(forResource: version, withExtension: "md", subdirectory: "release-notes"),
+          let text = try? String(contentsOf: url, encoding: .utf8),
+          let notes = UpdateNotes.parse(text, version: version) else { return }
+    updateNotes = notes
+  }
+
+  func dismissUpdateNotes() {
+    if let v = updateNotes?.version { progress.seenNotes = v }
+    updateNotes = nil
   }
 
   func applySettings() {
