@@ -38,6 +38,41 @@ final class UpdateNotesTests: XCTestCase {
     XCTAssertNil(UpdateNotes.parse("# Title only", version: "1"))
   }
 
+  func testForcingTheCardNeverRecordsTheVersion() {
+    XCTAssertEqual(UpdateNotes.seenAfterClosing(seen: "0.1.1", shown: "0.1.2", forced: false), "0.1.2")
+    XCTAssertEqual(UpdateNotes.seenAfterClosing(seen: "0.1.1", shown: "0.1.2", forced: true), "0.1.1", "-whatsNew leaves the gate alone")
+    XCTAssertNil(UpdateNotes.seenAfterClosing(seen: nil, shown: "0.1.2", forced: true))
+    // So the real update still shows it after a forced look.
+    let after = UpdateNotes.seenAfterClosing(seen: "0.1.1", shown: "0.1.2", forced: true)
+    XCTAssertTrue(UpdateNotes.shouldShow(seen: after, current: "0.1.2", playedBefore: true))
+  }
+
+  func testCalloutsCarryWhereTheyGo() throws {
+    let md = """
+    # Hinge Pop 9.9: Big Night
+
+    ## Bubble news
+    - [book] Read up {guide/duo}
+    - [map] See the map {map}
+    - [gear] Plain one
+    - [bolt] Nowhere real {moon}
+    - [star] Fifth is cut {play}
+    """
+    let n = try XCTUnwrap(UpdateNotes.parse(md, version: "9.9"))
+    XCTAssertEqual(n.callouts, [
+      .init(symbol: "book", text: "Read up", destination: .guide(section: "duo")),
+      .init(symbol: "map", text: "See the map", destination: .map),
+      .init(symbol: "gear", text: "Plain one"),
+      .init(symbol: "bolt", text: "Nowhere real"),
+    ])
+    XCTAssertEqual(UpdateNotes.Destination("guide"), .guide(section: nil))
+    for (token, place) in [("settings", UpdateNotes.Destination.settings), ("play", .play), ("arcade", .arcade), ("daily", .daily), ("versus", .versus)] {
+      XCTAssertEqual(UpdateNotes.Destination(token), place)
+    }
+    XCTAssertNil(UpdateNotes.Destination("map/extra"))
+    XCTAssertNil(UpdateNotes.Destination(""))
+  }
+
   /// Every shipping version needs notes the card can show. The file is the same one TestFlight reads.
   func testTheCurrentVersionHasNotes() throws {
     let ios = URL(fileURLWithPath: #filePath).deletingLastPathComponent().appendingPathComponent("../../../..").standardized
@@ -48,5 +83,13 @@ final class UpdateNotesTests: XCTestCase {
     let n = try XCTUnwrap(UpdateNotes.parse(text, version: String(version)))
     XCTAssertTrue((1...4).contains(n.callouts.count))
     XCTAssertTrue(n.callouts.allSatisfy { $0.text.count <= 90 })
+    // A {destination} in the file that the parser drops is a typo: every tagged line must route somewhere real.
+    let tagged = text.components(separatedBy: .newlines).filter { $0.hasPrefix("- [") && $0.hasSuffix("}") }.count
+    XCTAssertEqual(n.callouts.filter { $0.destination != nil }.count, min(tagged, n.callouts.count))
+    // And a How to play section it names must exist in the guide.
+    let screens = try String(contentsOf: ios.appendingPathComponent("HingePop/Screens.swift"), encoding: .utf8)
+    for case .guide(let section?)? in n.callouts.map(\.destination) {
+      XCTAssertTrue(screens.contains("id: \"\(section)\""), "no How to play section \(section)")
+    }
   }
 }

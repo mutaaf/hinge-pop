@@ -96,7 +96,8 @@ export function notesFor(v = version()) {
   const kid = raw.match(/^## Bubble news\n([\s\S]*?)(?=^## |(?![\s\S]))/m);
   const kidLines = kid ? kid[1].split("\n").filter((l) => /^- \[[a-z0-9.]+\] \S/.test(l)) : [];
   if (kidLines.length < 1 || kidLines.length > 4) throw new Error(`release-notes/${v}.md needs a "## Bubble news" section with 1–4 "- [sf.symbol] kid line" items (shown in the in-app update reel).`);
-  const long = kidLines.find((l) => l.replace(/^- \[[^\]]+\] /, "").length > 90);
+  // A trailing {destination} is where the callout's tap goes in the app; it isn't shown, so it doesn't count.
+  const long = kidLines.find((l) => l.replace(/^- \[[^\]]+\] /, "").replace(/\s*\{[^}]*\}$/, "").length > 90);
   if (long) throw new Error(`release-notes/${v}.md: Bubble news lines must be ≤ 90 characters: ${long}`);
   const text = raw
     .replace(/^## Bubble news\n[\s\S]*?(?=^## |(?![\s\S]))/m, "") // kid reel lives in the app; TestFlight gets the grown-up notes

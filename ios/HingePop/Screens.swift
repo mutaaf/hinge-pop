@@ -32,6 +32,7 @@ struct RootView: View {
     .overlay {
       if let notes = app.updateNotes {
         WhatsNewView(notes: notes) { withAnimation(.easeOut(duration: 0.2)) { app.dismissUpdateNotes() } }
+          go: { place in withAnimation(.easeOut(duration: 0.2)) { app.follow(place) } }
           .transition(.opacity)
       }
     }
@@ -286,58 +287,69 @@ struct InfinityRow: View {
 struct GuideView: View {
   @Environment(AppModel.self) private var app
   @State private var open: String? = nil
+  @State private var arrived = false
   var body: some View {
     ZStack {
       ArenaBackground(arena: .space)
       VStack(spacing: 0) {
         BackBar(title: "How to play")
-        ScrollView {
-          VStack(spacing: 10) {
-            ViewThatFits(in: .horizontal) {
-              HStack(alignment: .top, spacing: 10) { heroCards }
-              VStack(spacing: 10) { heroCards }
-            }
-            Fold(title: "Bubbles", note: "\(ActorKind.allCases.count)", id: "bubbles", open: $open) {
-              IconGrid(items: ActorKind.allCases.map { k in .init(id: k.rawValue, title: k.title, blurb: k.blurb, detail: k.detail, art: .bubble(k.artKind)) })
-            }
-            Fold(title: "Power-ups", note: "\(PowerUp.allCases.count)", id: "powers", open: $open) {
-              IconGrid(items: PowerUp.allCases.map { p in .init(id: p.rawValue, title: p.title, blurb: p.blurb, detail: p.detail, art: .power(p.artKind)) })
-            }
-            Fold(title: "Guest stars", note: "\(caughtCount) of \(Cameo.allCases.count) caught", id: "guests", open: $open) {
-              IconGrid(items: Cameo.allCases.map { c in .init(id: c.rawValue, title: c.title, blurb: "Gives \(c.gift)", detail: "\(c.moves). “\(c.quip)”", art: .cameo(c.artKind), dimmed: !app.progress.hasCaught(c)) })
-            }
-            Fold(title: "Shields and meter", id: "meter", open: $open) { meterFacts }
-            Fold(title: "Scoring", id: "score", open: $open) { scoreFacts }
-            Fold(title: "On iPhone Duo", id: "duo", open: $open) {
-              FactRow(art: .bubble(.golden), text: "A page lights up: faster bubbles, double points.")
-              FactRow(art: .glyph(.starOn), text: "Pop across the fold for a crossfold combo.")
-              FactRow(art: .glyph(.shieldOn), text: "Touch both pages by the fold at once to clap it.")
-            }
-            Fold(title: "Two players", id: "two", open: $open) {
-              FactRow(art: .glyph(.shieldOn), text: "One side each. Touches stay on your side.")
-              FactRow(art: .bubble(.fast), text: "What you miss lands on your rival.")
-              FactRow(art: .glyph(.starOn), text: "Last shield standing wins. Otherwise, top score.")
-            }
-            Fold(title: "Replay a tour", id: "tour", open: $open) {
+        ScrollViewReader { scroller in
+          ScrollView {
+            VStack(spacing: 10) {
               ViewThatFits(in: .horizontal) {
-                HStack(spacing: 10) { soloTour; duoTour }
-                VStack(spacing: 10) { soloTour; duoTour }
+                HStack(alignment: .top, spacing: 10) { heroCards }
+                VStack(spacing: 10) { heroCards }
+              }
+              Fold(title: "Bubbles", note: "\(ActorKind.allCases.count)", id: "bubbles", open: $open) {
+                IconGrid(items: ActorKind.allCases.map { k in .init(id: k.rawValue, title: k.title, blurb: k.blurb, detail: k.detail, art: .bubble(k.artKind)) })
+              }
+              Fold(title: "Power-ups", note: "\(PowerUp.allCases.count)", id: "powers", open: $open) {
+                IconGrid(items: PowerUp.allCases.map { p in .init(id: p.rawValue, title: p.title, blurb: p.blurb, detail: p.detail, art: .power(p.artKind)) })
+              }
+              Fold(title: "Guest stars", note: "\(caughtCount) of \(Cameo.allCases.count) caught", id: "guests", open: $open) {
+                IconGrid(items: Cameo.allCases.map { c in .init(id: c.rawValue, title: c.title, blurb: "Gives \(c.gift)", detail: "\(c.moves). “\(c.quip)”", art: .cameo(c.artKind), dimmed: !app.progress.hasCaught(c)) })
+              }
+              Fold(title: "Shields and meter", id: "meter", open: $open) { meterFacts }
+              Fold(title: "Scoring", id: "score", open: $open) { scoreFacts }
+              Fold(title: "On iPhone Duo", id: "duo", open: $open) {
+                FactRow(art: .bubble(.golden), text: "A page lights up: faster bubbles, double points.")
+                FactRow(art: .glyph(.starOn), text: "Pop across the fold for a crossfold combo.")
+                FactRow(art: .glyph(.shieldOn), text: "Touch both pages by the fold at once to clap it.")
+              }
+              Fold(title: "Two players", id: "two", open: $open) {
+                FactRow(art: .glyph(.shieldOn), text: "One side each. Touches stay on your side.")
+                FactRow(art: .bubble(.fast), text: "What you miss lands on your rival.")
+                FactRow(art: .glyph(.starOn), text: "Last shield standing wins. Otherwise, top score.")
+              }
+              Fold(title: "Replay a tour", id: "tour", open: $open) {
+                ViewThatFits(in: .horizontal) {
+                  HStack(spacing: 10) { soloTour; duoTour }
+                  VStack(spacing: 10) { soloTour; duoTour }
+                }
               }
             }
+            .padding(.horizontal, 16)
+            .padding(.bottom, 28)
+            .frame(maxWidth: 760)
+            .frame(maxWidth: .infinity)
           }
-          .padding(.horizontal, 16)
-          .padding(.bottom, 28)
-          .frame(maxWidth: 760)
-          .frame(maxWidth: .infinity)
+          .onChange(of: open) { _, section in
+            // Arriving from an update callout: bring the opened section into view.
+            guard let section, arrived else { return }
+            arrived = false
+            withAnimation(.easeOut(duration: 0.3)) { scroller.scrollTo(section, anchor: .top) }
+          }
         }
       }
     }
-    #if DEBUG
     .task {
-      open = Debug.string("-fold")
+      #if DEBUG
+      if let fold = Debug.string("-fold") { open = fold }
       Debug.ready("root")
+      #endif
+      // An update callout can send you straight to its section.
+      if let section = app.guideSection { arrived = true; open = section; app.guideSection = nil }
     }
-    #endif
   }
 
   private var caughtCount: Int { Cameo.allCases.filter { app.progress.hasCaught($0) }.count }
