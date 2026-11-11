@@ -30,7 +30,9 @@ final class TwistLayer {
   private var wellNodes: [SKSpriteNode] = []
   private let wellTime = SKUniform(name: "u_t", float: 0)
   private let wellTint = SKUniform(name: "u_tint", vectorFloat3: .init(1, 1, 1))
-  private var wellShader: SKShader!
+  private let wellAlpha = SKUniform(name: "u_a", float: 0)
+  /// One shader per spin direction, sharing their uniforms.
+  private var wellShaders: [SKShader] = []
   // Tide
   private let tideBand = SKSpriteNode(color: .white, size: CGSize(width: 10, height: 10))
   private let tideTime = SKUniform(name: "u_t", float: 0)
@@ -84,24 +86,26 @@ final class TwistLayer {
     }
 
     // Wells: three spiral arms winding into a white-hot core.
-    wellShader = SKShader(source: """
+    for spin in [1, -1] {
+    let wellShader = SKShader(source: """
     void main() {
+      float spin = \(spin).0;
       vec2 p = v_tex_coord * 2.0 - 1.0;
       float r = length(p);
-      if (r >= 1.0) { gl_FragColor = vec4(0.0); return; }
+      float inside = 1.0 - step(1.0, r);
       float ang = atan(p.y, p.x);
-      float s = u_spin;
-      float arms = 0.5 + 0.5 * sin(ang * 3.0 - s * u_t * 2.4 + s * log(r + 0.04) * 5.5);
+      float arms = 0.5 + 0.5 * sin(ang * 3.0 - spin * u_t * 2.4 + spin * log(r + 0.04) * 5.5);
       float fade = 1.0 - smoothstep(0.35, 1.0, r);
       float core = exp(-r * r * 46.0);
       float halo = exp(-(r - 0.18) * (r - 0.18) * 160.0) * 0.5;
       vec3 col = mix(u_tint, vec3(1.0), clamp(core * 1.4 + halo * 0.6, 0.0, 1.0));
-      float a = clamp(arms * fade * 0.5 + core * 0.95 + halo, 0.0, 1.0) * u_a;
+      float a = clamp(arms * fade * 0.3 + core * 0.8 + halo * 0.7, 0.0, 1.0) * u_a * inside;
       gl_FragColor = vec4(col * a, a);
     }
     """)
-    wellShader.uniforms = [wellTime, wellTint]
-    wellShader.attributes = [SKAttribute(name: "u_spin", type: .float), SKAttribute(name: "u_a", type: .float)]
+    wellShader.uniforms = [wellTime, wellTint, wellAlpha]
+    wellShaders.append(wellShader)
+    }
 
     // Tide: the band the line sweeps, with flowing water marks at its high and low points.
     let tide = SKShader(source: """
@@ -226,9 +230,7 @@ final class TwistLayer {
     for n in wellNodes { n.removeFromParent() }
     wellNodes = game.wells.map { w in
       let n = SKSpriteNode(color: .white, size: CGSize(width: 10, height: 10))
-      n.shader = wellShader
-      n.setValue(SKAttributeValue(float: Float(w.spin)), forAttribute: "u_spin")
-      n.setValue(SKAttributeValue(float: 0), forAttribute: "u_a")
+      n.shader = wellShaders[w.spin > 0 ? 0 : 1]
       n.blendMode = .add
       n.zPosition = 0.4
       root.addChild(n)
@@ -256,11 +258,11 @@ final class TwistLayer {
     drawWind(game, area: area, dt: dt, reduceMotion: reduceMotion)
     // Wells swell in as the level starts and spin with the clock.
     wellTime.floatValue = t
+    wellAlpha.floatValue = Float(min(1, 0.3 + game.time * 0.5))
     for (i, w) in game.wells.enumerated() where i < wellNodes.count {
       let n = wellNodes[i]
       n.position = CGPoint(x: w.x, y: y(w.y))
       n.size = CGSize(width: w.reach * 2, height: w.reach * 2)
-      n.setValue(SKAttributeValue(float: Float(min(1, 0.3 + game.time * 0.5))), forAttribute: "u_a")
     }
     // The tide: a band showing how far the line will travel.
     if has(.tide), game.tideReachNow > 1 {
@@ -425,21 +427,21 @@ final class TwistLayer {
     let arc = CGFloat(1.15)
     ctx.setLineCap(.round)
     ctx.setStrokeColor(UIColor(red: 1, green: 0.78, blue: 0.25, alpha: 0.35).cgColor)
-    ctx.setLineWidth(18)
+    ctx.setLineWidth(30)
     ctx.addArc(center: c, radius: r, startAngle: -arc, endAngle: arc, clockwise: false)
     ctx.strokePath()
     ctx.setStrokeColor(UIColor(red: 1, green: 0.86, blue: 0.4, alpha: 1).cgColor)
-    ctx.setLineWidth(9)
+    ctx.setLineWidth(16)
     ctx.addArc(center: c, radius: r, startAngle: -arc, endAngle: arc, clockwise: false)
     ctx.strokePath()
     ctx.setStrokeColor(UIColor.white.withAlphaComponent(0.95).cgColor)
-    ctx.setLineWidth(3)
+    ctx.setLineWidth(5)
     ctx.addArc(center: c, radius: r + 1, startAngle: -arc * 0.8, endAngle: arc * 0.8, clockwise: false)
     ctx.strokePath()
     // Rivets.
     ctx.setFillColor(UIColor.white.cgColor)
     for a in stride(from: -arc * 0.66, through: arc * 0.66, by: arc * 0.66) {
-      ctx.fillEllipse(in: CGRect(x: c.x + cos(a) * r - 3, y: c.y + sin(a) * r - 3, width: 6, height: 6))
+      ctx.fillEllipse(in: CGRect(x: c.x + cos(a) * r - 4, y: c.y + sin(a) * r - 4, width: 8, height: 8))
     }
     return SKTexture(cgImage: ctx.makeImage()!)
   }
