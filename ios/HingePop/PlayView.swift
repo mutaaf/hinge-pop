@@ -552,6 +552,9 @@ struct ResultOverlay: View {
     case .versus: return g.players.contains { $0.shields <= 0 } ? "Last shield gone." : "All clear. Top score wins."
     case .campaign(let n):
       if g.status == .won {
+        if !app.progress.isOpen(n + 1), let w = Worlds.world(ofLevel: n + 1), let r = Worlds.realm(w.realm) {
+          return "\(r.name) opens at \(Gates.stars(toOpen: r.number)) stars. Win \(app.progress.starsShort(r.number)) more."
+        }
         let next = Campaign.level(n + 1)
         return "Next: \(next.isBoss ? "a boss" : "\(next.spawns.count) \(next.spawns.count == 1 ? "bubble" : "bubbles")"), in \(Campaign.chapter(of: n + 1).title)."
       }
@@ -571,11 +574,18 @@ struct ResultOverlay: View {
   private func actions(_ g: Game) -> some View {
     switch session.mode {
     case .campaign(let n) where g.status == .won:
-      Button("Level \(n + 1)") { session.nextLevel() }.buttonStyle(ChunkyStyle())
-      Button("Map") { app.route = .map }.buttonStyle(QuietStyle())
+      if app.progress.pendingCheer != nil {
+        // A world just finished: its moment plays on the way out.
+        Button("Celebrate") { app.route = .map }.buttonStyle(ChunkyStyle())
+      } else if app.progress.isOpen(n + 1) {
+        Button("Level \(n + 1)") { session.nextLevel() }.buttonStyle(ChunkyStyle())
+      } else {
+        Button("Find stars to win") { app.route = .play(.campaign(app.progress.nextUp)) }.buttonStyle(ChunkyStyle())
+      }
+      Button("Journey") { app.route = .map }.buttonStyle(QuietStyle())
     case .campaign:
       Button("Try again") { session.restart() }.buttonStyle(ChunkyStyle())
-      Button("Map") { app.route = .map }.buttonStyle(QuietStyle())
+      Button("Journey") { app.route = .map }.buttonStyle(QuietStyle())
     case .versus:
       Button("Rematch") { session.restart() }.buttonStyle(ChunkyStyle())
       Button("Menu") { app.route = .home }.buttonStyle(QuietStyle())

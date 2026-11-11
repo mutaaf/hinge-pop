@@ -24,7 +24,7 @@ that place. Leave it off when the news has no screen of its own.
 
 | Token | Opens |
 | --- | --- |
-| `{map}` | Level map |
+| `{map}` | Journey (the level map) |
 | `{guide}` | How to play |
 | `{guide/<id>}` | How to play with that section open (`bubbles`, `powers`, `guests`, `secrets`, `meter`, `score`, `duo`, `two`, `tour`) |
 | `{settings}` | Settings |

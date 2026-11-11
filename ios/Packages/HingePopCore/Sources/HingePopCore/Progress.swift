@@ -53,13 +53,109 @@ public struct GameProgress: Codable, Equatable, Sendable {
 
   public var totalStars: Int { stars.values.reduce(0, +) }
 
-  public func isOpen(_ level: Int) -> Bool { level <= unlocked }
+  // MARK: Journey gates
 
-  /// A backdrop opens when its chapter's first level does.
-  public func arenaOpen(_ arena: Arena) -> Bool {
-    guard let chapter = Campaign.chapters.first(where: { $0.arena == arena }) else { return false }
-    return unlocked >= chapter.levels.lowerBound
+  /// Every level up to here stays open whatever the gates say: the furthest level reached before realm gates
+  /// existed. Nil in saves from before then, which `adoptGates()` fills in (and which already counts as `unlocked`).
+  private var gateFloor: Int? = 1
+  /// Worlds and realms whose complete moment has been shown ("world-12", "realm-2"). Optional so older saves load.
+  private var cheered: [String]? = nil
+
+  /// Run once after loading a save. A save from before the gates keeps every level it had reached, and worlds it
+  /// had already finished don't throw a party on the first launch after the update.
+  public mutating func adoptGates() {
+    guard gateFloor == nil else { return }
+    gateFloor = unlocked
+    settleCheers()
   }
+
+  /// Marks every finished world and realm as already celebrated. `keepingLatest` leaves the furthest one to show.
+  public mutating func settleCheers(keepingLatest: Bool = false) {
+    let last = keepingLatest ? Worlds.all.last(where: { worldComplete($0.number) }) : nil
+    for w in Worlds.all where worldComplete(w.number) && w.number != last?.number { markCheered(.world(w.number)) }
+    for r in Worlds.realms where realmComplete(r.number) && r.number != last?.realm { markCheered(.realm(r.number)) }
+  }
+
+  /// Stars earned in one realm's 80 levels.
+  public func realmStars(_ realm: Int) -> Int {
+    guard let r = Worlds.realm(realm) else { return 0 }
+    let first = (r.worlds.lowerBound - 1) * 10 + 1, last = r.worlds.upperBound * 10
+    return stars.reduce(0) { (first...last).contains($1.key) ? $0 + $1.value : $0 }
+  }
+  public func worldStars(_ world: Int) -> Int {
+    guard let w = Worlds.world(world) else { return 0 }
+    return w.levels.reduce(0) { $0 + (stars[$1] ?? 0) }
+  }
+
+  /// True when the realm's star gate is met. The first realm has none.
+  public func realmOpen(_ realm: Int) -> Bool { starsShort(realm) == 0 }
+  /// How many more stars from the realm before it would open this one. 0 when it's open.
+  public func starsShort(_ realm: Int) -> Int {
+    max(0, Gates.stars(toOpen: realm) - realmStars(realm - 1))
+  }
+
+  /// A level is open once you've reached it and its realm's gate is met, or if it was open before the gates came.
+  public func isOpen(_ level: Int) -> Bool {
+    guard level >= 1, level <= unlocked else { return false }
+    if level <= (gateFloor ?? unlocked) { return true }
+    guard let world = Worlds.world(ofLevel: level), level <= Campaign.finalAuthored else { return true }
+    return realmOpen(world.realm)
+  }
+  /// Reached in order, but waiting on its realm's star gate.
+  public func isGated(_ level: Int) -> Bool { level <= unlocked && !isOpen(level) }
+
+  /// Infinity's generated levels open after the last authored one.
+  public var infinityOpen: Bool { unlocked > Campaign.finalAuthored }
+
+  /// The level a Play button should start: the furthest one reached, or, when that waits on a gate, the first
+  /// level of the realm before it that still has stars to win.
+  public var nextUp: Int {
+    if isOpen(unlocked) { return unlocked }
+    guard let world = Worlds.world(ofLevel: unlocked), let prev = Worlds.realm(world.realm - 1) else { return max(1, unlocked - 1) }
+    let first = (prev.worlds.lowerBound - 1) * 10 + 1, last = prev.worlds.upperBound * 10
+    return (first...last).first { isOpen($0) && (stars[$0] ?? 0) < 3 } ?? max(1, unlocked - 1)
+  }
+
+  public func worldComplete(_ world: Int) -> Bool {
+    guard let w = Worlds.world(world) else { return false }
+    return w.levels.allSatisfy { (stars[$0] ?? 0) > 0 }
+  }
+  public func realmComplete(_ realm: Int) -> Bool {
+    guard let r = Worlds.realm(realm) else { return false }
+    return r.worlds.allSatisfy(worldComplete)
+  }
+
+  public enum Cheer: Equatable, Sendable {
+    case world(Int), realm(Int)
+    public var id: String { switch self { case .world(let n): "world-\(n)"; case .realm(let n): "realm-\(n)" } }
+  }
+  /// The next complete moment still to show, once each. A realm's own moment covers its last world's.
+  public var pendingCheer: Cheer? {
+    let done = Set(cheered ?? [])
+    for r in Worlds.realms where realmComplete(r.number) && !done.contains(Cheer.realm(r.number).id) { return .realm(r.number) }
+    for w in Worlds.all where worldComplete(w.number) && !done.contains(Cheer.world(w.number).id) { return .world(w.number) }
+    return nil
+  }
+  public mutating func markCheered(_ cheer: Cheer) {
+    var ids = [cheer.id]
+    if case .realm(let n) = cheer, let r = Worlds.realm(n) { ids += r.worlds.map { Cheer.world($0).id } }
+    let have = Set(cheered ?? [])
+    let new = ids.filter { !have.contains($0) }
+    if !new.isEmpty { cheered = (cheered ?? []) + new }
+  }
+
+  /// A backdrop opens when the first level of a world that uses it does.
+  public func arenaOpen(_ arena: Arena) -> Bool { firstWorld(using: arena).map { isOpen($0.levels.lowerBound) } ?? false }
+  /// The first world drawn on this backdrop, which is where it unlocks.
+  public func firstWorld(using arena: Arena) -> World? { Worlds.all.first { $0.biome == arena } }
+}
+
+/// How realms open. Generous on purpose: clearing every level of a realm gives 80 stars, so 100 asks for a
+/// two-star run on about a quarter of them. Nobody who plays normally should stall.
+public enum Gates {
+  public static let starsPerRealm = 100
+  /// Stars needed from the realm before `realm` (0 for the first).
+  public static func stars(toOpen realm: Int) -> Int { realm <= 1 ? 0 : starsPerRealm }
 }
 
 public enum Pose: String, Sendable { case noHinge, closed, book, tabletop, flat }
