@@ -325,6 +325,7 @@ struct GuideView: View {
               Fold(title: "Bubbles", note: "\(ActorKind.allCases.count)", id: "bubbles", open: $open) {
                 IconGrid(items: ActorKind.allCases.map { k in .init(id: k.rawValue, title: k.title, blurb: k.blurb, detail: k.detail, art: .bubble(k.artKind)) })
               }
+              Fold(title: "World twists", note: "\(Twist.allCases.count)", id: "twists", open: $open) { TwistGuide() }
               Fold(title: "Power-ups", note: "\(PowerUp.allCases.count)", id: "powers", open: $open) {
                 IconGrid(items: PowerUp.allCases.map { p in .init(id: p.rawValue, title: p.title, blurb: p.blurb, detail: p.detail, art: .power(p.artKind)) })
               }

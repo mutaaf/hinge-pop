@@ -71,6 +71,8 @@ final class GameScene: SKScene {
   private var rushShown = 0
   /// Coral Drift: faint motes that ride the current, so you can see which way it flows.
   private var motes: [SKSpriteNode] = []
+  /// Every other world twist and boss style is drawn here (TwistLayer.swift).
+  private var twists: TwistLayer!
   /// Easter eggs: a twinkle on the level's secret bubble, and taps counted on the world's hidden spot.
   private let glint = SKLabelNode(text: "✦")
   private var spotTaps: [Double] = []
@@ -208,6 +210,10 @@ final class GameScene: SKScene {
     let dot = SKTexture(cgImage: Self.softDot())
     fxTextures["softDot"] = dot
     dashLine.texture = dot
+    twists = TwistLayer(parent: world, dot: dot, host: .init(
+      sparks: { [unowned self] p, r, n, color in self.sparks(at: p, r: r, count: n, color: color) },
+      shockwave: { [unowned self] p, r in self.shockwave(at: p, r: r) },
+      ripple: { [unowned self] p in self.ripple(p) }))
     for _ in 0..<8 {
       let e = SKEmitterNode()
       e.particleTexture = dot
@@ -283,6 +289,7 @@ final class GameScene: SKScene {
     drawSky(game, dt: dt, session: session)
     drawRush(game, dt: dt)
     drawCurrent(game, dt: dt)
+    twists.update(game, area: area, clock: clock, dt: dt, reduceMotion: reduceMotion)
     drawGlint(game, alpha: alpha)
     drawHinge(game)
     drawGates(game)
@@ -306,6 +313,7 @@ final class GameScene: SKScene {
     motes.removeAll()
     rushNode.isHidden = true
     dashLine.isHidden = true
+    twists.reset(game, arena: session?.arena ?? game.spec.arena)
     prewarm(game)
     placeBackdrop()
   }
@@ -514,7 +522,7 @@ final class GameScene: SKScene {
     ribbonTime.floatValue = reduceMotion ? 0 : Float(clock.truncatingRemainder(dividingBy: 1000))
     // A recharging snap dims the line, so you can see at a glance whether it's ready.
     let cooling = game.players.allSatisfy { $0.snapLeft > 0 } ? 0.62 : 1
-    ribbonGlow.floatValue = Float((0.85 + pulse * 0.7 + meter * 0.12 + glow * 0.4) * cooling + snapFlare * 1.6)
+    ribbonGlow.floatValue = Float((0.85 + pulse * 0.7 + meter * 0.12 + glow * 0.4) * cooling + snapFlare * 1.6 + twists.hingeBoost)
     let width = (84 + CGFloat(pulse) * 60 + CGFloat(glow) * 34 + CGFloat(snapFlare) * 150) * CGFloat(max(1, min(1.6, game.scale)))
     // The light runs edge to edge, past the safe area. Only play stops there.
     let length = game.vertical ? area.height - CGFloat(game.top) + insets.bottom : size.width
@@ -593,7 +601,9 @@ final class GameScene: SKScene {
       // Physics runs in fixed steps. Drawing lands between the last two, so motion stays even at any frame rate.
       let px = b.prevX + (b.x - b.prevX) * alpha, py = b.prevY + (b.y - b.prevY) * alpha
       node.position = CGPoint(x: px, y: y(py))
-      node.sprite.alpha = b.grace > 0 ? 0.78 : 1
+      // Fog, the dark and ghosts dim a bubble; springs, regrowth and phasing tint it.
+      let look = twists.look(b, game: game)
+      node.sprite.alpha = (b.grace > 0 ? 0.78 : 1) * look.alpha
       if b.kind == .boss {
         // A wind-up flushes red and swells, which is the player's cue to hit it.
         let flush = b.bossWindup > 0 ? 0.35 + 0.35 * sin(clock * 22) : (b.bossGuard > 0 ? 0.5 : 0)
@@ -601,8 +611,13 @@ final class GameScene: SKScene {
         node.sprite.colorBlendFactor = CGFloat(flush)
         if b.bossWindup > 0 && !reduceMotion { node.setScale(1 + 0.05 * sin(clock * 22)) } else if !node.hasActions() { node.setScale(1) }
         if b.bossWindup > 0 { winding = (b, node.position) }
-      } else if node.sprite.colorBlendFactor != 0 {
+      } else if let tint = look.tint {
+        node.sprite.color = tint
+        node.sprite.colorBlendFactor = look.amount
+        if !node.hasActions() { node.setScale(reduceMotion ? 1 : look.scale) }
+      } else if node.sprite.colorBlendFactor != 0 || node.xScale != 1 {
         node.sprite.colorBlendFactor = 0
+        if !node.hasActions() { node.setScale(1) }
       }
       // Squash along the direction of the hit, keeping the face upright.
       let q = reduceMotion ? 0 : CGFloat(b.sq) * 0.16
@@ -727,14 +742,14 @@ final class GameScene: SKScene {
     }
   }
 
-  private func sparks(at p: CGPoint, r: CGFloat, count: Int) {
+  private func sparks(at p: CGPoint, r: CGFloat, count: Int, color: UIColor? = nil) {
     guard !reduceMotion else { return }
     let palette = (session?.arena ?? .classic).sparkColors
     let e = emitters[nextEmitter]
     nextEmitter = (nextEmitter + 1) % emitters.count
     e.resetSimulation()
     e.position = p
-    e.particleColor = palette[.random(in: 0..<palette.count)]
+    e.particleColor = color ?? palette[.random(in: 0..<palette.count)]
     e.particleSpeed = r * 2.6
     e.particleSpeedRange = r * 2
     e.numParticlesToEmit = min(40, count)
@@ -863,6 +878,7 @@ final class GameScene: SKScene {
   }
 
   private func effect(_ e: GameEvent) {
+    if twists.effect(e, game: session?.game) { return }
     let sound = Sound.shared, haptic = Haptics.shared
     switch e {
     case let .split(x, gy, r, size, points, kind):
@@ -1028,6 +1044,7 @@ final class GameScene: SKScene {
         confetti(); sound.blip(660, 0.3)
       }
       else { sound.blip(70, 0.6, .saw) }
+    default: break
     }
   }
 
@@ -1064,7 +1081,8 @@ final class GameScene: SKScene {
         creaseTouch = (side, clock)
       }
       if !game.flick && session.overlay != .tour {
-        if let b { game.tap(b) }
+        if let b { game.tap(b, atX: p.x, atY: p.y) }
+        game.illuminate(x: p.x, y: p.y)
       } else {
         active[ObjectIdentifier(touch)] = Stroke(bubble: b, start: p, last: p, onLine: b == nil && game.onHinge(x: p.x, y: p.y))
       }
@@ -1091,6 +1109,8 @@ final class GameScene: SKScene {
           stroke.last = stroke.start
         }
         game.slice(fromX: stroke.last.x, fromY: stroke.last.y, toX: p.x, toY: p.y, skip: &stroke.skip)
+        // In the dark a finger carries its own light, just behind the stroke.
+        game.illuminate(x: p.x, y: p.y)
         trail(from: stroke.last, to: p)
         stroke.last = p
       }
@@ -1103,7 +1123,9 @@ final class GameScene: SKScene {
     for touch in touches {
       guard let stroke = active[ObjectIdentifier(touch)] else { continue }
       active[ObjectIdentifier(touch)] = nil
-      if !stroke.slicing, let b = stroke.bubble { game.tap(b) }
+      if !stroke.slicing, let b = stroke.bubble { game.tap(b, atX: stroke.start.x, atY: stroke.start.y) }
+      // A touch in the dark leaves a pool of light behind it.
+      game.illuminate(x: stroke.last.x, y: stroke.last.y)
     }
   }
 

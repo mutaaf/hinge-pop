@@ -106,6 +106,7 @@ struct PlayView: View {
     case .paused: PauseOverlay(session: session)
     case .result: ResultOverlay(session: session)
     case .meet(let kind): MeetOverlay(kind: kind) { session.dismissMeet() }
+    case .world(let n): if let w = Worlds.world(n) { WorldIntroOverlay(world: w) { session.dismissWorld() } }
     case .tour: TourOverlay(session: session, spots: spots, size: size, fold: fold)
     }
   }
