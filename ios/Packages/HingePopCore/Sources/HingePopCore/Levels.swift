@@ -216,7 +216,7 @@ public enum Campaign {
     case .wind: (0.92, [.frozen, .fast, .armored, .golden])
     case .tide: (0.9, [.armored, .basic, .fast, .golden])
     case .fog: (0.92, [.fast, .golden, .armored, .basic])
-    case .ghost: (0.96, [.armored, .fast, .golden, .basic])
+    case .ghost: (1.04, [.armored, .fast, .golden, .basic])
     case .wells: (0.97, [.golden, .magnetic, .fast, .frozen])
     case .portals: (0.95, [.fast, .golden, .repel, .armored])
     case .bounce: (0.9, [.frozen, .armored, .golden, .fast])
