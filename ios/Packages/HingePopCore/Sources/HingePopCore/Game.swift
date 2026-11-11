@@ -32,6 +32,24 @@ public final class Bubble: Identifiable {
   public internal(set) var prevX = 0.0
   public internal(set) var prevY = 0.0
   var contactCooldown = 0.0
+  /// Ghost: 1 when solid, 0 when out of phase. Under half, it can't be touched and can't cross.
+  public internal(set) var presence = 1.0
+  /// Ghost: true while it's fading out or gone.
+  public internal(set) var phasing = false
+  var ghostClock = 0.0
+  /// Bounce: how much faster than cruising its springy bounces have made it (1 is normal).
+  public internal(set) var spring = 1.0
+  /// Regrow: 0 when fresh, 1 the moment it grows back a size.
+  public internal(set) var regrow = 0.0
+  /// Blackout: seconds it stays lit. A dark bubble can't be touched.
+  public internal(set) var lit = 0.0
+  /// Triple: a piece from a three-way split, a little lighter on the meter.
+  public internal(set) var light = false
+  /// Twin bosses are smaller, and a splitter shrinks at each phase.
+  public internal(set) var shrink = 1.0
+  /// Shielded boss: the way its shield faces, in radians (arena coordinates, y down).
+  public internal(set) var shieldAngle = 0.0
+  var blinked = false
   init(id: Int, kind: ActorKind, size: Int, x: Double, y: Double, vx: Double, vy: Double, r: Double, grace: Double) {
     self.id = id; self.kind = kind; self.size = size; self.x = x; self.y = y; self.vx = vx; self.vy = vy; self.r = r; self.grace = grace; side = 0; prevX = x; prevY = y
   }
@@ -58,6 +76,21 @@ public struct Visitor: Identifiable, Sendable {
   var blink = 0.0
   var dodgesLeft = 0
   public var dodgesLeftForTest: Int { dodgesLeft }
+}
+
+/// Wells: a gravity well that pulls bubbles on its side into a slow orbit. `spin` is +1 or -1.
+public struct Well: Sendable, Equatable {
+  public var x: Double, y: Double
+  public var reach: Double
+  public var spin: Double
+  var u: Double, v: Double
+}
+
+/// Blackout: the light a touch leaves behind for a moment.
+public struct Lantern: Sendable, Equatable {
+  public var x: Double, y: Double
+  public var left: Double
+  public var reach: Double
 }
 
 public struct Gate: Sendable {
@@ -119,6 +152,20 @@ public enum GameEvent: Equatable, Sendable {
   case cameoDodged(Cameo, x: Double, y: Double)
   case cameoBlink(Cameo, fromX: Double, fromY: Double, x: Double, y: Double)
   case bump(strength: Double, size: Int)
+  /// World twists: a gust starts blowing (dir is +1 or -1 across the hinge), a beat lands, a pop lands on it,
+  /// a bubble goes through a portal, bounces off a springy wall, grows back, or was out of reach for a touch.
+  case gust(dir: Double)
+  case beat(Int)
+  case beatPop(x: Double, y: Double, points: Int)
+  case portal(fromX: Double, fromY: Double, x: Double, y: Double, r: Double)
+  case spring(x: Double, y: Double, r: Double)
+  case regrow(x: Double, y: Double, r: Double, size: Int)
+  case untouchable(x: Double, y: Double, r: Double)
+  /// Boss styles: a blinker teleports, a summoner calls a wave, a splitter throws off a minion, a shield turns a hit.
+  case bossBlink(fromX: Double, fromY: Double, x: Double, y: Double, r: Double)
+  case bossSummon(x: Double, y: Double, r: Double, count: Int)
+  case bossSplit(x: Double, y: Double, r: Double)
+  case bossShielded(x: Double, y: Double, r: Double)
   case shieldLost(player: Int)
   case recharge(player: Int)
   case cooled(player: Int)
@@ -187,6 +234,32 @@ public final class Game {
   private let isVersus: Bool
   public let meterMax: Int
 
+  // MARK: Twist state (read-only for the renderer)
+
+  /// Where the hinge rests. With the tide it rises and falls around this by `tideOffset`.
+  public private(set) var baseHinge = 0.0
+  public private(set) var tideOffset = 0.0
+  /// Wind: the push across the hinge right now, in points a second (signed: + pushes toward larger x or y).
+  public private(set) var wind = 0.0
+  /// Wind: which way the current or next gust blows, and seconds until it starts (0 while it blows).
+  public private(set) var windDir = 1.0
+  public private(set) var gustIn = 0.0
+  /// The strongest the wind gets this level, for drawing it to scale.
+  public var windPeak: Double { tuning.windForce * scale * spec.intensity }
+  private var windClock = 0.0
+  public private(set) var wells: [Well] = []
+  /// Pulse: beats so far, and how far into the current beat we are (0 right on it).
+  public private(set) var beats = 0
+  public var beatPhase: Double { spec.has(.pulse) ? (time / tuning.beatPeriod).truncatingRemainder(dividingBy: 1) : 0 }
+  /// True inside the window around a beat, where a pop scores double.
+  public var onBeat: Bool {
+    guard spec.has(.pulse) else { return false }
+    let w = tuning.beatWindow / tuning.beatPeriod, p = beatPhase
+    return p <= w || p >= 1 - w * 0.6
+  }
+  public private(set) var lantern: Lantern?
+  private var twistRng = SplitMix(seed: 3)
+
   public var versus: Bool { isVersus }
 
   public init(mode: GameMode, width: Double, height: Double, top: Double = 0, vertical: Bool? = nil, hinge: Double? = nil, score: Int = 0, tuning: Tuning = Tuning(), seed: UInt64 = 1) {
@@ -211,6 +284,11 @@ public final class Game {
     }
     meterMax = spec.meterMax
     self.hinge = fixedHinge ?? defaultHinge()
+    baseHinge = self.hinge
+    twistRng = SplitMix(seed: UInt64(max(1, spec.number)) &* 0x51ED &+ seed)
+    windClock = 0
+    windDir = twistRng.int(2) == 0 ? 1 : -1
+    if spec.has(.wells) { makeWells() }
     cameoRng = SplitMix(seed: UInt64(max(1, spec.number)) &+ seed &* 131)
     cameoClock = tuning.cameoFirst + cameoRng.unit() * 4
     cameoTurn = spec.number
@@ -242,11 +320,12 @@ public final class Game {
   public func radius(of kind: ActorKind, size: Int) -> Double {
     tuning.radii[size] * scale * (kind == .boss ? tuning.bossRadius : 1)
   }
+  private func radius(_ b: Bubble) -> Double { radius(of: b.kind, size: b.size) * b.shrink }
   private func mass(_ b: Bubble) -> Double {
     b.kind == .boss ? tuning.bossMass : tuning.mass[b.size] * b.kind.massFactor
   }
   private func cruise(_ b: Bubble) -> Double {
-    guard b.kind == .boss else { return tuning.speeds[b.size] * scale * spec.speed * b.kind.speedFactor * (onRush(b) ? tuning.rushSpeed : 1) }
+    guard b.kind == .boss else { return tuning.speeds[b.size] * scale * spec.speed * b.kind.speedFactor * (onRush(b) ? tuning.rushSpeed : 1) * b.spring * surge }
     let phaseBoost = 1 + tuning.bossPhaseSpeed * Double(b.bossPhase)
     let state = b.bossWindup > 0 ? 0.15 : b.bossDashing ? tuning.bossDashSpeed : 1
     return tuning.speeds[b.size] * scale * spec.speed * b.kind.speedFactor * phaseBoost * state
@@ -261,6 +340,7 @@ public final class Game {
     let sp = cruise(b) * speed
     b.vx = cos(angle) * sp; b.vy = sin(angle) * sp
     if kind == .armored { b.armor = 1 }
+    if kind != .boss && spec.has(.ghost) { b.ghostClock = ghostGap() * (0.35 + 0.5 * twistRng.unit()) }
     b.side = sideOf(b)
     bubbles.append(b)
     return b
@@ -309,6 +389,13 @@ public final class Game {
       let deg = inNear ? (row % 2 == 1 ? 145.0 : 35.0) : (row % 2 == 1 ? 40.0 : 140.0)
       put(s.kind, size: s.size, u: u, v: v, degrees: deg)
     }
+    // Twin bosses: two smaller ones, one on each side, sharing one health bar and taking turns to wind up.
+    if spec.boss == .twins, spec.isBoss, let first = bubbles.first(where: { $0.kind == .boss }) {
+      first.shrink = tuning.twinScale; first.r = radius(first)
+      let twin = put(.boss, size: 0, u: 0.5, v: 0.8, degrees: 140)
+      twin.shrink = tuning.twinScale; twin.r = radius(twin)
+      twin.bossClock = tuning.bossWindupEvery / 2
+    }
     // Every campaign level from 2 hides one secret bubble, picked the same way each time.
     if case .campaign(let n) = mode, n >= 2 {
       let pool = bubbles.filter { $0.id >= firstId && $0.kind != .boss }
@@ -334,7 +421,7 @@ public final class Game {
   }
 
   public func clearScene() {
-    bubbles.removeAll(); pickups.removeAll(); gates.removeAll(); visitors.removeAll(); events.removeAll(); ready = 0
+    bubbles.removeAll(); pickups.removeAll(); gates.removeAll(); visitors.removeAll(); events.removeAll(); arrivals.removeAll(); ready = 0
   }
   public func addPickup(_ kind: PowerUp, x: Double, y: Double) {
     pickups.append(Pickup(id: nextId, kind: kind, x: x, y: y, life: tuning.pickupLife)); nextId += 1
@@ -431,15 +518,22 @@ public final class Game {
   }
 
   /// A touch on a bubble. A flick direction aims the pieces, and a harder flick launches them faster.
+  /// `atX`/`atY` is where the touch landed, which matters only for a shielded boss.
+  /// A bubble you can't reach (fogged, dark or out of phase) ignores the touch.
   @discardableResult
-  public func tap(_ b: Bubble, dirX: Double? = nil, dirY: Double? = nil) -> Bool {
+  public func tap(_ b: Bubble, dirX: Double? = nil, dirY: Double? = nil, atX: Double? = nil, atY: Double? = nil) -> Bool {
     guard status == .playing, ready <= 0, bubbles.contains(where: { $0 === b }) else { return false }
+    guard canTouch(b) else { events.append(.untouchable(x: b.x, y: b.y, r: b.r)); return false }
     let owner = playerIndex(of: b)
     players[owner].taps += 1
     if dirX != nil { players[owner].flicks += 1 }
     if b.kind == .boss {
       if b.bossGuard > 0 {
         events.append(.bossBlocked(x: b.x, y: b.y, r: b.r))
+        return true
+      }
+      if let atX, let atY, shieldCovers(b, x: atX, y: atY) {
+        events.append(.bossShielded(x: b.x, y: b.y, r: b.r))
         return true
       }
       // A boss hit doesn't feed the streak, or the fight would refill its own shields.
@@ -458,10 +552,14 @@ public final class Game {
       return true
     }
     revealSecret(b)
-    let pts = points(b, &players[owner])
+    var pts = points(b, &players[owner])
+    // Pulse: a pop on the beat scores double and adds an extra combo step.
+    let beatHit = onBeat
+    if beatHit { pts *= 2 }
     players[owner].score += pts
     let fresh = players[owner].comboT <= 0
     bumpCombo(&players[owner])
+    if beatHit { bumpCombo(&players[owner]); events.append(.beatPop(x: b.x, y: b.y, points: pts)) }
     crossfold(b, owner: owner, fresh: fresh)
     advanceStreak(owner)
     remove(b)
@@ -486,7 +584,7 @@ public final class Game {
     let touch = (vertical ? x0 : y0) < hinge ? -1 : 1
     let reach = tuning.sliceReach * max(1, scale)
     var hits: [(Bubble, Double)] = []
-    for b in bubbles where b.grace <= 0 && !skip.contains(b.id) {
+    for b in bubbles where b.grace <= 0 && !skip.contains(b.id) && canTouch(b) {
       if isVersus && b.side != touch { continue }
       let t = max(0, min(1, ((b.x - x0) * dx + (b.y - y0) * dy) / len2))
       let px = x0 + dx * t, py = y0 + dy * t
@@ -500,9 +598,11 @@ public final class Game {
       skip.insert(v.id)
       catchVisitor(v.id, owner: 0)
     }
+    let len = len2.squareRoot()
     for (b, _) in hits where status == .playing {
       skip.insert(b.id)
-      if tap(b, dirX: dx * 3, dirY: dy * 3) { count += 1 }
+      // A swipe meets a bubble on the side it came from.
+      if tap(b, dirX: dx * 3, dirY: dy * 3, atX: b.x - dx / len * b.r, atY: b.y - dy / len * b.r) { count += 1 }
     }
     if count > 0 { players[isVersus && touch > 0 ? 1 : 0].slices += 1 }
     return count
@@ -536,9 +636,13 @@ public final class Game {
     let base = aimed ? atan2(dirY ?? 0, dirX ?? 0) : atan2(b.vy, b.vx)
     let spread = aimed ? 0.35 : 0.96
     let launch = aimed ? 1 + min(1, hypot(dirX ?? 0, dirY ?? 0) / 120) : 1
-    for sign in [-1.0, 1.0] {
+    // Triple: three pieces, each a little lighter on the meter.
+    let triple = spec.has(.triple)
+    for sign in triple ? [-1.15, 0, 1.15] : [-1.0, 1.0] {
       let a = base + sign * spread
-      add(b.kind.childKind, size: b.size + 1, x: b.x + cos(a) * childR * 0.7, y: b.y + sin(a) * childR * 0.7, angle: a, grace: tuning.graceTap, speed: launch)
+      let piece = add(b.kind.childKind, size: b.size + 1, x: b.x + cos(a) * childR * 0.7, y: b.y + sin(a) * childR * 0.7, angle: a, grace: tuning.graceTap, speed: launch)
+      if triple { piece.light = true }
+      if spec.has(.blackout) { piece.lit = tuning.litTime }
     }
   }
 
@@ -557,11 +661,15 @@ public final class Game {
   }
 
   /// Bosses get tougher chapter by chapter.
-  public var bossHitsPerPhase: Int { max(1, min(tuning.bossHitsPerPhase + 3, tuning.bossHitsPerPhase - 1 + max(1, spec.chapter))) }
+  public var bossHitsPerPhase: Int {
+    let hits = max(1, min(tuning.bossHitsPerPhase + 3, tuning.bossHitsPerPhase - 1 + max(1, spec.chapter)))
+    // Twins share one bar, and you can hit one while the other guards, so their bar is a little shorter.
+    return spec.boss == .twins ? max(1, hits * 2 / 3) : hits
+  }
 
   private func hitBoss(_ b: Bubble, by owner: Int) {
     let staggered = b.bossWindup > 0
-    if staggered { b.bossWindup = 0; b.bossDashing = false; b.bossClock = 0 }
+    if staggered { b.bossWindup = 0; b.bossDashing = false; b.bossClock = 0; b.blinked = false }
     let damage = staggered ? 2 : 1
     let pts = Int(Double(tuning.points[1]) * players[owner].combo) * (players[owner].overcharge > 0 ? 2 : 1) * damage
     players[owner].score += pts
@@ -570,23 +678,52 @@ public final class Game {
     b.bossGuard = tuning.bossGuard
     impact(b, 0, cruise(b) * 2)
     events.append(staggered ? .bossStagger(x: b.x, y: b.y, r: b.r, points: pts) : .bossHit(x: b.x, y: b.y, r: b.r, points: pts, phase: b.bossPhase))
-    guard b.bossHits >= bossHitsPerPhase else { return }
+    // Twins share one health bar.
+    let twins = spec.boss == .twins ? bubbles.filter { $0.kind == .boss && $0 !== b } : []
+    guard b.bossHits >= bossHitsPerPhase else { for t in twins { t.bossHits = b.bossHits }; return }
     b.bossHits = 0
     b.bossPhase += 1
-    b.bossWindup = 0; b.bossDashing = false; b.bossClock = 0
+    b.bossWindup = 0; b.bossDashing = false; b.bossClock = 0; b.blinked = false
+    for t in twins { t.bossHits = 0; t.bossPhase = b.bossPhase }
     events.append(.bossPhase(x: b.x, y: b.y, r: b.r, phase: b.bossPhase))
     if b.bossPhase >= max(1, spec.bossPhases) {
       remove(b)
+      for t in twins { remove(t); events.append(.bossPhase(x: t.x, y: t.y, r: t.r, phase: t.bossPhase)) }
       players[owner].score += tuning.points[3] * 4
       return
     }
-    // Each phase calls in more help, armored from the third on. The first also leaves a Chain Burst to deal with it.
-    let helpers = tuning.bossMinions + b.bossPhase - 1
-    for i in 0..<helpers {
-      let a = Double(i) / Double(helpers) * 2 * .pi + 0.4
-      let kind: ActorKind = b.bossPhase >= 3 && i == 0 ? .armored : .fast
-      add(kind, size: kind == .armored ? 1 : 2, x: b.x + cos(a) * b.r, y: b.y + sin(a) * b.r, angle: a, grace: tuning.graceTap)
+    switch spec.boss {
+    case .splitter:
+      // It sheds a fast piece of itself and comes back smaller and quicker.
+      b.shrink *= tuning.splitterShrink
+      b.r = radius(b)
+      let away = atan2(b.vy, b.vx) + .pi
+      add(.fast, size: 1, x: b.x + cos(away) * b.r, y: b.y + sin(away) * b.r, angle: away, grace: tuning.graceTap)
+      for i in 0..<(b.bossPhase - 1) {
+        let a = away + (i % 2 == 0 ? 1.4 : -1.4)
+        add(.fast, size: 2, x: b.x + cos(a) * b.r, y: b.y + sin(a) * b.r, angle: a, grace: tuning.graceTap)
+      }
+      events.append(.bossSplit(x: b.x, y: b.y, r: b.r))
+    case .summoner:
+      // A wave of basics marches in from its own wall.
+      let count = 2 + b.bossPhase
+      for i in 0..<count {
+        let u = (Double(i) + 0.5) / Double(count)
+        let kind: ActorKind = b.bossPhase >= 3 && i == count / 2 ? .armored : .basic
+        let m = put(kind, size: kind == .armored ? 1 : 2, u: u, v: b.side < 0 ? 0.06 : 0.94, degrees: 35 + 110 * u)
+        m.grace = tuning.graceHinge
+      }
+      events.append(.bossSummon(x: b.x, y: b.y, r: b.r, count: count))
+    default:
+      // Each phase calls in more help, armored from the third on.
+      let helpers = tuning.bossMinions + b.bossPhase - 1
+      for i in 0..<helpers {
+        let a = Double(i) / Double(helpers) * 2 * .pi + 0.4
+        let kind: ActorKind = b.bossPhase >= 3 && i == 0 ? .armored : .fast
+        add(kind, size: kind == .armored ? 1 : 2, x: b.x + cos(a) * b.r, y: b.y + sin(a) * b.r, angle: a, grace: tuning.graceTap)
+      }
     }
+    // The first phase also leaves a Chain Burst to deal with the help.
     if b.bossPhase == 1 { addPickup(.chainBurst, x: b.x, y: b.y) }
   }
 
@@ -708,12 +845,12 @@ public final class Game {
         let off = childR + 2, al = sign * childR
         let x = vertical ? hinge + Double(newSide) * off : b.x + al
         let y = vertical ? b.y + al : hinge + Double(newSide) * off
-        add(childKind, size: childSize, x: x, y: y, angle: outward + sign * 0.87, grace: tuning.graceHinge)
+        add(childKind, size: childSize, x: x, y: y, angle: outward + sign * 0.87, grace: tuning.graceHinge).light = b.light
       } else {
-        add(childKind, size: childSize, x: b.x, y: b.y, angle: heading + sign * 0.96)
+        add(childKind, size: childSize, x: b.x, y: b.y, angle: heading + sign * 0.96).light = b.light
       }
     }
-    charge(owner, crossingCost(size: b.size) * (players[owner].overcharge > 0 ? 2 : 1))
+    charge(owner, crossingCost(size: b.size, light: b.light) * (players[owner].overcharge > 0 ? 2 : 1))
     checkEnd()
   }
 
@@ -725,6 +862,11 @@ public final class Game {
     case 1: (meterMax + 1) / 2
     default: 1
     }
+  }
+
+  /// Triple: a medium piece from a three-way split costs a step less (never less than 1).
+  public func crossingCost(size: Int, light: Bool) -> Int {
+    light && size == 1 ? max(1, crossingCost(size: size) - 1) : crossingCost(size: size)
   }
 
   private func checkEnd() {
@@ -786,7 +928,9 @@ public final class Game {
     stepArrivals(real)
     stepGates(dt)
     stepBosses(dt)
+    stepTwists(dt, real: real)
     applyFields(dt)
+    applyWells(dt)
     move(dt)
     collideAll()
     resolveCrossings()
@@ -830,10 +974,16 @@ public final class Game {
   private func stepBosses(_ dt: Double) {
     for b in bubbles where b.kind == .boss {
       if b.bossGuard > 0 { b.bossGuard -= dt }
+      if spec.boss == .shielded {
+        b.shieldAngle = (b.shieldAngle + tuning.shieldSpin * (1 + 0.25 * Double(b.bossPhase)) * dt).truncatingRemainder(dividingBy: 2 * .pi)
+      }
       if b.bossWindup > 0 {
         b.bossWindup -= dt
         guard b.bossWindup <= 0 else { continue }
         b.bossWindup = 0
+        // A blinker teleports first, then dashes from wherever it lands after a short echo.
+        if spec.boss == .blinker && !b.blinked { blink(b); continue }
+        b.blinked = false
         b.bossDashing = true
         let toHinge = hinge - across(b) > 0 ? 1.0 : -1.0
         let sp = cruise(b)
@@ -841,7 +991,8 @@ public final class Game {
         else { b.vy = toHinge * sp * 0.92; b.vx = (b.vx >= 0 ? 1 : -1) * sp * 0.39 }
       } else if !b.bossDashing {
         b.bossClock += dt
-        if b.bossClock >= max(3, tuning.bossWindupEvery - tuning.bossWindupEveryPhase * Double(b.bossPhase)) {
+        // Twins take turns, so each winds up less often.
+        if b.bossClock >= max(3, tuning.bossWindupEvery - tuning.bossWindupEveryPhase * Double(b.bossPhase)) * (spec.boss == .twins ? 1.7 : 1) {
           b.bossClock = 0
           b.bossWindup = tuning.bossWindupTime
           events.append(.bossWindup(x: b.x, y: b.y, r: b.r))
@@ -1035,11 +1186,25 @@ public final class Game {
         let drift = spec.current * scale * sin(time * 2 * .pi / tuning.currentPeriod) * dt
         if vertical { b.y += drift } else { b.x += drift }
       }
-      let bounce = b.kind == .boss ? 0.9 : tuning.bounce[b.size]
-      if b.x < b.r { impact(b, 0, abs(b.vx)); b.x = b.r; b.vx = abs(b.vx) * bounce }
-      if b.x > w - b.r { impact(b, 0, abs(b.vx)); b.x = w - b.r; b.vx = -abs(b.vx) * bounce }
-      if b.y < top + b.r { impact(b, .pi / 2, abs(b.vy)); b.y = top + b.r; b.vy = abs(b.vy) * bounce }
-      if b.y > h - b.r { impact(b, .pi / 2, abs(b.vy)); b.y = h - b.r; b.vy = -abs(b.vy) * bounce }
+      // Wind: a gust shoves everything across the line, the light pieces hardest.
+      if wind != 0 && b.kind != .boss {
+        let drift = wind * dt / max(1, mass(b) / 2).squareRoot()
+        if vertical { b.x += drift } else { b.y += drift }
+      }
+      let springy = spec.has(.bounce) && b.kind != .boss
+      if springy && b.spring > 1 { b.spring = max(1, b.spring - tuning.springEase * dt) }
+      let bounce = b.kind == .boss ? 0.9 : springy ? 1.0 : tuning.bounce[b.size]
+      // Portals: the two walls at the ends of the hinge lead into each other. Bosses are too big to fit.
+      let portals = spec.has(.portals) && b.kind != .boss
+      if portals { portal(b) }
+      if !(portals && !vertical) {
+        if b.x < b.r { impact(b, 0, abs(b.vx)); b.x = b.r; b.vx = abs(b.vx) * bounce; if springy { springHit(b) } }
+        if b.x > w - b.r { impact(b, 0, abs(b.vx)); b.x = w - b.r; b.vx = -abs(b.vx) * bounce; if springy { springHit(b) } }
+      }
+      if !(portals && vertical) {
+        if b.y < top + b.r { impact(b, .pi / 2, abs(b.vy)); b.y = top + b.r; b.vy = abs(b.vy) * bounce; if springy { springHit(b) } }
+        if b.y > h - b.r { impact(b, .pi / 2, abs(b.vy)); b.y = h - b.r; b.vy = -abs(b.vy) * bounce; if springy { springHit(b) } }
+      }
       if b.grace > 0 { b.grace -= dt }
       if b.contactCooldown > 0 { b.contactCooldown -= dt }
       if b.sq > 0 { b.sq = max(0, b.sq - b.sq * 9 * dt - 0.2 * dt) }
@@ -1082,6 +1247,12 @@ public final class Game {
       guard now != b.side else { continue }
       guard status == .playing else { break }
       if b.kind == .boss { slamBoss(b); continue }
+      // Ghost: a bubble out of phase can't cross. It glances off the line.
+      if b.presence < 0.5 {
+        if vertical { b.x = hinge + Double(b.side); b.vx = abs(b.vx) * Double(b.side) }
+        else { b.y = hinge + Double(b.side); b.vy = abs(b.vy) * Double(b.side) }
+        continue
+      }
       if b.size == 3 { zap(b); continue }
       if b.grace > 0 { b.side = now; continue }
       if inGate(b) {
@@ -1102,9 +1273,204 @@ public final class Game {
     impact(b, vertical ? 0 : .pi / 2, cruise(b))
     guard dashed || b.contactCooldown <= 0 else { return }
     b.contactCooldown = tuning.bossContactCooldown
+    // Twins share their slam cooldown, so two of them aren't twice the pressure.
+    if spec.boss == .twins { for t in bubbles where t.kind == .boss { t.contactCooldown = tuning.bossContactCooldown * 2 } }
     let owner = playerIndex(of: b)
     events.append(.bossSlam(x: b.x, y: b.y, r: b.r, player: owner))
     charge(owner, dashed ? tuning.bossDashCharge : 1)
+  }
+
+  // MARK: Twists
+
+  /// Pulse: everything surges a little on each beat, then settles.
+  private var surge: Double { spec.has(.pulse) ? 1 + tuning.beatSurge * spec.intensity * exp(-beatPhase * 7) : 1 }
+
+  private func ghostGap() -> Double { tuning.ghostEvery * (0.75 + 0.5 * twistRng.unit()) / max(0.5, spec.intensity) }
+
+  /// How far it is from a line across the arena to the wall on one side.
+  private func depth(_ side: Int, from line: Double) -> Double {
+    side < 0 ? (vertical ? line : line - top) : (vertical ? w - line : h - line)
+  }
+
+  private var tideReachNow: Double {
+    let d = min(depth(-1, from: baseHinge), depth(1, from: baseHinge))
+    return tuning.tideReach * spec.intensity * max(0, d) * (foldPlay ? 0.4 : 1)
+  }
+
+  /// Fog: how much of a bubble you can see, 0...1. Bosses are too big to hide.
+  public func visibility(_ b: Bubble) -> Double {
+    guard spec.has(.fog), b.kind != .boss else { return 1 }
+    let side = across(b) < hinge ? -1 : 1
+    let f = abs(across(b) - hinge) / max(1, depth(side, from: hinge))
+    let clear = tuning.fogClear + (1 - min(1, spec.intensity)) * 0.3
+    let t = max(0, min(1, (f - clear) / max(0.05, tuning.fogDense - clear)))
+    return 1 - t * t * (3 - 2 * t)
+  }
+
+  /// Blackout: true when a bubble is lit (near the line, or near where you last touched). Bosses always glow.
+  public func isLit(_ b: Bubble) -> Bool { !spec.has(.blackout) || b.kind == .boss || b.lit > 0 }
+
+  /// True when a touch can reach this bubble: it's in phase, out of the fog and in the light.
+  public func canTouch(_ b: Bubble) -> Bool { b.presence >= 0.5 && visibility(b) >= 0.4 && isLit(b) }
+
+  /// Blackout: a touch leaves a pool of light behind it for a moment, lighting what's near.
+  public func illuminate(x: Double, y: Double) {
+    guard spec.has(.blackout) else { return }
+    lantern = Lantern(x: x, y: y, left: tuning.lanternTime, reach: tuning.lanternReach * scale)
+    lightUp()
+  }
+
+  /// Blackout: how wide the lit band is either side of the line.
+  public var darkBand: Double { tuning.darkBand * scale * (1.25 - 0.25 * min(1.2, spec.intensity)) }
+
+  private func lightUp() {
+    let band = darkBand
+    for b in bubbles {
+      let near = abs(across(b) - hinge) - b.r <= band
+      let lamp = lantern.map { hypot(b.x - $0.x, b.y - $0.y) - b.r <= $0.reach } ?? false
+      if near || lamp { b.lit = tuning.litTime }
+    }
+  }
+
+  /// Shielded boss: true when a touch at this point would land on its shield.
+  public func shieldCovers(_ b: Bubble, x: Double, y: Double) -> Bool {
+    guard spec.boss == .shielded, b.kind == .boss else { return false }
+    var d = (atan2(y - b.y, x - b.x) - b.shieldAngle).truncatingRemainder(dividingBy: 2 * .pi)
+    if d > .pi { d -= 2 * .pi } else if d < -.pi { d += 2 * .pi }
+    return abs(d) < tuning.shieldArc
+  }
+
+  private func stepTwists(_ dt: Double, real: Double) {
+    if spec.has(.tide) {
+      tideOffset = tideReachNow * sin(time * 2 * .pi / tuning.tidePeriod)
+      hinge = baseHinge + tideOffset
+    }
+    if spec.has(.wind) { stepWind(dt) }
+    if spec.has(.pulse) {
+      let n = Int(time / tuning.beatPeriod)
+      if n > beats { beats = n; events.append(.beat(n)) }
+    }
+    if spec.has(.ghost) {
+      for b in bubbles where b.kind != .boss {
+        b.ghostClock -= dt
+        if b.ghostClock <= 0 {
+          b.phasing.toggle()
+          b.ghostClock = b.phasing ? tuning.ghostTime * (0.7 + 0.3 * min(1.3, spec.intensity)) : ghostGap()
+        }
+        let step = dt / tuning.ghostFade
+        b.presence = b.phasing ? max(0, b.presence - step) : min(1, b.presence + step)
+      }
+    }
+    if spec.has(.regrow) {
+      let every = tuning.regrowTime / max(0.5, spec.intensity)
+      for b in bubbles where b.kind != .boss && b.size >= 2 {
+        // Small pieces take longer to grow back than tiny ones.
+        b.regrow += dt / (b.size == 2 ? every * 1.5 : every)
+        guard b.regrow >= 1 else { continue }
+        b.regrow = 0
+        b.size -= 1
+        b.light = false
+        b.r = radius(b)
+        impact(b, 0, cruise(b))
+        events.append(.regrow(x: b.x, y: b.y, r: b.r, size: b.size))
+      }
+    }
+    if spec.has(.blackout) {
+      if var l = lantern { l.left -= real; lantern = l.left > 0 ? l : nil }
+      for b in bubbles where b.lit > 0 { b.lit = max(0, b.lit - dt) }
+      lightUp()
+    }
+  }
+
+  /// A gust every few seconds: calm, a warning, then a push across that swells and fades.
+  private func stepWind(_ dt: Double) {
+    windClock += dt
+    let calm = tuning.windEvery - tuning.windTime
+    if windClock < calm { gustIn = calm - windClock; wind = 0; return }
+    if windClock - dt < calm { events.append(.gust(dir: windDir)) }
+    let u = (windClock - calm) / tuning.windTime
+    if u >= 1 {
+      windClock = 0; wind = 0; gustIn = calm
+      // Mostly it turns around, so neither side always takes the push.
+      if twistRng.int(3) != 0 { windDir = -windDir }
+      return
+    }
+    gustIn = 0
+    wind = windDir * windPeak * sin(.pi * u)
+  }
+
+  private func makeWells() {
+    let n = max(1, min(4, spec.wells))
+    wells = (0..<n).map { i in
+      let near = i % 2 == 0
+      let u = n <= 2 ? (near ? 0.3 : 0.7) : 0.18 + 0.64 * Double(i) / Double(n - 1)
+      return Well(x: 0, y: 0, reach: 0, spin: near ? 1 : -1, u: u, v: near ? 0.27 : 0.73)
+    }
+    placeWells()
+  }
+
+  private func placeWells() {
+    for i in wells.indices {
+      let v = wells[i].v
+      let acrossAt = v < 0.5 ? (vertical ? 0 : top) + v * 2 * depth(-1, from: baseHinge) : baseHinge + (v - 0.5) * 2 * depth(1, from: baseHinge)
+      if vertical { wells[i].x = acrossAt; wells[i].y = top + wells[i].u * (h - top) }
+      else { wells[i].x = wells[i].u * w; wells[i].y = acrossAt }
+      wells[i].reach = tuning.wellReach * scale * (0.85 + 0.15 * min(1.3, spec.intensity))
+    }
+  }
+
+  /// Wells pull bubbles in and swing them round, heavier ones less.
+  private func applyWells(_ dt: Double) {
+    for well in wells {
+      for b in bubbles where b.kind != .boss {
+        let dx = well.x - b.x, dy = well.y - b.y, d = hypot(dx, dy)
+        guard d > 1, d < well.reach else { continue }
+        let fall = 1 - d / well.reach
+        let k = scale * spec.intensity * dt / max(1, mass(b) / 4)
+        let pull = tuning.wellPull * fall * min(1, d / (well.reach * 0.3)) * k
+        let swirl = tuning.wellSwirl * fall * k * well.spin
+        b.vx += dx / d * pull - dy / d * swirl
+        b.vy += dy / d * pull + dx / d * swirl
+      }
+    }
+  }
+
+  /// Portals: past one end wall, out of the other, a little faster.
+  private func portal(_ b: Bubble) {
+    let fromX = b.x, fromY = b.y
+    var wrapped = false
+    if vertical {
+      if b.y < top { b.y += h - top; wrapped = true } else if b.y > h { b.y -= h - top; wrapped = true }
+    } else {
+      if b.x < 0 { b.x += w; wrapped = true } else if b.x > w { b.x -= w; wrapped = true }
+    }
+    guard wrapped else { return }
+    b.prevX = b.x; b.prevY = b.y
+    let boost = 1 + (tuning.portalBoost - 1) * spec.intensity
+    b.vx *= boost; b.vy *= boost
+    events.append(.portal(fromX: fromX, fromY: fromY, x: b.x, y: b.y, r: b.r))
+  }
+
+  /// Bounce: springy walls add speed with every hit, up to a cap, and it eases off slowly.
+  private func springHit(_ b: Bubble) {
+    let cap = 1 + (tuning.springMax - 1) * min(1.2, spec.intensity)
+    b.spring = min(cap, b.spring + tuning.springGain * spec.intensity)
+    events.append(.spring(x: b.x, y: b.y, r: b.r))
+  }
+
+  /// Blinker boss: vanishes and lands somewhere near the line on its own side, then dashes after a short echo.
+  private func blink(_ b: Bubble) {
+    let from = (b.x, b.y)
+    let side = Double(b.side)
+    let span = alongSpan
+    let along = span.lowerBound + b.r + max(0, span.upperBound - span.lowerBound - 2 * b.r) * (0.1 + 0.8 * twistRng.unit())
+    let room = depth(b.side, from: hinge)
+    let gap = max(b.r + 6, min(room - b.r, room * 0.4))
+    if vertical { b.x = hinge + side * gap; b.y = along } else { b.x = along; b.y = hinge + side * gap }
+    b.prevX = b.x; b.prevY = b.y
+    b.blinked = true
+    b.bossWindup = tuning.blinkEcho
+    events.append(.bossBlink(fromX: from.0, fromY: from.1, x: b.x, y: b.y, r: b.r))
   }
 
   // MARK: Layout changes
@@ -1119,7 +1485,10 @@ public final class Game {
     let oldHinge = hinge
     w = width; h = height; top = newTop; vertical = v
     fixedHinge = newHinge
-    hinge = newHinge ?? defaultHinge()
+    baseHinge = newHinge ?? defaultHinge()
+    tideOffset = spec.has(.tide) ? tideReachNow * sin(time * 2 * .pi / tuning.tidePeriod) : 0
+    hinge = baseHinge + tideOffset
+    lantern = nil
     let ratio = scale / before
     _ = oldHinge
     for b in bubbles {
@@ -1128,11 +1497,12 @@ public final class Game {
       b.y = top + (turned ? u : t) * (h - top)
       if turned { swap(&b.vx, &b.vy) }
       b.vx *= ratio; b.vy *= ratio
-      b.r = radius(of: b.kind, size: b.size)
+      b.r = radius(b)
       b.side = sideOf(b)
       b.prevX = b.x; b.prevY = b.y
     }
     visitors.removeAll()
+    placeWells()
     let span = alongSpan
     for i in gates.indices {
       gates[i].width = tuning.gateWidth * scale
