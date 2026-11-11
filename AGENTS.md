@@ -28,6 +28,13 @@ Arcade game with three parts: a parallax landing site that scrolls into the web 
 - Guest stars are `Visitor`s, not bubbles: they never block a clear or touch the meter, and they skip level 1, two-player and the tour. They are original genre nods. Keep them that way: no real characters, logos or names.
 
 - Snap the Hinge is the game's signature: drag off the line and it flings nearby bubbles back, with a recharge. It's also how the game stands apart in the store (a 4.3 rejection said the first version didn't). Lead with it in store copy. The fold angle must stay effects-only, so it never triggers a snap.
+- Worlds: seven arenas (classic, neon, forest, space, frost, reef, magma). Chapters 1–8 are hand-built (levels 1–80), and generated "Infinity" levels from 81 cycle through every world.
+  - Each world has its own twist. Coral Drift's current (`LevelSpec.current`) carries bubbles along the hinge and turns around every `currentPeriod` seconds; drifting motes show it.
+  - A new world needs four things: its art in `HingePopArt/Arenas.swift`, colours in `Aurora.swift`, its hidden spot in `Secrets.spot`, and an entry in the web's `ARENAS` list plus `scripts/art.mjs`.
+- Easter eggs (`Secrets.swift`) are original winks at pop-culture genres. Never use real franchise names, characters, logos or quotes; a test bans the obvious ones.
+  - Each world hides a spot that wakes on three taps. Every campaign level from 2 hides one twinkling secret bubble that reveals a genre nod. The nods cycle, so endless levels never run out.
+  - Other secrets come from a level, the old arcade code swiped on the logo, the clock, the calendar or milestones.
+  - Add more by appending to `Secrets.named` or `Secrets.nods`.
 - Page play (iPhone Duo, native only) turns on when the hinge sits on a real fold (`Game.foldPlay`, set from the fold's reserved region, never its angle). Solo games from level 2 only:
   - **Rush page:** every 13 s the busier page glows gold for 6 s. Its bubbles move 1.2× faster and score double.
   - **Crossfold:** a pop on the other page from the last one, inside the combo window, adds an extra combo step.
