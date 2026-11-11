@@ -22,20 +22,20 @@ final class WhatsNewTests: XCTestCase {
 
   func testGuideCalloutOpensItsSection() {
     openCard()
-    let clap = callout("Secrets everywhere")
+    let clap = callout("Every new world bends one rule")
     XCTAssertTrue(clap.waitForExistence(timeout: 5))
     shot("card")
     clap.tap()
     XCTAssertTrue(app.staticTexts["How to play"].waitForExistence(timeout: 5), "didn't land on How to play")
     XCTAssertFalse(app.buttons["Let's pop!"].exists, "the card stayed open")
-    XCTAssertTrue(app.staticTexts["Every world hides one. So does a bubble in every level."].waitForExistence(timeout: 5),
-                  "the Secrets section isn't open")
-    shot("guide-secrets")
+    XCTAssertTrue(app.staticTexts["Each world plays by one extra rule."].waitForExistence(timeout: 5),
+                  "the World twists section isn't open")
+    shot("guide-twists")
   }
 
   func testMapCalloutOpensTheMap() {
     openCard()
-    let map = callout("Frost Fair")
+    let map = callout("80 worlds, 800 levels")
     if !map.isHittable { app.swipeUp() }
     map.tap()
     XCTAssertTrue(app.staticTexts["Journey"].waitForExistence(timeout: 5), "didn't land on the journey")
