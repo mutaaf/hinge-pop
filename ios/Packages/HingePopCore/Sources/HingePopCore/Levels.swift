@@ -34,7 +34,11 @@ public enum Cameo: String, CaseIterable, Sendable, Codable {
   case captainFizz, docFlux, sirGlowstick, chosenFizz, merlinFizz, bigBurp, booBubble, discoDot
 }
 
-public enum Arena: String, CaseIterable, Sendable, Codable { case classic, neon, forest, space, frost, reef, magma }
+/// A world's biome: its backdrop art and colours. Worlds reuse biomes with a variant (see `Worlds`).
+public enum Arena: String, CaseIterable, Sendable, Codable {
+  case classic, neon, forest, space, frost, reef, magma
+  case candy, dunes, storm, crystal, haunted, circuit, jungle, clouds, clockwork
+}
 
 public struct Spawn: Equatable, Sendable {
   public var kind: ActorKind
@@ -53,6 +57,17 @@ public struct LevelSpec: Equatable, Sendable {
   public var arena: Arena
   /// Coral Drift: how hard the current pushes everything along the hinge, before scaling. It turns around slowly.
   public var current = 0.0
+  /// The world's rules on top of the core ones (see `Twist`). Empty for the first realm, except Coral Drift.
+  public var twists: [Twist] = []
+  /// How this level's boss fights, when it has one.
+  public var boss: BossStyle = .crown
+  /// Which take on the biome's art to draw (0 is the original).
+  public var variant = 0
+  /// How hard this level's twists push, 0...1.3. The first levels of a world run them gently.
+  public var intensity = 1.0
+  /// Wells: how many gravity wells the arena has (when it has the `wells` twist).
+  public var wells = 2
+  public func has(_ t: Twist) -> Bool { twists.contains(t) }
   public var isBoss: Bool { bossPhases > 0 }
 }
 
@@ -62,24 +77,22 @@ public struct Chapter: Sendable, Equatable {
   public var levels: ClosedRange<Int>
   public var teaches: String
   public var arena: Arena
+  public var realm = 1
+  public var variant = 0
+  public var twists: [Twist] = []
+  public var boss: BossStyle = .crown
 }
 
 public enum Campaign {
-  public static let chapters: [Chapter] = [
-    .init(number: 1, title: "First Contact", levels: 1...10, teaches: "Pop and split, then faster bubbles.", arena: .classic),
-    .init(number: 2, title: "Electric Playground", levels: 11...20, teaches: "Armored bubbles and a touchier hinge.", arena: .neon),
-    .init(number: 3, title: "Magnetic Storm", levels: 21...30, teaches: "Magnetic and repel bubbles move everything around them.", arena: .forest),
-    .init(number: 4, title: "Overload Protocol", levels: 31...40, teaches: "Moving gates and mixed bubbles.", arena: .space),
-    .init(number: 5, title: "Bosses & Beyond", levels: 41...50, teaches: "Boss patterns and combos.", arena: .neon),
-    .init(number: 6, title: "Frost Fair", levels: 51...60, teaches: "Frozen crowds and a shorter meter.", arena: .frost),
-    .init(number: 7, title: "Coral Drift", levels: 61...70, teaches: "A current pushes everything along the hinge.", arena: .reef),
-    .init(number: 8, title: "Magma Run", levels: 71...80, teaches: "Fast and golden, with a boss halfway.", arena: .magma),
-  ]
-  public static let finalAuthored = 80
+  /// One chapter per world (`Worlds.all`): ten levels each.
+  public static let chapters: [Chapter] = Worlds.all.map { w in
+    Chapter(number: w.number, title: w.name, levels: w.levels, teaches: w.teaches, arena: w.biome, realm: w.realm, variant: w.variant, twists: w.twists, boss: w.boss)
+  }
+  public static let finalAuthored = Worlds.count * 10
 
   public static func chapter(of level: Int) -> Chapter {
     chapters.first { $0.levels.contains(level) }
-      ?? .init(number: 9, title: "Infinity", levels: (finalAuthored + 1)...Int.max, teaches: "Generated levels that keep climbing.", arena: Arena.allCases[(level / 10) % Arena.allCases.count])
+      ?? .init(number: Worlds.count + 1, title: "Infinity", levels: (finalAuthored + 1)...Int.max, teaches: "Generated levels that keep climbing.", arena: Arena.allCases[(level / 10) % Arena.allCases.count])
   }
 
   /// How many taps a size takes to clear by hand. A level's difficulty is measured in this, not in bubbles:
@@ -95,12 +108,12 @@ public enum Campaign {
 
   /// Sizes that add up to a budget of work. A big bubble that gets through costs a whole shield, so only two
   /// come at once, and the rest of the budget arrives as lighter pieces that forgive a miss.
-  public static func sizes(forWork budget: Int) -> [Int] {
+  public static func sizes(forWork budget: Int, table: [Int] = work) -> [Int] {
     var left = budget, out: [Int] = []
     for size in 0..<4 {
       let most = size == 0 ? 2 : 7
       var made = 0
-      while left >= work[size], out.count < 7, made < most { out.append(size); left -= work[size]; made += 1 }
+      while left >= table[size], out.count < 7, made < most { out.append(size); left -= table[size]; made += 1 }
     }
     return out.isEmpty ? [0] : out
   }
@@ -128,6 +141,7 @@ public enum Campaign {
     let ch = chapter(of: n)
     let k = (n - 1) % 10 + 1
     if n > finalAuthored { return generated(n, chapter: ch) }
+    if ch.number > 8 { return worldLevel(n, chapter: ch, step: k) }
     let index = ch.number - 1
     let pace = index == 7 ? min(0.94, speed(chapter: index, step: k)) : speed(chapter: index, step: k)
     if k == 10 {
@@ -190,7 +204,88 @@ public enum Campaign {
       phases = 3
     }
     var spec = LevelSpec(number: n, chapter: ch.number, spawns: spawns, speed: pace, meterMax: meter, gates: gates, bossPhases: phases, arena: ch.arena)
-    if index == 6 { spec.current = 30 + 4 * Double(k) }
+    if index == 6 { spec.current = 30 + 4 * Double(k); spec.twists = [.current] }
+    return spec
+  }
+
+  /// What each twist asks of a level: how much of the usual work budget it leaves room for, and the bubble kinds
+  /// that play best with it (the first is the one its world teaches with).
+  static func recipe(for t: Twist) -> (load: Double, kinds: [ActorKind]) {
+    switch t {
+    case .current: (1.0, [.magnetic, .repel, .golden, .fast])
+    case .wind: (0.92, [.frozen, .fast, .armored, .golden])
+    case .tide: (0.9, [.armored, .basic, .fast, .golden])
+    case .fog: (0.92, [.fast, .golden, .armored, .basic])
+    case .ghost: (1.04, [.armored, .fast, .golden, .basic])
+    case .wells: (0.97, [.golden, .magnetic, .fast, .frozen])
+    case .portals: (0.95, [.fast, .golden, .repel, .armored])
+    case .bounce: (0.9, [.frozen, .armored, .golden, .fast])
+    case .regrow: (0.87, [.golden, .basic, .armored, .fast])
+    case .triple: (1.08, [.golden, .basic, .fast, .frozen])
+    case .pulse: (0.88, [.fast, .golden, .basic, .repel])
+    case .blackout: (0.84, [.golden, .basic, .fast, .armored])
+    }
+  }
+
+  /// Taps to clear each size when every split makes three. Tiny crowds chain, so it's less than the full tree.
+  static let tripleWork = [30, 11, 4, 1]
+
+  /// Levels for worlds 9–80, from the world's recipe: the same number always gives the same level.
+  /// Each world opens gently on its twist with plain bubbles, brings in the kinds that suit it, spikes at its
+  /// fifth level, eases, climbs to its ninth and ends on its boss. Realms climb, and each realm's last world is
+  /// its hardest.
+  public static func worldLevel(_ n: Int, chapter ch: Chapter, step k: Int) -> LevelSpec {
+    var rng = SplitMix(seed: UInt64(n) &* 0x9E37)
+    let world = Worlds.world(ch.number)!
+    let slot = (world.number - 1) % 8                       // 0...7 inside its realm
+    let tier = Double(world.realm - 2) / 8                  // 0 in Sugar Rush, 1 in Clockwork Sky
+    let finale = slot == 7
+    let twists = world.twists
+    let spike = k == 5
+    // How hard the twist pushes: gentle while it's new, full from the third level, a notch more at the spike.
+    let intensity = min(1.3, [0.55, 0.75, 0.9, 1, 1.12, 1, 1.03, 1.06, 1.1][min(8, k - 1)] + 0.08 * tier + (finale ? 0.06 : 0))
+    let pace = min(0.92, 0.7 + 0.1 * tier + 0.006 * Double(slot) + 0.01 * Double(k - 1) + (finale ? 0.03 : 0))
+    var spec: LevelSpec
+    if k == 10 {
+      var spawns = [Spawn(.boss), Spawn(.fast, size: 2)]
+      if tier > 0.25 || finale { spawns.append(Spawn(recipe(for: twists[0]).kinds[0] == .golden ? .armored : recipe(for: twists[0]).kinds[0], size: 1)) }
+      if tier > 0.6 { spawns.append(Spawn(.fast, size: 2)) }
+      spec = LevelSpec(number: n, chapter: ch.number, spawns: spawns, speed: min(0.86, pace), meterMax: 4, gates: 0, bossPhases: finale ? 4 : 3, arena: ch.arena)
+      spec.intensity = min(1, intensity)
+    } else {
+      let load = twists.map { recipe(for: $0).load }.reduce(1, *) * (twists.count > 1 ? 1.08 : 1)
+      let ramp = [-12, -8, 0, 3, 9, 3, 5, 7, 9][k - 1]
+      let raw = 36 + 9 * tier + 0.6 * Double(slot) + (finale ? 20 - 6 * tier : 0) + Double(ramp)
+      let budget = max(14, min(86, Int((raw * load).rounded())))
+      let table = twists.contains(.triple) ? tripleWork : work
+      var sizes = Campaign.sizes(forWork: budget, table: table)
+      // A big bubble left alone costs all three shields, so every level keeps at least one: none can be won by watching.
+      if !sizes.contains(0) { sizes[0] = 0 }
+      // Teach with plain bubbles, then bring in the twist's own kinds one at a time, then mix.
+      let pool = recipe(for: twists[0]).kinds + (twists.count > 1 ? recipe(for: twists[1]).kinds : [])
+      let specials = k <= 1 ? 0 : k <= 3 ? 1 : k <= 6 ? 2 : min(sizes.count, 2 + (k - 5) + Int(tier * 2))
+      let kinds: [ActorKind] = (0..<min(specials, sizes.count)).map { i in
+        k <= 4 ? pool[i % 2] : pool[(i + rng.int(pool.count)) % pool.count]
+      }
+      // Specials go on the lighter bubbles first, so a new kind never arrives as the biggest thing on screen.
+      let order = sizes.indices.sorted { sizes[$0] > sizes[$1] }
+      var spawns = sizes.map { Spawn(.basic, size: $0) }
+      for (i, kind) in kinds.enumerated() {
+        let at = order[i]
+        // Fast and golden come small; they never take the place of a big one.
+        if (kind == .fast || kind == .golden) && sizes[at] == 0 { continue }
+        spawns[at] = Spawn(kind, size: sizes[at])
+      }
+      spec = LevelSpec(number: n, chapter: ch.number, spawns: spawns, speed: pace, meterMax: 4, gates: 0, bossPhases: 0, arena: ch.arena)
+      spec.intensity = intensity
+      if finale && k >= 5 { spec.meterMax = 3 }
+      if k >= 7, !twists.contains(.portals), rng.int(4) == 0 { spec.gates = 1 }
+    }
+    spec.twists = twists
+    spec.boss = world.boss
+    spec.variant = world.variant
+    spec.wells = k <= 2 ? 1 : (k >= 7 || finale) && tier >= 0.3 ? 3 : 2
+    if twists.contains(.current) { spec.current = 26 + 3 * Double(k) + 10 * tier }
     return spec
   }
 

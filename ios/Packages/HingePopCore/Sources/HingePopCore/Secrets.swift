@@ -21,6 +21,15 @@ public enum Secrets {
     .init(id: "frost-tracks", emoji: "👣", title: "Big feet", line: "Huge footprints in the snow. Someone loves bubbles.", hint: "Something hides by the tallest fir."),
     .init(id: "reef-treasure", emoji: "🪙", title: "Sunken treasure", line: "X never marks the spot. Taps do.", hint: "The coral keeps a secret."),
     .init(id: "magma-lair", emoji: "🐈‍⬛", title: "Volcano lair", line: "Every volcano lair needs a cat to pet menacingly.", hint: "Knock on the tallest volcano."),
+    .init(id: "candy-house", emoji: "🍭", title: "Gingerbread door", line: "The candy cottage is open. Mind the oven.", hint: "Knock on the biggest lollipop."),
+    .init(id: "dunes-lamp", emoji: "🪔", title: "Old lamp", line: "Rub it. Three wishes, all of them pops.", hint: "Something glints in the sand by the dune's foot."),
+    .init(id: "storm-cape", emoji: "🦸", title: "Up in the clouds", line: "Cape on, chin up, bubbles down.", hint: "Tap the brightest bolt three times."),
+    .init(id: "crystal-sword", emoji: "🗡️", title: "Sword in the crystal", line: "Only the worthy can pull it. You tapped it. Close enough.", hint: "The tallest crystal holds something."),
+    .init(id: "haunted-portrait", emoji: "🖼️", title: "Watching portrait", line: "Its eyes follow you. So do the bubbles.", hint: "Knock on the manor's lit window."),
+    .init(id: "circuit-arcade", emoji: "👾", title: "Insert coin", line: "High score: you. Initials: POP.", hint: "Tap the flickering sign three times."),
+    .init(id: "jungle-idol", emoji: "🗿", title: "Golden idol", line: "Swap it for a bag of sand. What could go wrong?", hint: "The temple door hides a treasure."),
+    .init(id: "clouds-goose", emoji: "🪿", title: "Golden goose", line: "One golden egg per pop. Results may vary.", hint: "Something nests on the highest cloud."),
+    .init(id: "clockwork-flux", emoji: "⏱️", title: "Time machine", line: "Set the dial to yesterday. Pop it again.", hint: "Knock on the big clock face."),
     .init(id: "answer", emoji: "🌌", title: "The answer", line: "Level 42. The answer was pop all along.", hint: "Clear a very meaningful level."),
     .init(id: "cheat-code", emoji: "🕹️", title: "Old-school code", line: "Up, up, down, down... the arcade remembers.", hint: "Some codes never die. Swipe them on the logo."),
     .init(id: "witching", emoji: "🦇", title: "Witching hour", line: "Popping at 3 a.m.? Bold.", hint: "Play when the clock strikes three."),
@@ -91,7 +100,8 @@ public enum Secrets {
   public static func nod(level: Int) -> String { nods[(max(1, level) * 7) % nods.count] }
 
   /// Where each world hides its secret, in fractions of the backdrop: centre and radius (of the short side).
-  /// These follow the art in HingePopArt/Arenas.swift.
+  /// These mirror `landmarkSpot` in HingePopArt/Moods.swift exactly (the art draws each landmark there),
+  /// and hold for every variant. Change both together.
   public static func spot(_ arena: Arena, width w: Double, height h: Double) -> (x: Double, y: Double, r: Double) {
     let u = min(w, h)
     switch arena {
@@ -102,11 +112,21 @@ public enum Secrets {
     case .frost: return (w * 0.85, h - max(u * 0.26, h * 0.16) - u * 0.15, u * 0.15)
     case .reef: return (w * 0.08, h - max(u * 0.2, h * 0.12) - u * 0.1, u * 0.16)
     case .magma: return (w * 0.97, h - max(u * 0.3, h * 0.2) - u * 0.38, u * 0.14)
+    // The worlds expansion: each is the biome's landmark (Art.landmark / landmarkSpot in HingePopArt).
+    case .candy: return (w * 0.15, h - max(u * 0.24, h * 0.15) - u * 0.30, u * 0.15)    // the biggest lollipop
+    case .dunes: return (w * 0.82, h - max(u * 0.16, h * 0.1), u * 0.13)                // the lamp in the sand
+    case .storm: return (w * 0.76, h * 0.12 + u * 0.06, u * 0.15)                       // the brightest bolt
+    case .crystal: return (w * 0.84, h - max(u * 0.34, h * 0.22), u * 0.15)             // the tallest crystal
+    case .haunted: return (w * 0.78, h - max(u * 0.38, h * 0.26), u * 0.12)             // the manor's lit window
+    case .circuit: return (w * 0.18, h - max(u * 0.44, h * 0.3), u * 0.13)              // the flickering sign
+    case .jungle: return (w * 0.5, h - max(u * 0.12, h * 0.08), u * 0.13)               // the temple door
+    case .clouds: return (w * 0.83, h * 0.12 + u * 0.04, u * 0.14)                      // the nest on the highest cloud
+    case .clockwork: return (w * 0.5, h * 0.14 + u * 0.06, u * 0.17)                    // the big clock face
     }
   }
 
   public static func spotSecret(_ arena: Arena) -> Secret {
-    named("\(arena.rawValue)-" + ["classic": "star", "neon": "cruise", "forest": "howl", "space": "saucer", "frost": "tracks", "reef": "treasure", "magma": "lair"][arena.rawValue, default: ""])!
+    named("\(arena.rawValue)-" + ["classic": "star", "neon": "cruise", "forest": "howl", "space": "saucer", "frost": "tracks", "reef": "treasure", "magma": "lair", "candy": "house", "dunes": "lamp", "storm": "cape", "crystal": "sword", "haunted": "portrait", "circuit": "arcade", "jungle": "idol", "clouds": "goose", "clockwork": "flux"][arena.rawValue, default: ""])!
   }
 
   /// A date or hour that hides something.

@@ -14,28 +14,30 @@ static inline float wave(float2 p, float t, float speed, float freq, float phase
   float2 uv = pos / max(size, float2(1.0));
   float aspect = size.x / max(size.y, 1.0);
   float2 p = float2(uv.x * aspect, uv.y);
-  half3 col = half3(0);
+  float3 col = float3(0);
 
   // Three hanging curtains. Each one is a wavy band with fine vertical rays, fading downward.
   const float heights[3] = { 0.24, 0.5, 0.78 };
-  const half3 tints[3] = { c1.rgb, c2.rgb, c3.rgb };
+  const float3 tints[3] = { float3(c1.rgb), float3(c2.rgb), float3(c3.rgb) };
   for (int i = 0; i < 3; i++) {
     float fi = float(i);
     float center = heights[i] + 0.07 * wave(p, t, 0.17 + fi * 0.03, 2.2 + fi * 0.7, fi * 2.1);
     float d = p.y - center;
     float below = d > 0.0 ? exp(-d * d * 26.0) : exp(-d * d * 150.0);
     float rays = mix(0.6 + 0.4 * sin(p.x * (34.0 + fi * 13.0) + 1.8 * wave(p, t, 0.31, 3.4, fi) + t * 0.22), 0.9, raySoft);
-    col += tints[i] * half(below * rays);
+    col += tints[i] * (below * rays);
   }
 
   // As the overload meter fills, the whole sky warms toward red.
-  half3 hot = half3(1.0, 0.24, 0.32);
-  col = mix(col, hot * dot(col, half3(0.5)) * 1.5, half(clamp(heat, 0.0, 1.0) * 0.8));
+  float3 hot = float3(1.0, 0.24, 0.32);
+  col = mix(col, hot * dot(col, float3(0.5)) * 1.5, clamp(heat, 0.0, 1.0) * 0.8);
 
-  // A little grain, so soft gradients never band.
-  float n = fract(sin(dot(pos, float2(12.9898, 78.233))) * 43758.5453);
-  col = max(col + half((n - 0.5) * 0.018), half3(0));
-  col *= half(strength);
-  float alpha = clamp(float(max(col.r, max(col.g, col.b))), 0.0, 1.0);
-  return half4(col, half(alpha));
+  // Everything stays in full float until the end, then a triangular dither of about one 8-bit step, so the
+  // soft falloffs never step into bands (half precision and 8-bit output both posterize dark gradients).
+  col *= strength;
+  float n1 = fract(sin(dot(pos, float2(12.9898, 78.233))) * 43758.5453);
+  float n2 = fract(sin(dot(pos, float2(39.3468, 11.135))) * 24634.6345);
+  col = max(col + (n1 + n2 - 1.0) * (1.5 / 255.0), float3(0));
+  float alpha = clamp(max(col.r, max(col.g, col.b)), 0.0, 1.0);
+  return half4(half3(col), half(alpha));
 }

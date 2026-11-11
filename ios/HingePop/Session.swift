@@ -9,6 +9,8 @@ struct PlayerHUD: Equatable {
 
 enum Overlay: Equatable {
   case none, paused, result, meet(ActorKind), tour
+  /// The first time you enter a world: its name and its twist.
+  case world(Int)
 }
 
 struct Tip: Identifiable, Equatable {
@@ -75,6 +77,12 @@ final class Session {
   var arena: Arena {
     if let chosen = app.progress.arena { return chosen }
     return game?.spec.arena ?? .classic
+  }
+  /// Which take on the biome's art this level uses (`LevelSpec.variant`). A biome picked in settings shows
+  /// its original take, since the level's variant belongs to the level's own biome.
+  var variant: Int {
+    if app.progress.arena != nil { return 0 }
+    return game?.spec.variant ?? 0
   }
   var isHeld: Bool { overlay != .none || tip != nil }
   /// How far between the last two physics steps this frame lands.
@@ -163,7 +171,10 @@ final class Session {
       app.progress.taught.insert("current")
       show("A current flows along the line. It carries every bubble with it, then turns around.", seconds: 5)
     }
-    if let first = meetQueue.first {
+    // A new world opens with its card, before any new bubble.
+    if isCampaign, let w = Worlds.world(ofLevel: levelNumber), w.number > 1, !app.progress.taught.contains("world-\(w.number)") {
+      overlay = .world(w.number)
+    } else if let first = meetQueue.first {
       overlay = .meet(first)
     } else if versus {
       show(size.width < 600 && size.height > size.width ? "One side each. Turn sideways for more room." : "One side each. Tap your own bubbles.")
@@ -178,6 +189,13 @@ final class Session {
     for s in Secrets.calendar(month: now.month ?? 0, day: now.day ?? 0, hour: now.hour ?? 0) where !app.progress.found(s.id) {
       reveal(s); return
     }
+  }
+
+  func dismissWorld() {
+    guard case .world(let n) = overlay else { return }
+    app.progress.taught.insert("world-\(n)")
+    overlay = meetQueue.first.map { .meet($0) } ?? .none
+    if overlay == .none { show("Level \(levelNumber): \(Campaign.chapter(of: levelNumber).title)", seconds: 1.6) }
   }
 
   func dismissMeet() {
@@ -297,6 +315,14 @@ final class Session {
         if flung > 0 { teach("snapped", "Snapped! It recharges in \(Int(game.tuning.snapCooldown)) seconds. The line dims until it's ready.") }
       case .rushStart: teach("rush", "This page is rushing: faster bubbles, double points.")
       case .crossfold: teach("crossfold", "Crossfold! Pop across the fold to build combo faster.")
+      case .untouchable:
+        if game.spec.has(.blackout) { teach("dark", "Too dark to hit. Your touch lights it up: tap again.") }
+        else if game.spec.has(.fog) { teach("fogged", "Lost in the fog. Hit it as it comes close.") }
+        else if game.spec.has(.ghost) { teach("phased", "Out of phase. Wait till it's solid.") }
+      case .beatPop: teach("beat", "On the beat: double points!")
+      case .bossShielded: teach("shielded", "Shield! Hit it from the open side.")
+      case .bossBlink: teach("blink", "It blinked! Hit it before it dashes.")
+      case .regrow: teach("regrow", "It grew back. Don't leave pieces too long.")
       case .creaseClap: teach("clap", "Crease clap! It sweeps the whole line.")
       case .snapReady where game.foldPlay && game.players[0].claps == 0:
         teach("clap-hint", "Touch both pages beside the fold at once to clap it.")

@@ -106,6 +106,7 @@ struct PlayView: View {
     case .paused: PauseOverlay(session: session)
     case .result: ResultOverlay(session: session)
     case .meet(let kind): MeetOverlay(kind: kind) { session.dismissMeet() }
+    case .world(let n): if let w = Worlds.world(n) { WorldIntroOverlay(world: w) { session.dismissWorld() } }
     case .tour: TourOverlay(session: session, spots: spots, size: size, fold: fold)
     }
   }
@@ -114,6 +115,8 @@ struct PlayView: View {
 /// Every screen sits on this: the arena's art with a living aurora over it.
 struct ArenaBackground: View {
   let arena: Arena
+  /// Which take on the biome (`LevelSpec.variant`, 0-3): time of day, weather and curtain colours.
+  var variant = 0
   var heat: Double = 0
   var alwaysOn = false
   var strength = 0.42
@@ -124,11 +127,11 @@ struct ArenaBackground: View {
     ZStack {
       GeometryReader { p in
         if let art = ArenaKind(rawValue: arena.rawValue), p.size.width > 1, p.size.height > 1 {
-          Image(decorative: Art.arena(art, size: p.size, scale: scale), scale: scale)
+          Image(decorative: Art.arena(art, variant: variant, size: p.size, scale: scale), scale: scale)
         }
       }
       .ignoresSafeArea()
-      if !still { AuroraField(arena: arena, heat: heat, strength: strength, alwaysOn: alwaysOn) }
+      if !still { AuroraField(arena: arena, variant: variant, heat: heat, strength: strength, alwaysOn: alwaysOn) }
     }
     .background(Theme.night.ignoresSafeArea())
   }
@@ -549,6 +552,9 @@ struct ResultOverlay: View {
     case .versus: return g.players.contains { $0.shields <= 0 } ? "Last shield gone." : "All clear. Top score wins."
     case .campaign(let n):
       if g.status == .won {
+        if !app.progress.isOpen(n + 1), let w = Worlds.world(ofLevel: n + 1), let r = Worlds.realm(w.realm) {
+          return "\(r.name) opens at \(Gates.stars(toOpen: r.number)) stars. Win \(app.progress.starsShort(r.number)) more."
+        }
         let next = Campaign.level(n + 1)
         return "Next: \(next.isBoss ? "a boss" : "\(next.spawns.count) \(next.spawns.count == 1 ? "bubble" : "bubbles")"), in \(Campaign.chapter(of: n + 1).title)."
       }
@@ -568,11 +574,18 @@ struct ResultOverlay: View {
   private func actions(_ g: Game) -> some View {
     switch session.mode {
     case .campaign(let n) where g.status == .won:
-      Button("Level \(n + 1)") { session.nextLevel() }.buttonStyle(ChunkyStyle())
-      Button("Map") { app.route = .map }.buttonStyle(QuietStyle())
+      if app.progress.pendingCheer != nil {
+        // A world just finished: its moment plays on the way out.
+        Button("Celebrate") { app.route = .map }.buttonStyle(ChunkyStyle())
+      } else if app.progress.isOpen(n + 1) {
+        Button("Level \(n + 1)") { session.nextLevel() }.buttonStyle(ChunkyStyle())
+      } else {
+        Button("Find stars to win") { app.route = .play(.campaign(app.progress.nextUp)) }.buttonStyle(ChunkyStyle())
+      }
+      Button("Journey") { app.route = .map }.buttonStyle(QuietStyle())
     case .campaign:
       Button("Try again") { session.restart() }.buttonStyle(ChunkyStyle())
-      Button("Map") { app.route = .map }.buttonStyle(QuietStyle())
+      Button("Journey") { app.route = .map }.buttonStyle(QuietStyle())
     case .versus:
       Button("Rematch") { session.restart() }.buttonStyle(ChunkyStyle())
       Button("Menu") { app.route = .home }.buttonStyle(QuietStyle())

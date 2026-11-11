@@ -22,23 +22,23 @@ final class WhatsNewTests: XCTestCase {
 
   func testGuideCalloutOpensItsSection() {
     openCard()
-    let clap = callout("Clap the crease")
+    let clap = callout("Every new world bends one rule")
     XCTAssertTrue(clap.waitForExistence(timeout: 5))
     shot("card")
     clap.tap()
     XCTAssertTrue(app.staticTexts["How to play"].waitForExistence(timeout: 5), "didn't land on How to play")
     XCTAssertFalse(app.buttons["Let's pop!"].exists, "the card stayed open")
-    XCTAssertTrue(app.staticTexts["Touch both pages by the fold at once to clap it."].waitForExistence(timeout: 5),
-                  "the On iPhone Duo section isn't open")
-    shot("guide-duo")
+    XCTAssertTrue(app.staticTexts["Each world plays by one extra rule."].waitForExistence(timeout: 5),
+                  "the World twists section isn't open")
+    shot("guide-twists")
   }
 
   func testMapCalloutOpensTheMap() {
     openCard()
-    let map = callout("bossier")
+    let map = callout("80 worlds, 800 levels")
     if !map.isHittable { app.swipeUp() }
     map.tap()
-    XCTAssertTrue(app.staticTexts["Level map"].waitForExistence(timeout: 5), "didn't land on the level map")
+    XCTAssertTrue(app.staticTexts["Journey"].waitForExistence(timeout: 5), "didn't land on the journey")
     shot("map")
   }
 }

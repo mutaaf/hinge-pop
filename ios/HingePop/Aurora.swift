@@ -4,32 +4,47 @@ import HingePopCore
 import simd
 
 extension Arena {
-  /// The curtain colours for each arena.
-  var aurora: [Color] {
+  /// The curtain colours for each biome and variant (0 is the original take; 1-3 follow the art's time of
+  /// day and weather in HingePopArt). Three colours per take: the upper curtain, the lower one and the glow.
+  /// Tuned against the art so the curtains tint the scene without outshining the bubbles.
+  private var curtainHex: [[UInt32]] {
     switch self {
-    case .classic: [Color(red: 0.2, green: 0.85, blue: 1), Color(red: 0.4, green: 0.45, blue: 1), Color(red: 0.25, green: 1, blue: 0.75)]
-    case .neon: [Color(red: 0.9, green: 0.3, blue: 1), Color(red: 0.35, green: 0.5, blue: 1), Color(red: 1, green: 0.35, blue: 0.7)]
-    case .forest: [Color(red: 0.3, green: 1, blue: 0.55), Color(red: 0.2, green: 0.85, blue: 0.8), Color(red: 0.75, green: 1, blue: 0.35)]
-    case .space: [Color(red: 0.55, green: 0.35, blue: 1), Color(red: 0.2, green: 0.7, blue: 1), Color(red: 1, green: 0.45, blue: 0.75)]
-    case .frost: [Color(red: 0.2, green: 0.95, blue: 0.72), Color(red: 0.3, green: 0.78, blue: 1), Color(red: 0.6, green: 0.5, blue: 1)]
-    case .reef: [Color(red: 0.2, green: 0.9, blue: 0.9), Color(red: 1, green: 0.45, blue: 0.62), Color(red: 0.4, green: 1, blue: 0.7)]
-    case .magma: [Color(red: 1, green: 0.42, blue: 0.15), Color(red: 1, green: 0.75, blue: 0.3), Color(red: 1, green: 0.3, blue: 0.5)]
+    case .classic: [[0x33D9FF, 0x6673FF, 0x40FFBF], [0xFF7AB0, 0x8A6CFF, 0xFFB070], [0x30E0C8, 0x2A90FF, 0x7AFFD0], [0xA8C8FF, 0x7A6CFF, 0xE0E8FF]]
+    case .neon: [[0xE64DFF, 0x5980FF, 0xFF59B3], [0xFF8A40, 0xFF4FA0, 0xFFD060], [0x6A7AFF, 0xB05AFF, 0x50C8FF], [0x40F0FF, 0x8AA8FF, 0xC8F8FF]]
+    case .forest: [[0x4DFF8C, 0x33D9CC, 0xBFFF59], [0xFFC050, 0x9AF060, 0xFF8A50], [0x5A8AFF, 0x7AF0C0, 0xA08AFF], [0x8AC8C0, 0x6AA0B0, 0xB8F0D0]]
+    case .space: [[0x8C59FF, 0x33B3FF, 0xFF73BF], [0xFF8AD0, 0xFFB0E0, 0xB07AFF], [0x30E0C0, 0x3AA0FF, 0x8AFFD8], [0xFF6A3A, 0xFFB050, 0xFF4A7A]]
+    case .frost: [[0x33F2B8, 0x4DC7FF, 0x9980FF], [0xE08AFF, 0xFF9AD0, 0x8AA8FF], [0xD8F0FF, 0x9AC0E0, 0xB8E0FF], [0xFFD080, 0x80F0C0, 0xFFA070]]
+    case .reef: [[0x33E6E6, 0xFF739E, 0x66FFB3], [0x5AFFD8, 0xFFE07A, 0x7AF0FF], [0x3A8AFF, 0x5AE0FF, 0x8AA0FF], [0x30FFE0, 0x6A5AFF, 0x30C8FF]]
+    case .magma: [[0xFF6B26, 0xFFBF4D, 0xFF4D80], [0xFFD040, 0xFFE890, 0xFF9A30], [0xC87A60, 0xFF6A40, 0xA08070], [0x4A9AFF, 0x8AE0FF, 0x7A6AFF]]
+    case .candy: [[0xFF80CC, 0xFFD966, 0xB08AFF], [0xFFA060, 0xFF6A9A, 0xFFE080], [0xA090FF, 0xFF9AE0, 0x80E0FF], [0xFF5AD0, 0x9A6AFF, 0xFFB0E8]]
+    case .dunes: [[0xFFB359, 0xFF734D, 0xFFD890], [0xFF7A40, 0xE04A8A, 0xFFC070], [0x5AD0E0, 0x6A8AFF, 0xC8E0FF], [0xFFB060, 0xD08A50, 0xFFD8A0]]
+    case .storm: [[0x73A6FF, 0xD9E6FF, 0x9966FF], [0xE07AFF, 0xFFB8F0, 0x8A5AFF], [0xB8F0FF, 0x8AC8D0, 0xE8F8FF], [0xFFB060, 0xFF6A4A, 0xFFD890]]
+    case .crystal: [[0x66FFF2, 0xBF80FF, 0x6699FF], [0xFFA040, 0xFF7A50, 0xFFD070], [0x5AF0B0, 0x80E0FF, 0xC0FF90], [0x7A9AFF, 0xFFE08A, 0xC08AFF]]
+    case .haunted: [[0x8CFF80, 0x994DE6, 0xFF8C33], [0xFFA040, 0xC06AA0, 0xFFD080], [0xFF5A6A, 0xA03AC0, 0xFF9A8A], [0x9AC8FF, 0x6A80C0, 0xC8FFD8]]
+    case .circuit: [[0x1AFFE6, 0xFF33BF, 0x6680FF], [0xFFE04A, 0xB05AFF, 0xFF7AD0], [0x5AFF9A, 0x3AE8C0, 0xA0FF5A], [0xFF3A3A, 0x5AA0FF, 0xFF8A5A]]
+    case .jungle: [[0x66FF66, 0xFFCC4D, 0x33CC99], [0xFFC040, 0xFFE0A0, 0xA0D040], [0x8AE8D0, 0x6AA0B0, 0xC8F0E0], [0xE0FF6A, 0x5AA0FF, 0x7AFFC0]]
+    case .clouds: [[0xFFBFD9, 0xFFF299, 0xB0A0FF], [0xFFC050, 0xFF8AA0, 0xFFE0A0], [0xFFE08A, 0x8AA0FF, 0xC8D8FF], [0xC0B0FF, 0xE0E0FF, 0x9A9AD0]]
+    case .clockwork: [[0xFFB359, 0x99D9CC, 0xD98C4D], [0xE0A060, 0x7AE0D0, 0xFFE0B0], [0x7AE0FF, 0xC08AFF, 0xFF9AE0], [0xFFC060, 0x6A8AFF, 0xD0E0FF]]
     }
   }
-}
 
-extension Arena {
+  func curtain(_ variant: Int) -> [UInt32] {
+    let all = curtainHex
+    return all[((variant % all.count) + all.count) % all.count]
+  }
+
+  /// The curtain colours for the original take.
+  var aurora: [Color] { aurora(variant: 0) }
+
+  func aurora(variant: Int) -> [Color] {
+    curtain(variant).map { Color(red: Double(($0 >> 16) & 255) / 255, green: Double(($0 >> 8) & 255) / 255, blue: Double($0 & 255) / 255) }
+  }
+
   /// The same curtain colours, as numbers for the in-game sky shader.
-  var skyColors: [vector_float3] {
-    switch self {
-    case .classic: [.init(0.2, 0.85, 1), .init(0.4, 0.45, 1), .init(0.25, 1, 0.75)]
-    case .neon: [.init(0.9, 0.3, 1), .init(0.35, 0.5, 1), .init(1, 0.35, 0.7)]
-    case .forest: [.init(0.3, 1, 0.55), .init(0.2, 0.85, 0.8), .init(0.75, 1, 0.35)]
-    case .space: [.init(0.55, 0.35, 1), .init(0.2, 0.7, 1), .init(1, 0.45, 0.75)]
-    case .frost: [.init(0.2, 0.95, 0.72), .init(0.3, 0.78, 1), .init(0.6, 0.5, 1)]
-    case .reef: [.init(0.2, 0.9, 0.9), .init(1, 0.45, 0.62), .init(0.4, 1, 0.7)]
-    case .magma: [.init(1, 0.42, 0.15), .init(1, 0.75, 0.3), .init(1, 0.3, 0.5)]
-    }
+  var skyColors: [vector_float3] { skyColors(variant: 0) }
+
+  func skyColors(variant: Int) -> [vector_float3] {
+    curtain(variant).map { vector_float3(Float(($0 >> 16) & 255) / 255, Float(($0 >> 8) & 255) / 255, Float($0 & 255) / 255) }
   }
 }
 
@@ -100,6 +115,7 @@ struct Fold<Content: View>: View {
 /// let it rest after a few seconds, while gameplay keeps it moving.
 struct AuroraField: View {
   var arena: Arena
+  var variant = 0
   var heat: Double = 0
   var strength: Double = 0.42
   var alwaysOn = false
@@ -116,7 +132,7 @@ struct AuroraField: View {
     TimelineView(.animation(minimumInterval: 1.0 / 30.0, paused: calm)) { ctx in
       let t = Float(ctx.date.timeIntervalSinceReferenceDate.truncatingRemainder(dividingBy: 10_000))
       GeometryReader { geo in
-        let c = arena.aurora
+        let c = arena.aurora(variant: variant)
         Rectangle()
           .colorEffect(ShaderLibrary.auroraLight(.float2(geo.size), .float(t), .color(c[0]), .color(c[1]), .color(c[2]), .float(Float(strength)), .float(Float(heat)), .float(Float(soft))))
       }

@@ -85,6 +85,50 @@ public struct Tuning: Sendable {
   public var currentPeriod = 16.0
   public var gateWidth = 120.0
   public var gateSpeed = 70.0
+  /// World twists (see `Twist`). Each scales with the level's `LevelSpec.intensity`.
+  /// Wind: a gust every `windEvery` seconds blows across for `windTime`, after `windWarn` seconds of warning.
+  public var windEvery = 7.5
+  public var windTime = 3.2
+  public var windWarn = 1.0
+  public var windForce = 62.0
+  /// Tide: the hinge rises and falls this far (a fraction of the arena's depth) over `tidePeriod` seconds.
+  public var tideReach = 0.13
+  public var tidePeriod = 13.0
+  /// Fog: a bubble is clear within `fogClear` of the way from the hinge to its wall, and gone past `fogDense`.
+  /// Bubbles you can't see can't be touched.
+  public var fogClear = 0.42
+  public var fogDense = 0.78
+  /// Ghost: each bubble fades out of phase for `ghostTime` seconds, every `ghostEvery` (± a little).
+  public var ghostEvery = 4.2
+  public var ghostTime = 1.2
+  public var ghostFade = 0.22
+  /// Wells: how far a well reaches, how hard it pulls in and how hard it swirls round.
+  public var wellReach = 150.0
+  public var wellPull = 230.0
+  public var wellSwirl = 170.0
+  /// Portals: a bubble that leaves through one wall comes out of the other this much faster.
+  public var portalBoost = 1.25
+  /// Bounce: each wall bounce adds this much to a bubble's speed, up to `springMax`, easing off at `springEase`/s.
+  public var springGain = 0.14
+  public var springMax = 1.6
+  public var springEase = 0.06
+  /// Regrow: a piece left untouched this long grows back one size (never back to the biggest).
+  public var regrowTime = 8.5
+  /// Pulse: the beat's period, how close to it counts as on the beat, and how much bubbles surge on it.
+  public var beatPeriod = 0.9
+  public var beatWindow = 0.14
+  public var beatSurge = 0.22
+  /// Blackout: the lit band either side of the hinge, the light a touch leaves, and how long a bubble stays lit.
+  public var darkBand = 95.0
+  public var lanternReach = 105.0
+  public var lanternTime = 1.6
+  public var litTime = 1.1
+  /// Boss styles. Twins are smaller; a shield covers this half-angle and turns this fast; a splitter shrinks each phase.
+  public var twinScale = 0.74
+  public var shieldArc = 1.15
+  public var shieldSpin = 1.1
+  public var splitterShrink = 0.86
+  public var blinkEcho = 0.55
   public init() {}
 }
 

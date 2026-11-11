@@ -5,7 +5,10 @@ public enum BubbleKind: String, CaseIterable, Sendable {
     case basic, fast, armored, armoredCracked, magnetic, repel, golden, frozen, boss, bossHurt
 }
 public enum PowerKind: String, CaseIterable, Sendable { case overcharge, freeze, focus, shield, chainBurst }
-public enum ArenaKind: String, CaseIterable, Sendable { case classic, neon, forest, space, frost, reef, magma }
+public enum ArenaKind: String, CaseIterable, Sendable {
+    case classic, neon, forest, space, frost, reef, magma
+    case candy, dunes, storm, crystal, haunted, circuit, jungle, clouds, clockwork
+}
 public enum UIGlyph: String, CaseIterable, Sendable { case shieldOn, shieldOff, starOn, starOff, play, pause, settings, lock }
 public enum FXKind: Hashable, Sendable { case popBurst, shockwave, particleStar, confetti(Int) }
 
@@ -15,9 +18,20 @@ public enum Art {
 
     /// Renders at size * scale, with alpha. Results are cached by (item, size, scale); thread safe.
     public static func bubble(_ kind: BubbleKind, size: CGFloat, scale: CGFloat) -> CGImage {
-        cached(.bubble(kind), size, size, scale) {
+        bubble(kind, size: size, scale: scale, biome: nil)
+    }
+
+    /// A bubble dressed for a biome: a faint tint and rim in the biome's light, plus one small accessory
+    /// (frost rime, sprinkles, circuit lines, a cobweb, a leaf...). The face and the kind's own marks stay
+    /// as they are, so every kind reads the same in every world. `nil` and `.classic` are the plain bubble.
+    public static func bubble(_ kind: BubbleKind, size: CGFloat, scale: CGFloat, biome: ArenaKind?) -> CGImage {
+        let skin = biome.flatMap { $0 == .classic ? nil : $0 }
+        return cached(.bubble(kind, skin), size, size, scale) {
             let small = size < smallBelow
-            return unitSprite(pixels: px(size, scale)) { drawBubble(kind, $0, small: small) }
+            return unitSprite(pixels: px(size, scale)) {
+                drawBubble(kind, $0, small: small)
+                if let skin { drawSkin(skin, kind, $0, small: small) }
+            }
         }
     }
 
@@ -48,12 +62,22 @@ public enum Art {
         }
     }
 
-    /// Opaque. Composed for the requested shape rather than stretched.
-    public static func arena(_ kind: ArenaKind, size: CGSize, scale: CGFloat) -> CGImage {
-        cached(.arena(kind), size.width, size.height, scale) {
+    /// How many takes each biome has: 0 is the original, 1-3 shift the time of day, weather and props.
+    public static let arenaVariants = 4
+
+    /// Opaque. Composed for the requested shape rather than stretched. Any variant is valid; it wraps.
+    public static func arena(_ kind: ArenaKind, variant: Int = 0, size: CGSize, scale: CGFloat) -> CGImage {
+        let v = ((variant % arenaVariants) + arenaVariants) % arenaVariants
+        return cached(.arena(kind, v), size.width, size.height, scale) {
             makeImage(pxW: px(size.width, scale), pxH: px(size.height, scale), opaque: true,
-                      unitsX: size.width, unitsY: size.height) { drawArena(kind, $0, size: size) }
+                      unitsX: size.width, unitsY: size.height) { drawArena(kind, v, $0, size: size) }
         }
+    }
+
+    /// Where a biome's landmark sits (the thing its hidden secret wakes from), in points, y down, with a
+    /// tap radius. `Secrets.spot` in the core mirrors these numbers, and they hold for every variant.
+    public static func landmark(_ kind: ArenaKind, size: CGSize) -> (x: CGFloat, y: CGFloat, r: CGFloat) {
+        landmarkSpot(kind, size)
     }
 
     /// Height follows from `logoAspect`, height / width.
@@ -83,7 +107,7 @@ public enum Art {
     // MARK: Cache
 
     private enum Item: Hashable {
-        case bubble(BubbleKind), cameo(CameoKind), power(PowerKind), glyph(UIGlyph), fx(FXKind), arena(ArenaKind), logo, appIcon
+        case bubble(BubbleKind, ArenaKind?), cameo(CameoKind), power(PowerKind), glyph(UIGlyph), fx(FXKind), arena(ArenaKind, Int), logo, appIcon
     }
     private struct Key: Hashable { let item: Item; let w: CGFloat; let h: CGFloat; let scale: CGFloat }
 
