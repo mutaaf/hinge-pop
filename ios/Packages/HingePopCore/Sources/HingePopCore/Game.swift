@@ -1292,7 +1292,8 @@ public final class Game {
     side < 0 ? (vertical ? line : line - top) : (vertical ? w - line : h - line)
   }
 
-  private var tideReachNow: Double {
+  /// Tide: how far the line travels either side of where it rests.
+  public var tideReachNow: Double {
     let d = min(depth(-1, from: baseHinge), depth(1, from: baseHinge))
     return tuning.tideReach * spec.intensity * max(0, d) * (foldPlay ? 0.4 : 1)
   }
