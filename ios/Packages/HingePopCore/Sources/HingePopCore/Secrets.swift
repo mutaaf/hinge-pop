@@ -100,7 +100,8 @@ public enum Secrets {
   public static func nod(level: Int) -> String { nods[(max(1, level) * 7) % nods.count] }
 
   /// Where each world hides its secret, in fractions of the backdrop: centre and radius (of the short side).
-  /// These follow the art in HingePopArt/Arenas.swift.
+  /// These mirror `landmarkSpot` in HingePopArt/Moods.swift exactly (the art draws each landmark there),
+  /// and hold for every variant. Change both together.
   public static func spot(_ arena: Arena, width w: Double, height h: Double) -> (x: Double, y: Double, r: Double) {
     let u = min(w, h)
     switch arena {
@@ -111,16 +112,16 @@ public enum Secrets {
     case .frost: return (w * 0.85, h - max(u * 0.26, h * 0.16) - u * 0.15, u * 0.15)
     case .reef: return (w * 0.08, h - max(u * 0.2, h * 0.12) - u * 0.1, u * 0.16)
     case .magma: return (w * 0.97, h - max(u * 0.3, h * 0.2) - u * 0.38, u * 0.14)
-    // The new biomes: provisional spots until their art is final (HingePopArt/Arenas.swift); keep these in step with it.
-    case .candy: return (w * 0.15, h - max(u * 0.28, h * 0.18), u * 0.15)
-    case .dunes: return (w * 0.82, h - max(u * 0.22, h * 0.14), u * 0.15)
-    case .storm: return (w * 0.7, h * 0.12, u * 0.15)
-    case .crystal: return (w * 0.5, h - max(u * 0.32, h * 0.22), u * 0.16)
-    case .haunted: return (w * 0.78, h - max(u * 0.38, h * 0.26), u * 0.13)
-    case .circuit: return (w * 0.2, h - max(u * 0.4, h * 0.28), u * 0.14)
-    case .jungle: return (w * 0.5, h - max(u * 0.24, h * 0.15), u * 0.16)
-    case .clouds: return (w * 0.85, h * 0.14, u * 0.15)
-    case .clockwork: return (w * 0.5, h * 0.16, u * 0.17)
+    // The worlds expansion: each is the biome's landmark (Art.landmark / landmarkSpot in HingePopArt).
+    case .candy: return (w * 0.15, h - max(u * 0.24, h * 0.15) - u * 0.30, u * 0.15)    // the biggest lollipop
+    case .dunes: return (w * 0.82, h - max(u * 0.16, h * 0.1), u * 0.13)                // the lamp in the sand
+    case .storm: return (w * 0.76, h * 0.12 + u * 0.06, u * 0.15)                       // the brightest bolt
+    case .crystal: return (w * 0.84, h - max(u * 0.34, h * 0.22), u * 0.15)             // the tallest crystal
+    case .haunted: return (w * 0.78, h - max(u * 0.38, h * 0.26), u * 0.12)             // the manor's lit window
+    case .circuit: return (w * 0.18, h - max(u * 0.44, h * 0.3), u * 0.13)              // the flickering sign
+    case .jungle: return (w * 0.5, h - max(u * 0.12, h * 0.08), u * 0.13)               // the temple door
+    case .clouds: return (w * 0.83, h * 0.12 + u * 0.04, u * 0.14)                      // the nest on the highest cloud
+    case .clockwork: return (w * 0.5, h * 0.14 + u * 0.06, u * 0.17)                    // the big clock face
     }
   }
 

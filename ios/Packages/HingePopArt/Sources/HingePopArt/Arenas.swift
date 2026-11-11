@@ -1,7 +1,10 @@
 import CoreGraphics
 import Foundation
 
-func drawArena(_ k: ArenaKind, _ c: CGContext, size: CGSize) {
+/// Paints a biome. The first seven are the original worlds, re-lit for variants 1-3 by `relight`; the nine
+/// new biomes paint each variant natively (Biomes.swift). Every arena then gets the same finish: a calm
+/// central haze so the play band stays quiet, edge darkening, and a fine dither so nothing bands.
+func drawArena(_ k: ArenaKind, _ v: Int, _ c: CGContext, size: CGSize) {
     switch k {
     case .classic: drawClassic(c, size)
     case .neon: drawNeon(c, size)
@@ -10,7 +13,17 @@ func drawArena(_ k: ArenaKind, _ c: CGContext, size: CGSize) {
     case .frost: drawFrost(c, size)
     case .reef: drawReef(c, size)
     case .magma: drawMagma(c, size)
+    case .candy: drawCandy(c, size, v)
+    case .dunes: drawDunes(c, size, v)
+    case .storm: drawStorm(c, size, v)
+    case .crystal: drawCrystal(c, size, v)
+    case .haunted: drawHaunted(c, size, v)
+    case .circuit: drawCircuit(c, size, v)
+    case .jungle: drawJungle(c, size, v)
+    case .clouds: drawClouds(c, size, v)
+    case .clockwork: drawClockwork(c, size, v)
     }
+    if v > 0, let look = relight(k, v) { look.apply(c, size) }
     grain(c, size)
 }
 
@@ -22,7 +35,7 @@ private let grainTile: CGImage = {
     var px = [UInt8](repeating: 0, count: n * n * 4)
     for i in 0..<(n * n) {
         let r = d.next()
-        let a = UInt8(r % 5)            // alpha 0...4 of 255
+        let a = UInt8(r % 7)            // alpha 0...6 of 255
         let v: UInt8 = (r >> 8) & 1 == 0 ? 0 : a   // premultiplied black or white
         px[i * 4] = v; px[i * 4 + 1] = v; px[i * 4 + 2] = v; px[i * 4 + 3] = a
     }
@@ -32,7 +45,7 @@ private let grainTile: CGImage = {
                    provider: provider, decode: nil, shouldInterpolate: false, intent: .defaultIntent)!
 }()
 
-private func grain(_ c: CGContext, _ s: CGSize) {
+func grain(_ c: CGContext, _ s: CGSize) {
     let t = c.ctm
     let sx = max(abs(t.a), 0.0001), sy = max(abs(t.d), 0.0001)
     c.with {
@@ -44,7 +57,7 @@ private func grain(_ c: CGContext, _ s: CGSize) {
 /// Paints soft, featureless layers at one pixel per point, then scales them up. Gradients
 /// are expensive per pixel and have no detail to lose, and the grain hides any stepping.
 /// This is what keeps a retina arena inside its time budget.
-private func backdrop(_ c: CGContext, _ s: CGSize, _ draw: (CGContext) -> Void) {
+func backdrop(_ c: CGContext, _ s: CGSize, _ draw: (CGContext) -> Void) {
     let pixelScale = abs(c.ctm.a)
     guard pixelScale > 1.25 else { draw(c); return }
     let w = Int(s.width.rounded(.up)), h = Int(s.height.rounded(.up))
@@ -57,13 +70,13 @@ private func backdrop(_ c: CGContext, _ s: CGSize, _ draw: (CGContext) -> Void) 
 }
 
 /// Edge darkening. Keeps eyes in the middle, where the gameplay is.
-private func vignette(_ c: CGContext, _ s: CGSize, _ strength: CGFloat = 0.5) {
+func vignette(_ c: CGContext, _ s: CGSize, _ strength: CGFloat = 0.5) {
     let m = hypot(s.width, s.height) / 2
     c.radial(grad([(0, C(0x05001A, 0)), (0.55, C(0x05001A, 0)), (1, C(0x05001A, strength))]), P(s.width / 2, s.height / 2), m, extend: true)
 }
 
 /// Stars scale with area, not with stretching. They stay out of a soft central oval.
-private func stars(_ c: CGContext, _ s: CGSize, seed: UInt64, density: CGFloat, tints: [C], maxR: CGFloat = 1.6, keepOut: CGFloat = 0.5) {
+func stars(_ c: CGContext, _ s: CGSize, seed: UInt64, density: CGFloat, tints: [C], maxR: CGFloat = 1.6, keepOut: CGFloat = 0.5) {
     var d = Dice(seed)
     let count = Int(s.width * s.height * density)
     let cx = s.width / 2, cy = s.height / 2
@@ -79,7 +92,7 @@ private func stars(_ c: CGContext, _ s: CGSize, seed: UInt64, density: CGFloat, 
     }
 }
 
-private func flare(_ c: CGContext, _ at: CGPoint, _ r: CGFloat, _ col: C, _ peak: CGFloat = 1) {
+func flare(_ c: CGContext, _ at: CGPoint, _ r: CGFloat, _ col: C, _ peak: CGFloat = 1) {
     c.glow(col, at, r * 0.6, 0.5 * peak)
     c.fill(polygon(starPoints(at, r, r * 0.045, 4)), C.white.alpha(0.85 * peak))
     c.fill(polygon(starPoints(at, r * 0.4, r * 0.03, 4, rot: 45)), col.alpha(0.6 * peak))
@@ -180,7 +193,7 @@ private func drawNeon(_ c: CGContext, _ s: CGSize) {
 // MARK: - Forest
 
 /// A cartoon tree: tapered trunk, one lobed canopy silhouette, then hard-edged lit lobes on top.
-private func tree(_ c: CGContext, x: CGFloat, base: CGFloat, h: CGFloat, leaf: C, leafLow: C, leafHi: C, trunk: C, d: inout Dice) {
+func tree(_ c: CGContext, x: CGFloat, base: CGFloat, h: CGFloat, leaf: C, leafLow: C, leafHi: C, trunk: C, d: inout Dice) {
     let tw = h * 0.05
     c.fill(polygon([P(x - tw * 0.55, base - h * 0.55), P(x + tw * 0.55, base - h * 0.55), P(x + tw * 0.8, base - h * 0.08), P(x + tw * 1.5, base + h * 0.04), P(x - tw * 1.5, base + h * 0.04), P(x - tw * 0.8, base - h * 0.08)], round: tw * 0.2), trunk)
     let spec: [(CGFloat, CGFloat, CGFloat)] = [
@@ -205,7 +218,7 @@ private func tree(_ c: CGContext, x: CGFloat, base: CGFloat, h: CGFloat, leaf: C
 }
 
 /// Three stacked tiers, each lit down its left side, on a trunk that runs into the hill.
-private func fir(_ c: CGContext, x: CGFloat, base: CGFloat, h: CGFloat, col: C, hi: C) {
+func fir(_ c: CGContext, x: CGFloat, base: CGFloat, h: CGFloat, col: C, hi: C) {
     let w = h * 0.3
     c.fill(polygon([P(x - w * 0.1, base - h * 0.3), P(x + w * 0.1, base - h * 0.3), P(x + w * 0.13, base + h * 0.03), P(x - w * 0.13, base + h * 0.03)]), C(0x170F2E))
     c.fill(ellipse(P(x, base + h * 0.03), w * 0.55, h * 0.022), C(0x0A1A30, 0.55))
@@ -217,7 +230,7 @@ private func fir(_ c: CGContext, x: CGFloat, base: CGFloat, h: CGFloat, col: C, 
     }
 }
 
-private func hill(_ c: CGContext, _ s: CGSize, y: CGFloat, amp: CGFloat, waves: Int, phase: CGFloat, top: C, bottom: C) {
+func hill(_ c: CGContext, _ s: CGSize, y: CGFloat, amp: CGFloat, waves: Int, phase: CGFloat, top: C, bottom: C) {
     var pts = [CGPoint]()
     let n = max(waves * 4, 8)
     for i in 0...n {
@@ -290,7 +303,7 @@ private func drawForest(_ c: CGContext, _ s: CGSize) {
 
 // MARK: - Space
 
-private func planet(_ c: CGContext, _ o: CGPoint, _ r: CGFloat, light: C, base: C, deep: C, band: C?, ring: C?) {
+func planet(_ c: CGContext, _ o: CGPoint, _ r: CGFloat, light: C, base: C, deep: C, band: C?, ring: C?) {
     c.glow(base, o, r * 1.6, 0.45)
     func ringPart(front: Bool) {
         guard let ring else { return }

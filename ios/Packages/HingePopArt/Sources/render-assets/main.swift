@@ -19,15 +19,96 @@ func writePNG(_ img: CGImage, _ name: String) {
     print("wrote", url.path)
 }
 
+// `--worlds [kinds...]` writes a strip per biome (its four variants, phone and tablet shapes, landmark
+// circled) and worlds-sheet.png, the contact sheet of every biome and variant. For looking at the art.
+if CommandLine.arguments.contains("--worlds") {
+    let only = Set(CommandLine.arguments.dropFirst(2).filter { !$0.hasPrefix("--") })
+    let kinds = ArenaKind.allCases.filter { only.isEmpty || only.contains($0.rawValue) }
+    let sp = CGColorSpace(name: CGColorSpace.sRGB)!
+    func canvas(_ w: Int, _ h: Int) -> CGContext {
+        let c = CGContext(data: nil, width: w, height: h, bitsPerComponent: 8, bytesPerRow: 0, space: sp, bitmapInfo: CGImageAlphaInfo.noneSkipLast.rawValue)!
+        c.setFillColor(CGColor(colorSpace: sp, components: [0.06, 0.03, 0.14, 1])!); c.fill(CGRect(x: 0, y: 0, width: w, height: h))
+        return c
+    }
+    // y-up placement helpers for a plain bitmap context.
+    func place(_ c: CGContext, _ img: CGImage, _ x: CGFloat, _ yTop: CGFloat, _ w: CGFloat, _ h: CGFloat, canvasH: CGFloat) {
+        c.draw(img, in: CGRect(x: x, y: canvasH - yTop - h, width: w, height: h))
+    }
+    func ring(_ c: CGContext, _ k: ArenaKind, _ size: CGSize, _ x: CGFloat, _ yTop: CGFloat, _ k2: CGFloat, canvasH: CGFloat) {
+        let m = Art.landmark(k, size: size)
+        c.setStrokeColor(CGColor(colorSpace: sp, components: [1, 1, 0.3, 0.9])!); c.setLineWidth(2)
+        c.strokeEllipse(in: CGRect(x: x + (m.x - m.r) * k2, y: canvasH - yTop - (m.y + m.r) * k2, width: m.r * 2 * k2, height: m.r * 2 * k2))
+    }
+    let phone = CGSize(width: 390, height: 844), pad = CGSize(width: 1024, height: 768)
+    for k in kinds {
+        let gap: CGFloat = 12, pw: CGFloat = 390, ph: CGFloat = 844, tw: CGFloat = 512, th: CGFloat = 384
+        let W = gap + 4 * (pw + gap), H = gap + ph + gap + th + gap
+        let c = canvas(Int(W), Int(H))
+        for v in 0..<4 {
+            let x = gap + CGFloat(v) * (pw + gap)
+            place(c, Art.arena(k, variant: v, size: phone, scale: 1), x, gap, pw, ph, canvasH: H)
+            if CommandLine.arguments.contains("--rings") { ring(c, k, phone, x, gap, 1, canvasH: H) }
+            let tx = gap + CGFloat(v % 2) * 0 + x - (v % 2 == 1 ? 0 : 0)
+            _ = tx
+        }
+        for v in 0..<4 {
+            let x = gap + CGFloat(v) * (tw * 0.75 + gap * 0.5 + 6)
+            let w = tw * 0.75, h = th * 0.75
+            place(c, Art.arena(k, variant: v, size: pad, scale: 0.5), x, gap * 2 + ph, w, h, canvasH: H)
+            if CommandLine.arguments.contains("--rings") { ring(c, k, pad, x, gap * 2 + ph, w / pad.width, canvasH: H) }
+        }
+        writePNG(c.makeImage()!, "strip-\(k.rawValue).png")
+    }
+    // Skins: a row per biome, every kind, at a play size and a small size.
+    do {
+        let kindsB = BubbleKind.allCases, cell: CGFloat = 96, gap: CGFloat = 6
+        let W = gap + CGFloat(kindsB.count) * (cell + gap) + 60, H = gap + CGFloat(ArenaKind.allCases.count) * (cell + gap)
+        let c = canvas(Int(W), Int(H))
+        for (row, b) in ArenaKind.allCases.enumerated() {
+            let y = gap + CGFloat(row) * (cell + gap)
+            c.saveGState()
+            c.clip(to: CGRect(x: 0, y: H - y - cell, width: W, height: cell))
+            place(c, Art.arena(b, size: CGSize(width: W, height: cell), scale: 1), 0, y, W, cell, canvasH: H)
+            c.restoreGState()
+            for (i, k) in kindsB.enumerated() {
+                place(c, Art.bubble(k, size: cell, scale: 1, biome: b), gap + CGFloat(i) * (cell + gap), y, cell, cell, canvasH: H)
+            }
+            place(c, Art.bubble(.basic, size: 36, scale: 1, biome: b), W - 50, y + 30, 36, 36, canvasH: H)
+        }
+        writePNG(c.makeImage()!, "skins.png")
+    }
+    if only.isEmpty {
+        // The contact sheet: a row per biome, its four variants as phone-shaped cards.
+        let cw: CGFloat = 150, ch: CGFloat = 325, gap: CGFloat = 8, label: CGFloat = 0
+        let cols = 8
+        let rows = (ArenaKind.allCases.count * 4 + cols - 1) / cols
+        let W = gap + CGFloat(cols) * (cw + gap), H = gap + CGFloat(rows) * (ch + gap + label)
+        let c = canvas(Int(W), Int(H))
+        for (i, k) in ArenaKind.allCases.enumerated() {
+            for v in 0..<4 {
+                let n = i * 4 + v
+                let x = gap + CGFloat(n % cols) * (cw + gap), y = gap + CGFloat(n / cols) * (ch + gap + label)
+                place(c, Art.arena(k, variant: v, size: phone, scale: 1), x, y, cw, ch, canvasH: H)
+            }
+        }
+        writePNG(c.makeImage()!, "worlds-sheet.png")
+    }
+    exit(0)
+}
+
 // `--sprites` writes each asset alone, for the website and store art, and stops.
 if CommandLine.arguments.contains("--sprites") {
     for k in BubbleKind.allCases { writePNG(Art.bubble(k, size: 256, scale: 2), "bubble-\(k.rawValue).png") }
     for k in CameoKind.allCases { writePNG(Art.cameo(k, size: 160, scale: 2), "cameo-\(k.rawValue).png") }
     for k in PowerKind.allCases { writePNG(Art.power(k, size: 160, scale: 2), "power-\(k.rawValue).png") }
     for g in UIGlyph.allCases { writePNG(Art.glyph(g, size: 96, scale: 2), "glyph-\(g.rawValue).png") }
+    // Variant 0 keeps the original names; variants 1-3 add -v<n> (arena-candy-v2-tall.png).
     for a in ArenaKind.allCases {
-        writePNG(Art.arena(a, size: CGSize(width: 1600, height: 1000), scale: 1), "arena-\(a.rawValue)-wide.png")
-        writePNG(Art.arena(a, size: CGSize(width: 800, height: 1400), scale: 1), "arena-\(a.rawValue)-tall.png")
+        for v in 0..<Art.arenaVariants {
+            let tag = v == 0 ? a.rawValue : "\(a.rawValue)-v\(v)"
+            writePNG(Art.arena(a, variant: v, size: CGSize(width: 1600, height: 1000), scale: 1), "arena-\(tag)-wide.png")
+            writePNG(Art.arena(a, variant: v, size: CGSize(width: 800, height: 1400), scale: 1), "arena-\(tag)-tall.png")
+        }
     }
     writePNG(Art.logo(width: 900, scale: 2), "logo.png")
     writePNG(Art.fx(.popBurst, size: 200, scale: 2), "fx-popBurst.png")
