@@ -23,10 +23,16 @@ struct RootView: View {
     Group {
       switch app.route {
       case .home: HomeView()
-      case .map: MapView()
+      case .map: JourneyView()
       case .guide: GuideView()
       case .settings: SettingsView()
       case .play(let mode): PlayView(mode: mode, app: app).id(String(describing: mode))
+      }
+    }
+    .overlay {
+      // A world's or realm's complete moment, once each, whenever you're out of a game.
+      if !isPlaying, app.updateNotes == nil, let cheer = app.progress.pendingCheer {
+        CheerView(cheer: cheer).transition(.opacity).id(cheer.id)
       }
     }
     .overlay {
@@ -131,11 +137,11 @@ struct HomeView: View {
 
   private func buttons(wide: Bool) -> some View {
     VStack(spacing: 10) {
-      Button(app.progress.unlocked > 1 ? "Play level \(app.progress.unlocked)" : "Play") {
-        app.route = .play(.campaign(app.progress.unlocked))
+      Button(app.progress.nextUp > 1 ? "Play level \(app.progress.nextUp)" : "Play") {
+        app.route = .play(.campaign(app.progress.nextUp))
       }
       .buttonStyle(ChunkyStyle())
-      Button("Level map") { app.route = .map }.buttonStyle(QuietStyle())
+      Button("Journey") { app.route = .map }.buttonStyle(QuietStyle())
       HStack(spacing: 10) {
         Button("Arcade") { app.route = .play(.arcade(seed: UInt64(Date().timeIntervalSince1970))) }.buttonStyle(QuietStyle())
         Button("Daily") { app.route = .play(app.today()) }.buttonStyle(QuietStyle())
@@ -191,116 +197,6 @@ struct BackBar: View {
     }
     .padding(.horizontal, 16)
     .padding(.vertical, 6)
-  }
-}
-
-// MARK: - Map
-
-struct MapView: View {
-  @Environment(AppModel.self) private var app
-  var body: some View {
-    ZStack {
-      ArenaBackground(arena: .classic)
-      VStack(spacing: 0) {
-        BackBar(title: "Level map")
-        ScrollViewReader { reader in
-          ScrollView {
-            LazyVStack(alignment: .leading, spacing: 20) {
-              ForEach(Campaign.chapters, id: \.number) { ChapterView(chapter: $0).id($0.number) }
-              InfinityRow()
-            }
-            .padding(.horizontal, 16)
-            .padding(.bottom, 28)
-            .frame(maxWidth: 900)
-            .frame(maxWidth: .infinity)
-          }
-          .onAppear { reader.scrollTo(Campaign.chapter(of: min(50, app.progress.unlocked)).number, anchor: .top) }
-        }
-      }
-    }
-    #if DEBUG
-    .task { Debug.ready("root") }
-    #endif
-  }
-}
-
-struct ChapterView: View {
-  @Environment(AppModel.self) private var app
-  let chapter: Chapter
-  var body: some View {
-    VStack(alignment: .leading, spacing: 10) {
-      VStack(alignment: .leading, spacing: 2) {
-        Text("CHAPTER \(chapter.number)").font(.game(.caption, .heavy)).foregroundStyle(Theme.sun)
-        Text(chapter.title).font(.game(.title3, .black)).foregroundStyle(Theme.ink)
-        Text(chapter.teaches).font(.game(.footnote, .medium)).foregroundStyle(Theme.muted).fixedSize(horizontal: false, vertical: true)
-      }
-      LazyVGrid(columns: [GridItem(.adaptive(minimum: 66), spacing: 8)], spacing: 10) {
-        ForEach(Array(chapter.levels), id: \.self) { LevelNode(level: $0) }
-      }
-    }
-    .padding(14)
-    .background(RoundedRectangle(cornerRadius: 20, style: .continuous).fill(Theme.panel.opacity(0.88)))
-    .overlay(RoundedRectangle(cornerRadius: 20, style: .continuous).stroke(Theme.panelEdge.opacity(0.7), lineWidth: 1))
-  }
-}
-
-struct LevelNode: View {
-  @Environment(AppModel.self) private var app
-  let level: Int
-  var body: some View {
-    let open = app.progress.isOpen(level)
-    let stars = app.progress.stars[level] ?? 0
-    let boss = Campaign.level(level).isBoss
-    let current = level == app.progress.unlocked
-    Button { app.route = .play(.campaign(level)) } label: {
-      VStack(spacing: 2) {
-        ZStack {
-          Circle().fill(LinearGradient(colors: boss ? [Theme.red, Color(red: 0.45, green: 0.1, blue: 0.5)] : [Theme.panelEdge, Theme.panel], startPoint: .top, endPoint: .bottom))
-          Circle().stroke(current ? Theme.cyan : .white.opacity(0.25), lineWidth: current ? 3 : 1)
-          if open {
-            Text("\(level)").font(.game(.headline, .black)).monospacedDigit().foregroundStyle(Theme.ink)
-          } else {
-            ArtImage(item: .glyph(.lock), size: 24)
-          }
-        }
-        .frame(width: 50, height: 50)
-        HStack(spacing: 1) {
-          ForEach(0..<3, id: \.self) { i in ArtImage(item: .glyph(i < stars ? .starOn : .starOff), size: 13) }
-        }
-        .opacity(open ? 1 : 0.35)
-      }
-      .frame(minWidth: 60, minHeight: 72)
-      .contentShape(Rectangle())
-    }
-    .buttonStyle(.plain)
-    .disabled(!open)
-    .accessibilityLabel(open ? "Level \(level)\(boss ? ", boss" : ""), \(stars) of 3 stars" : "Level \(level), locked")
-  }
-}
-
-struct InfinityRow: View {
-  @Environment(AppModel.self) private var app
-  var body: some View {
-    let open = app.progress.unlocked > Campaign.finalAuthored
-    Button { app.route = .play(.campaign(max(51, app.progress.unlocked))) } label: {
-      HStack(spacing: 12) {
-        Text("∞").font(.system(.largeTitle, design: .rounded, weight: .black)).foregroundStyle(Theme.cyan)
-        VStack(alignment: .leading, spacing: 2) {
-          Text("Infinity").font(.game(.title3, .black)).foregroundStyle(Theme.ink)
-          Text(open ? "Generated levels that keep climbing. You are on level \(max(51, app.progress.unlocked))." : "Generated levels that keep climbing. Clear level 50 to open it.")
-            .font(.game(.footnote, .medium)).foregroundStyle(Theme.muted).fixedSize(horizontal: false, vertical: true).multilineTextAlignment(.leading)
-        }
-        Spacer()
-        if !open { ArtImage(item: .glyph(.lock), size: 26) }
-      }
-      .padding(14)
-      .frame(maxWidth: .infinity, minHeight: Theme.target)
-      .background(RoundedRectangle(cornerRadius: 20, style: .continuous).fill(Theme.panel.opacity(0.88)))
-      .overlay(RoundedRectangle(cornerRadius: 20, style: .continuous).stroke(Theme.panelEdge.opacity(0.7), lineWidth: 1))
-      .contentShape(Rectangle())
-    }
-    .buttonStyle(.plain)
-    .disabled(!open)
   }
 }
 
@@ -643,8 +539,8 @@ struct SettingsView: View {
           VStack(spacing: 12) {
             GuideBlock(title: "Play") { SettingsRows() }
             GuideBlock(title: "Backdrop") {
-              Text("Each chapter has its own arena. Pick one to use everywhere, or follow the chapter.").font(.game(.footnote, .medium)).foregroundStyle(Theme.muted).fixedSize(horizontal: false, vertical: true)
-              LazyVGrid(columns: [GridItem(.adaptive(minimum: 130), spacing: 10)], spacing: 10) {
+              Text("Every world has its own. Pick one to use everywhere, or follow the world. New ones open as you travel.").font(.game(.footnote, .medium)).foregroundStyle(Theme.muted).fixedSize(horizontal: false, vertical: true)
+              LazyVGrid(columns: [GridItem(.adaptive(minimum: 100), spacing: 10, alignment: .top)], spacing: 12) {
                 ArenaChoice(arena: nil)
                 ForEach(Arena.allCases, id: \.self) { ArenaChoice(arena: $0) }
               }
@@ -675,26 +571,37 @@ struct ArenaChoice: View {
   var body: some View {
     let chosen = app.progress.arena == arena
     let open = arena.map { app.progress.arenaOpen($0) } ?? true
+    let opensIn = arena.flatMap { app.progress.firstWorld(using: $0) }
     Button { app.progress.arena = arena } label: {
-      VStack(spacing: 4) {
+      VStack(spacing: 5) {
         ZStack {
-          if let a = arena, let art = ArenaKind(rawValue: a.rawValue) {
-            Image(decorative: Art.arena(art, size: CGSize(width: 130, height: 70), scale: scale), scale: scale)
-              .clipShape(RoundedRectangle(cornerRadius: 12))
+          if let a = arena {
+            GeometryReader { g in BackdropFill(biome: a, size: g.size, scale: scale) }
+              .saturation(open ? 1 : 0.15)
+              .overlay(open ? Color.clear : Color.black.opacity(0.45))
           } else {
-            RoundedRectangle(cornerRadius: 12).fill(Theme.panelEdge.opacity(0.4)).frame(height: 70)
+            LinearGradient(colors: [Theme.violet.opacity(0.7), Theme.cyan.opacity(0.5)], startPoint: .topLeading, endPoint: .bottomTrailing)
             Text("Auto").font(.game(.headline, .black)).foregroundStyle(Theme.ink)
           }
-          if !open { ArtImage(item: .glyph(.lock), size: 28) }
-          RoundedRectangle(cornerRadius: 12).stroke(chosen ? Theme.cyan : .white.opacity(0.2), lineWidth: chosen ? 3 : 1)
+          if !open { ArtImage(item: .glyph(.lock), size: 26) }
+          if chosen {
+            Image(systemName: "checkmark.circle.fill").font(.system(size: 20, weight: .bold)).foregroundStyle(.white, Theme.cyan)
+              .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing).padding(5)
+          }
         }
-        .frame(height: 70)
-        Text(arena?.rawValue.capitalized ?? "Follow chapter").font(.game(.caption, .bold)).foregroundStyle(Theme.ink)
+        .frame(height: 64)
+        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).stroke(chosen ? Theme.cyan : .white.opacity(0.2), lineWidth: chosen ? 3 : 1))
+        Text(arena?.backdropName ?? "Follow world").font(.game(.caption, .bold)).foregroundStyle(open ? Theme.ink : Theme.muted).lineLimit(1).minimumScaleFactor(0.8)
+        if !open, let w = opensIn {
+          Text("World \(w.number)").font(.game(.caption2, .semibold)).foregroundStyle(Theme.muted).lineLimit(1)
+        }
       }
+      .frame(minHeight: Theme.target)
       .contentShape(Rectangle())
     }
     .buttonStyle(.plain)
     .disabled(!open)
-    .accessibilityLabel("\(arena?.rawValue.capitalized ?? "Follow the chapter") backdrop\(open ? "" : ", locked")\(chosen ? ", selected" : "")")
+    .accessibilityLabel("\(arena?.backdropName ?? "Follow the world") backdrop\(open ? "" : ", locked, opens in world \(opensIn?.number ?? 0), \(opensIn?.name ?? "")")\(chosen ? ", selected" : "")")
   }
 }

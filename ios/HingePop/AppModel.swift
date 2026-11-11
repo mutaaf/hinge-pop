@@ -21,6 +21,8 @@ final class AppModel {
   init() {
     if let data = UserDefaults.standard.data(forKey: key), let p = try? JSONDecoder().decode(GameProgress.self, from: data) {
       progress = p
+      // Saves from before realm gates keep every level they reached.
+      progress.adoptGates()
     } else {
       progress = GameProgress()
     }
@@ -38,7 +40,11 @@ final class AppModel {
     }
     if let n = Debug.int("-unlock") {
       progress.unlocked = n
-      for l in 1..<max(1, n) { progress.stars[l] = l % 4 == 0 ? 2 : 3 }
+      // -starsEach k gives every cleared level k stars (1 shows a realm gate); otherwise a believable mix.
+      let each = Debug.int("-starsEach")
+      for l in 1..<max(1, n) { progress.stars[l] = each ?? [3, 2, 3, 1, 3, 2, 2, 3][l % 8] }
+      // Seeded saves skip the complete moments, unless -cheer asks for the latest one.
+      progress.settleCheers(keepingLatest: args.contains("-cheer"))
     }
     switch Debug.string("-screen") {
     case "map": route = .map
@@ -89,7 +95,7 @@ final class AppModel {
     case .map: route = .map
     case .settings: route = .settings
     case .guide(let section): guideSection = section; route = .guide
-    case .play: route = .play(.campaign(progress.unlocked))
+    case .play: route = .play(.campaign(progress.nextUp))
     case .arcade: route = .play(.arcade(seed: UInt64(Date().timeIntervalSince1970)))
     case .daily: route = .play(today())
     case .versus: route = .play(.versus)
