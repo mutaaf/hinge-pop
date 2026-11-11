@@ -34,7 +34,7 @@ public enum Cameo: String, CaseIterable, Sendable, Codable {
   case captainFizz, docFlux, sirGlowstick, chosenFizz, merlinFizz, bigBurp, booBubble, discoDot
 }
 
-public enum Arena: String, CaseIterable, Sendable, Codable { case classic, neon, forest, space }
+public enum Arena: String, CaseIterable, Sendable, Codable { case classic, neon, forest, space, frost, reef, magma }
 
 public struct Spawn: Equatable, Sendable {
   public var kind: ActorKind
@@ -51,6 +51,8 @@ public struct LevelSpec: Equatable, Sendable {
   public var gates: Int
   public var bossPhases: Int
   public var arena: Arena
+  /// Coral Drift: how hard the current pushes everything along the hinge, before scaling. It turns around slowly.
+  public var current = 0.0
   public var isBoss: Bool { bossPhases > 0 }
 }
 
@@ -69,12 +71,15 @@ public enum Campaign {
     .init(number: 3, title: "Magnetic Storm", levels: 21...30, teaches: "Magnetic and repel bubbles move everything around them.", arena: .forest),
     .init(number: 4, title: "Overload Protocol", levels: 31...40, teaches: "Moving gates and mixed bubbles.", arena: .space),
     .init(number: 5, title: "Bosses & Beyond", levels: 41...50, teaches: "Boss patterns and combos.", arena: .neon),
+    .init(number: 6, title: "Frost Fair", levels: 51...60, teaches: "Frozen crowds and a shorter meter.", arena: .frost),
+    .init(number: 7, title: "Coral Drift", levels: 61...70, teaches: "A current pushes everything along the hinge.", arena: .reef),
+    .init(number: 8, title: "Magma Run", levels: 71...80, teaches: "Fast and golden, with a boss halfway.", arena: .magma),
   ]
-  public static let finalAuthored = 50
+  public static let finalAuthored = 80
 
   public static func chapter(of level: Int) -> Chapter {
     chapters.first { $0.levels.contains(level) }
-      ?? .init(number: 6, title: "Infinity", levels: 51...Int.max, teaches: "Generated levels that keep climbing.", arena: Arena.allCases[(level / 10) % 4])
+      ?? .init(number: 9, title: "Infinity", levels: (finalAuthored + 1)...Int.max, teaches: "Generated levels that keep climbing.", arena: Arena.allCases[(level / 10) % Arena.allCases.count])
   }
 
   /// How many taps a size takes to clear by hand. A level's difficulty is measured in this, not in bubbles:
@@ -104,7 +109,7 @@ public enum Campaign {
   private static let firstChapter: [[Int]] = [[0], [0, 2], [0, 1], [0, 1, 2], [0, 0], [0, 0, 2], [0, 0, 1], [0, 0, 1, 2], [0, 0, 1, 1, 2]]
 
   /// The budget climbs slowly inside a chapter, and eases back at each new one so its new bubble gets room.
-  private static func budget(chapter: Int, step k: Int) -> Int { min(76, 24 + chapter * 7 + (k - 1) * 3) }
+  private static func budget(chapter: Int, step k: Int) -> Int { min(chapter >= 5 ? 84 : 76, 24 + chapter * 7 + (k - 1) * 3 - (chapter >= 5 ? 10 : 0)) }
 
   /// Speed barely moves for a long time. Later levels ask for more swiping before they ask for faster hands.
   private static func speed(chapter: Int, step k: Int) -> Double { min(1, 0.5 + 0.06 * Double(chapter) + 0.014 * Double(k - 1)) }
@@ -124,13 +129,18 @@ public enum Campaign {
     let k = (n - 1) % 10 + 1
     if n > finalAuthored { return generated(n, chapter: ch) }
     let index = ch.number - 1
-    let pace = speed(chapter: index, step: k)
+    let pace = index == 7 ? min(0.94, speed(chapter: index, step: k)) : speed(chapter: index, step: k)
     if k == 10 {
       // Every chapter ends on a boss, with more phases and more company as the game goes on.
       var spawns = [Spawn(.boss)]
       if index >= 1 { spawns.append(Spawn(.fast, size: 2)) }
       if index >= 3 { spawns.append(Spawn(.armored, size: 1)) }
-      return LevelSpec(number: n, chapter: ch.number, spawns: spawns, speed: pace, meterMax: 4, gates: 0, bossPhases: 3, arena: ch.arena)
+      if index == 5 { spawns.append(Spawn(.frozen, size: 1)) }
+      if index == 6 { spawns.append(Spawn(.magnetic, size: 1)) }
+      if index >= 7 { spawns.append(Spawn(.fast, size: 2)) }
+      var boss = LevelSpec(number: n, chapter: ch.number, spawns: spawns, speed: pace, meterMax: 4, gates: 0, bossPhases: index >= 7 ? 4 : 3, arena: ch.arena)
+      if index == 6 { boss.current = 50 }
+      return boss
     }
     if index == 0 {
       let sizes = firstChapter[k - 1]
@@ -139,7 +149,8 @@ public enum Campaign {
       if k >= 8 { kinds[2] = .golden }
       return LevelSpec(number: n, chapter: 1, spawns: dressed(sizes, with: kinds), speed: pace, meterMax: 4, gates: 0, bossPhases: 0, arena: ch.arena)
     }
-    let sizes = Campaign.sizes(forWork: budget(chapter: index, step: k))
+    // Magma's fast bubbles do the work extra bubbles would, so it brings a few less.
+    let sizes = Campaign.sizes(forWork: index == 7 ? min(58, budget(chapter: index, step: k) - 12) : budget(chapter: index, step: k))
     var kinds: [ActorKind]
     var meter = 4, gates = 0
     switch index {
@@ -152,30 +163,45 @@ public enum Campaign {
       gates = k >= 6 ? 2 : 1
       let pool: [ActorKind] = [.armored, .fast, .magnetic, .repel, .frozen, .golden]
       kinds = (0..<min(sizes.count, 2 + k / 3)).map { pool[($0 + k) % pool.count] }
-    default:
+    case 4:
       gates = k % 3 == 0 ? 1 : 0
       let pool: [ActorKind] = [.fast, .armored, .repel, .magnetic, .golden, .frozen]
       kinds = (0..<min(sizes.count, 3 + k / 3)).map { pool[($0 + k * 2) % pool.count] }
+    case 5:
+      // Frost Fair: heavy frozen crowds, then armor joins them and the meter shortens.
+      kinds = k <= 3 ? [.frozen, .basic, .frozen] : k <= 6 ? [.frozen, .armored, .basic, .frozen] : [.armored, .frozen, .basic, .frozen, .golden]
+      if k == 9 { meter = 3 }
+    case 6:
+      // Coral Drift: the current, with magnets and repellers stirring it up, then gates to thread.
+      let pool: [ActorKind] = [.magnetic, .basic, .repel, .basic, .golden, .frozen]
+      kinds = (0..<min(sizes.count, 2 + k / 3)).map { pool[($0 + k) % pool.count] }
+      gates = k >= 6 ? 1 : 0
+    default:
+      // Magma Run: fast and golden, no gates. Its pace stops short of full speed, since fast bubbles add their own.
+      let pool: [ActorKind] = [.fast, .golden, .basic, .armored, .fast, .basic]
+      kinds = (0..<min(sizes.count, 2 + k / 3)).map { pool[($0 + k) % pool.count] }
     }
-    // From the third chapter on, the back half of each chapter runs a shorter meter.
-    if index >= 2 && k >= 6 { meter = 3 }
+    // Chapters three to five run a shorter meter in their back half. The later worlds set their own.
+    if (2...4).contains(index) && k >= 6 { meter = 3 }
     var spawns = dressed(sizes, with: kinds)
     var phases = 0
-    if index == 4 && k == 5 {
+    if (index == 4 || index == 7) && k == 5 {
       spawns = [Spawn(.boss), Spawn(.fast, size: 2), Spawn(.fast, size: 2)]
       phases = 3
     }
-    return LevelSpec(number: n, chapter: ch.number, spawns: spawns, speed: pace, meterMax: meter, gates: gates, bossPhases: phases, arena: ch.arena)
+    var spec = LevelSpec(number: n, chapter: ch.number, spawns: spawns, speed: pace, meterMax: meter, gates: gates, bossPhases: phases, arena: ch.arena)
+    if index == 6 { spec.current = 30 + 4 * Double(k) }
+    return spec
   }
 
   /// Procedural levels: the same number always gives the same level.
   public static func generated(_ n: Int, chapter ch: Chapter) -> LevelSpec {
     var rng = SplitMix(seed: UInt64(n) &* 0x1F3D)
-    let pace = min(1.2, 0.8 + 0.005 * Double(n - 50))
+    let pace = min(1.2, 0.85 + 0.005 * Double(n - finalAuthored))
     if n % 10 == 0 {
       return LevelSpec(number: n, chapter: ch.number, spawns: [Spawn(.boss), Spawn(.fast, size: 2), Spawn(.armored, size: 1)], speed: pace, meterMax: 4, gates: 0, bossPhases: 3, arena: ch.arena)
     }
-    let budget = min(96, 52 + (n - 50) / 4 + rng.int(12))
+    let budget = min(96, 52 + (n - finalAuthored) / 4 + rng.int(12))
     var level = mixed(number: n, chapter: ch.number, budget: budget, speed: pace, gates: rng.int(3) == 0 ? 1 : 0, arena: ch.arena, rng: &rng)
     if n % 3 == 0 { level.meterMax = 3 }
     return level

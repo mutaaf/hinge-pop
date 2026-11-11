@@ -7,6 +7,9 @@ func drawArena(_ k: ArenaKind, _ c: CGContext, size: CGSize) {
     case .neon: drawNeon(c, size)
     case .forest: drawForest(c, size)
     case .space: drawSpace(c, size)
+    case .frost: drawFrost(c, size)
+    case .reef: drawReef(c, size)
+    case .magma: drawMagma(c, size)
     }
     grain(c, size)
 }
@@ -337,4 +340,160 @@ private func drawSpace(_ c: CGContext, _ s: CGSize) {
     // Planets near the corners.
     planet(c, P(W * 0.16, H * 0.11 + u * 0.02), u * 0.115, light: C(0x8CA8FF), base: C(0x3A50D8), deep: C(0x180E70), band: C(0xC0D0FF, 0.13), ring: nil)
     planet(c, P(W * 0.80, H * 0.87), u * 0.15, light: C(0xE090E8), base: C(0x8A38C0), deep: C(0x2C0C60), band: C(0xFFC8E8, 0.14), ring: C(0xD8B8FF, 0.65))
+}
+
+// MARK: - Frost
+
+/// A fir with snow on each tier: the plain fir, then a white cap along the top of every tier.
+private func snowyFir(_ c: CGContext, x: CGFloat, base: CGFloat, h: CGFloat) {
+    fir(c, x: x, base: base, h: h, col: C(0x15385E), hi: C(0x1E4A74))
+    let w = h * 0.3
+    let tiers: [(tip: CGFloat, half: CGFloat)] = [(0.46, 1.0), (0.72, 0.78), (1.0, 0.56)]
+    for t in tiers {
+        let tip = P(x, base - h * t.tip), half = w * t.half
+        c.fill(polygon([tip, P(x + half * 0.42, tip.y + h * 0.1), P(x + half * 0.16, tip.y + h * 0.085), P(x, tip.y + h * 0.11), P(x - half * 0.2, tip.y + h * 0.08), P(x - half * 0.45, tip.y + h * 0.1)], round: h * 0.006), C(0xEAF6FF, 0.92))
+    }
+}
+
+/// Frost Fair: a clear winter night, green aurora over snowy hills and firs.
+private func drawFrost(_ c: CGContext, _ s: CGSize) {
+    let u = min(s.width, s.height), W = s.width, H = s.height
+    backdrop(c, s) { c in
+        c.linear(grad([(0, C(0x05122E)), (0.5, C(0x0C2C5C)), (1, C(0x1C4C86))]), P(0, 0), P(0, H))
+        // Aurora curtains, kept high so the middle stays calm.
+        c.blob(softGrad(C(0x2EF0B4), 0.34), P(W * 0.32, H * 0.16), max(W, u) * 0.55, u * 0.12, rot: -12)
+        c.blob(softGrad(C(0x46C8FF), 0.26), P(W * 0.62, H * 0.1), max(W, u) * 0.5, u * 0.1, rot: 8)
+        c.blob(softGrad(C(0x8A6CFF), 0.22), P(W * 0.85, H * 0.2), u * 0.5, u * 0.14, rot: -20)
+        vignette(c, s, 0.38)
+    }
+    stars(c, CGSize(width: W, height: H * 0.5), seed: 61, density: 0.0012, tints: [C(0xFFFFFF), C(0xC8F0FF)], maxR: 1.1, keepOut: 0.2)
+    let ground = H - max(u * 0.26, H * 0.16)
+    hill(c, s, y: ground - u * 0.06, amp: u * 0.16, waves: 2, phase: 1.3, top: C(0x6E9AD0), bottom: C(0x3E6AA4))
+    for (t, k) in [(0.06, 0.3), (0.16, 0.42), (0.25, 0.28), (0.75, 0.3), (0.85, 0.44), (0.95, 0.32)] as [(CGFloat, CGFloat)] {
+        snowyFir(c, x: W * t, base: ground + u * 0.05, h: u * k)
+    }
+    hill(c, s, y: ground + u * 0.1, amp: u * 0.08, waves: 3, phase: 0.4, top: C(0xB4D4F4), bottom: C(0x7CA2D2))
+    // Snowflakes: soft dots, thicker toward the sides.
+    var d = Dice(67)
+    for _ in 0..<max(40, Int(W * H / 9000)) {
+        let x = d.range(0, W), y = d.range(0, H)
+        let edge = abs(x / W - 0.5) * 2
+        guard d.unit() < 0.35 + edge * 0.65 else { continue }
+        let r = u * d.range(0.002, 0.0055)
+        c.glow(C(0xE8F8FF), P(x, y), r * 3, 0.25)
+        c.fill(circle(P(x, y), r), C(0xFFFFFF, 0.8))
+    }
+    vignette(c, s, 0.35)
+}
+
+// MARK: - Reef
+
+/// A coral fan: branches that fork as they climb, drawn as thick round strokes.
+private func coral(_ c: CGContext, x: CGFloat, base: CGFloat, h: CGFloat, col: C, d: inout Dice) {
+    func branch(_ from: CGPoint, _ angle: CGFloat, _ len: CGFloat, _ width: CGFloat, _ depth: Int) {
+        let to = P(from.x + cos(angle) * len, from.y - sin(angle) * len)
+        let p = CGMutablePath(); p.move(to: from); p.addLine(to: to)
+        c.stroke(p, col, width, cap: .round)
+        guard depth > 0 else { c.fill(circle(to, width * 0.8), col); return }
+        branch(to, angle + d.range(0.25, 0.5), len * 0.72, width * 0.72, depth - 1)
+        branch(to, angle - d.range(0.25, 0.5), len * 0.72, width * 0.72, depth - 1)
+    }
+    branch(P(x, base), .pi / 2 + d.range(-0.15, 0.15), h * 0.34, h * 0.07, 3)
+}
+
+/// Coral Drift: sunlight shafts down a teal sea, coral and kelp at the edges, bubbles rising.
+private func drawReef(_ c: CGContext, _ s: CGSize) {
+    let u = min(s.width, s.height), W = s.width, H = s.height
+    backdrop(c, s) { c in
+        c.linear(grad([(0, C(0x0A6A8A)), (0.4, C(0x07476E)), (1, C(0x041C3C))]), P(0, 0), P(0, H))
+        c.blob(softGrad(C(0x3CE0E8), 0.36), P(W * 0.5, 0), max(W, u) * 0.7, u * 0.3)
+        // Light shafts fanning down from the surface.
+        for (x0, spread, a) in [(0.18, 0.1, 0.07), (0.38, 0.14, 0.06), (0.6, 0.12, 0.07), (0.82, 0.1, 0.05)] as [(CGFloat, CGFloat, CGFloat)] {
+            let top = W * x0
+            c.fillLinear(polygon([P(top - u * 0.03, 0), P(top + u * 0.03, 0), P(top + W * spread, H * 0.85), P(top - W * spread * 0.4, H * 0.85)]),
+                         grad([(0, C(0xC8FAFF, a)), (1, C(0xC8FAFF, 0))]), P(0, 0), P(0, H * 0.85))
+        }
+        vignette(c, s, 0.42)
+    }
+    let floor = H - max(u * 0.2, H * 0.12)
+    hill(c, s, y: floor, amp: u * 0.08, waves: 2, phase: 2.0, top: C(0x2E6E80), bottom: C(0x123A50))
+    var d = Dice(71)
+    // Kelp: tall wavy ribbons at the far edges.
+    for t in [0.02, 0.07, 0.94, 0.985] as [CGFloat] {
+        let x = W * t
+        var pts: [CGPoint] = []
+        for i in 0...10 { let k = CGFloat(i) / 10; pts.append(P(x + sin(k * 7 + t * 9) * u * 0.025, floor + u * 0.04 - k * u * d.range(0.55, 0.8))) }
+        c.stroke(smooth(pts), C(0x1E9A72, 0.85), u * 0.022, cap: .round)
+        c.stroke(smooth(pts), C(0x5CE0A0, 0.35), u * 0.007, cap: .round)
+    }
+    let corals: [(CGFloat, CGFloat, C)] = [(0.08, 0.42, C(0xFF6E9C)), (0.18, 0.3, C(0xFFA05C)), (0.27, 0.22, C(0xB46CFF)),
+                                         (0.74, 0.24, C(0xFF8A5C)), (0.83, 0.34, C(0xFF5C8A)), (0.93, 0.4, C(0xB46CFF))]
+    for (t, k, col) in corals { coral(c, x: W * t, base: floor + u * 0.05, h: u * k, col: col, d: &d) }
+    hill(c, s, y: floor + u * 0.1, amp: u * 0.05, waves: 3, phase: 0.6, top: C(0x1C5468), bottom: C(0x0A2A40))
+    // Rising bubbles, mostly at the sides.
+    for _ in 0..<max(18, Int(W / 30)) {
+        let x = d.unit() < 0.5 ? d.range(0, W * 0.28) : d.range(W * 0.72, W)
+        let y = d.range(H * 0.1, floor), r = u * d.range(0.004, 0.012)
+        c.stroke(circle(P(x, y), r), C(0xD8FAFF, 0.45), max(0.8, r * 0.18))
+        c.fill(circle(P(x - r * 0.3, y - r * 0.3), r * 0.25), C(0xFFFFFF, 0.5))
+    }
+    vignette(c, s, 0.4)
+}
+
+// MARK: - Magma
+
+/// Magma Run: a smouldering sky, volcanoes at the edges, lava cracks and embers.
+private func drawMagma(_ c: CGContext, _ s: CGSize) {
+    let u = min(s.width, s.height), W = s.width, H = s.height
+    let horizon = H - max(u * 0.3, H * 0.2)
+    backdrop(c, s) { c in
+        c.linear(grad([(0, C(0x14040E)), (0.55, C(0x3A0A1C)), (1, C(0x8A2418))]), P(0, 0), P(0, horizon))
+        c.blob(softGrad(C(0xFF5A1E), 0.5), P(W * 0.5, horizon), max(W * 0.9, u), u * 0.4)
+        // Smoke banks, dark and slow.
+        c.blob(softGrad(C(0x2A0812), 0.6), P(W * 0.25, H * 0.2), u * 0.8, u * 0.18, rot: 10)
+        c.blob(softGrad(C(0x2A0812), 0.5), P(W * 0.8, H * 0.3), u * 0.7, u * 0.16, rot: -8)
+        vignette(c, s, 0.45)
+    }
+    // Volcanoes at the sides: jagged cones, a glowing crater and a lava flow down the near face.
+    var v = Dice(79)
+    for (t, k) in [(0.03, 0.36), (0.97, 0.4), (0.2, 0.22), (0.8, 0.24)] as [(CGFloat, CGFloat)] {
+        let x = W * t, h = u * k, w = h * 1.25, lip = h * 0.1
+        func slope(_ a: CGPoint, _ b: CGPoint) -> [CGPoint] {
+            (0...6).map { i in
+                let f = CGFloat(i) / 6, wob = (i == 0 || i == 6) ? 0 : v.range(-h * 0.03, h * 0.03)
+                return P(a.x + (b.x - a.x) * f + wob, a.y + (b.y - a.y) * f)
+            }
+        }
+        let outline = slope(P(x - w / 2, horizon + 2), P(x - lip, horizon - h)) + slope(P(x + lip, horizon - h), P(x + w / 2, horizon + 2))
+        c.fillLinear(polygon(outline), grad([(0, C(0x4A1220)), (1, C(0x1A050C))]), P(0, horizon - h), P(0, horizon))
+        c.stroke(polyline(Array(outline.prefix(7))), C(0xFF7A3A, 0.35), max(0.8, u * 0.003))
+        var flow = [P(x + v.range(-lip, lip) * 0.5, horizon - h)]
+        for i in 1...6 { flow.append(P(flow[i - 1].x + v.range(-h * 0.06, h * 0.06), horizon - h + h * CGFloat(i) / 6)) }
+        c.stroke(smooth(flow), C(0xFF4A12, 0.45), max(1.5, h * 0.06), cap: .round)
+        c.stroke(smooth(flow), C(0xFFC060, 0.9), max(0.8, h * 0.018), cap: .round)
+        c.glow(C(0xFF8A30), P(x, horizon - h), lip * 4, 0.6)
+    }
+    // Rock floor with lava cracks.
+    c.with {
+        c.clip(to: CGRect(x: 0, y: horizon, width: W, height: H - horizon))
+        c.linear(grad([(0, C(0x2A0A12)), (1, C(0x0E0308))]), P(0, horizon), P(0, H))
+    }
+    var d = Dice(83)
+    for _ in 0..<max(8, Int(W / 90)) {
+        var x = d.range(0, W), y = horizon + d.range(0.15, 0.9) * (H - horizon)
+        var pts = [P(x, y)]
+        for _ in 0..<5 { x += d.range(-u * 0.08, u * 0.08); y += d.range(-u * 0.02, u * 0.03); pts.append(P(x, y)) }
+        c.stroke(polyline(pts), C(0xFF5A1E, 0.35), u * 0.012)
+        c.stroke(polyline(pts), C(0xFFB050, 0.85), max(0.8, u * 0.003))
+    }
+    c.fill(CGPath(rect: CGRect(x: 0, y: horizon, width: W, height: max(u * 0.004, 1)), transform: nil), C(0xFF9A50, 0.7))
+    // Embers drifting up, kept to the sides and the floor.
+    for _ in 0..<max(45, Int(W / 12)) {
+        let x = d.range(0, W), y = d.range(H * 0.2, H)
+        guard abs(x / W - 0.5) > 0.22 || y > horizon else { continue }
+        let r = u * d.range(0.002, 0.005)
+        c.glow(C(0xFF8A30), P(x, y), r * 4, 0.4)
+        c.fill(circle(P(x, y), r * 0.7), C(0xFFD08A, 0.9))
+    }
+    vignette(c, s, 0.42)
 }

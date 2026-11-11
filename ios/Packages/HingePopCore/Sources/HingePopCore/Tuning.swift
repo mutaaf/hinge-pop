@@ -81,6 +81,8 @@ public struct Tuning: Sendable {
   public var clapReach = 110.0
   public var clapWindow = 0.3
   public var clapSweep = 1.6
+  /// Coral Drift: seconds for the current to swing one way and back.
+  public var currentPeriod = 16.0
   public var gateWidth = 120.0
   public var gateSpeed = 70.0
   public init() {}

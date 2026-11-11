@@ -11,6 +11,9 @@ extension Arena {
     case .neon: [Color(red: 0.9, green: 0.3, blue: 1), Color(red: 0.35, green: 0.5, blue: 1), Color(red: 1, green: 0.35, blue: 0.7)]
     case .forest: [Color(red: 0.3, green: 1, blue: 0.55), Color(red: 0.2, green: 0.85, blue: 0.8), Color(red: 0.75, green: 1, blue: 0.35)]
     case .space: [Color(red: 0.55, green: 0.35, blue: 1), Color(red: 0.2, green: 0.7, blue: 1), Color(red: 1, green: 0.45, blue: 0.75)]
+    case .frost: [Color(red: 0.2, green: 0.95, blue: 0.72), Color(red: 0.3, green: 0.78, blue: 1), Color(red: 0.6, green: 0.5, blue: 1)]
+    case .reef: [Color(red: 0.2, green: 0.9, blue: 0.9), Color(red: 1, green: 0.45, blue: 0.62), Color(red: 0.4, green: 1, blue: 0.7)]
+    case .magma: [Color(red: 1, green: 0.42, blue: 0.15), Color(red: 1, green: 0.75, blue: 0.3), Color(red: 1, green: 0.3, blue: 0.5)]
     }
   }
 }
@@ -23,6 +26,9 @@ extension Arena {
     case .neon: [.init(0.9, 0.3, 1), .init(0.35, 0.5, 1), .init(1, 0.35, 0.7)]
     case .forest: [.init(0.3, 1, 0.55), .init(0.2, 0.85, 0.8), .init(0.75, 1, 0.35)]
     case .space: [.init(0.55, 0.35, 1), .init(0.2, 0.7, 1), .init(1, 0.45, 0.75)]
+    case .frost: [.init(0.2, 0.95, 0.72), .init(0.3, 0.78, 1), .init(0.6, 0.5, 1)]
+    case .reef: [.init(0.2, 0.9, 0.9), .init(1, 0.45, 0.62), .init(0.4, 1, 0.7)]
+    case .magma: [.init(1, 0.42, 0.15), .init(1, 0.75, 0.3), .init(1, 0.3, 0.5)]
     }
   }
 }

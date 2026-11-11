@@ -16,7 +16,7 @@ const webp = (name, width, q, out = name) => {
 for (const b of ['basic', 'fast', 'armored', 'magnetic', 'repel', 'golden', 'frozen', 'boss']) webp('bubble-' + b, 384, 80);
 webp('bubble-basic', 192, 82, 'game-bubble');
 for (const p of ['overcharge', 'freeze', 'focus', 'shield', 'chainBurst']) webp('power-' + p, 240, 82);
-for (const a of ['classic', 'neon', 'forest', 'space']) {
+for (const a of ['classic', 'neon', 'forest', 'space', 'frost', 'reef', 'magma']) {
   webp(`arena-${a}-tall`, 0, 58);
   webp(`arena-${a}-wide`, 0, 58);
 }

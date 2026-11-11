@@ -5,7 +5,7 @@ public enum BubbleKind: String, CaseIterable, Sendable {
     case basic, fast, armored, armoredCracked, magnetic, repel, golden, frozen, boss, bossHurt
 }
 public enum PowerKind: String, CaseIterable, Sendable { case overcharge, freeze, focus, shield, chainBurst }
-public enum ArenaKind: String, CaseIterable, Sendable { case classic, neon, forest, space }
+public enum ArenaKind: String, CaseIterable, Sendable { case classic, neon, forest, space, frost, reef, magma }
 public enum UIGlyph: String, CaseIterable, Sendable { case shieldOn, shieldOff, starOn, starOff, play, pause, settings, lock }
 public enum FXKind: Hashable, Sendable { case popBurst, shockwave, particleStar, confetti(Int) }
 

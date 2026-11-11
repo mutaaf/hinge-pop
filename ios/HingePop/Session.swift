@@ -143,6 +143,7 @@ final class Session {
     overlay = .none; tip = nil; toast = nil; tourRun = false; tourInput = false
     syncHUD()
     introduce()
+    calendarSecrets()
     #if DEBUG
     Debug.ready("play")
     #endif
@@ -158,12 +159,24 @@ final class Session {
       app.progress.taught.insert("gate")
       show("Green gaps are gates. Bubbles pass through them for free, with no split and no charge.", seconds: 5)
     }
+    if game.spec.current > 0, !app.progress.taught.contains("current") {
+      app.progress.taught.insert("current")
+      show("A current flows along the line. It carries every bubble with it, then turns around.", seconds: 5)
+    }
     if let first = meetQueue.first {
       overlay = .meet(first)
     } else if versus {
       show(size.width < 600 && size.height > size.width ? "One side each. Turn sideways for more room." : "One side each. Tap your own bubbles.")
     } else if isCampaign {
       show("Level \(levelNumber): \(Campaign.chapter(of: levelNumber).title)", seconds: 1.6)
+    }
+  }
+
+  /// Some days and hours hide something. Each turns up once.
+  private func calendarSecrets() {
+    let now = Calendar.current.dateComponents([.month, .day, .hour], from: Date())
+    for s in Secrets.calendar(month: now.month ?? 0, day: now.day ?? 0, hour: now.hour ?? 0) where !app.progress.found(s.id) {
+      reveal(s); return
     }
   }
 
@@ -235,6 +248,13 @@ final class Session {
 
   // MARK: Teaching
 
+  /// An Easter egg turned up. The first find is a bigger moment than a repeat.
+  func reveal(_ secret: Secret) {
+    let new = app.progress.find(secret.id)
+    show(new ? "\(secret.emoji) Secret found: \(secret.title). \(secret.line)" : "\(secret.emoji) \(secret.line)", seconds: 4)
+    if new { Haptics.shared.good() }
+  }
+
   func show(_ text: String, power: PowerUp? = nil, seconds: Double = 3.4) {
     toast = Toast(text: text, power: power)
     toastTask?.cancel()
@@ -285,10 +305,18 @@ final class Session {
       case .cameoCaught(let c, _, _, _, _):
         app.progress.caught(c)
         show("“\(c.quip)”", seconds: 3)
+        if Cameo.allCases.allSatisfy(app.progress.hasCaught), !app.progress.found("full-cast") { reveal(Secrets.named("full-cast")!) }
+      case .secretBubble(let n, _, _):
+        let new = app.progress.find("nod-\(n)")
+        show("✨ \(Secrets.nod(level: n))", seconds: 3.6)
+        if new { Haptics.shared.good() }
       case .finished:
         endTimer = 0.7
       default: break
       }
+      if game.players.contains(where: { $0.combo >= game.tuning.comboMax }), !app.progress.found("max-combo") { reveal(Secrets.named("max-combo")!) }
+      if game.players.contains(where: { $0.score >= 1_000_000 }), !app.progress.found("million") { reveal(Secrets.named("million")!) }
+      if case .creaseClap = e, game.players[0].claps >= 3, !app.progress.found("ovation") { reveal(Secrets.named("ovation")!) }
       if game.players.contains(where: { $0.combo >= 3 }) { teach("combo", "Combo building. Tap again within \(String(format: "%.1f", game.tuning.comboWindow)) seconds to keep it. A crossing resets it.") }
     }
   }
@@ -301,6 +329,7 @@ final class Session {
         resultWasBest = score > (app.progress.bestScores[n] ?? 0)
         app.progress.record(level: n, stars: game.stars, score: score)
         runScore = score
+        if n == 42 { reveal(Secrets.named("answer")!) }
         Haptics.shared.good()
       } else {
         Haptics.shared.bad()
@@ -372,7 +401,7 @@ final class Session {
     }
     if Debug.has("-probe") {
       let b = game.bubbles.first, v = game.visitors.first, p = game.players[0]
-      let line = "bx=\(b?.x ?? -1);by=\(b?.y ?? -1);vx=\(v?.x ?? -1);vy=\(v?.y ?? -1);taps=\(p.taps);flicks=\(p.flicks);cameos=\(p.cameos);snaps=\(p.snaps);left=\(debugLeft);top=\(debugTop);hinge=\(game.hinge);vertical=\(game.vertical);w=\(game.w);h=\(game.h)"
+      let line = "bx=\(b?.x ?? -1);by=\(b?.y ?? -1);vx=\(v?.x ?? -1);vy=\(v?.y ?? -1);taps=\(p.taps);flicks=\(p.flicks);cameos=\(p.cameos);snaps=\(p.snaps);left=\(debugLeft);top=\(debugTop);hinge=\(game.hinge);vertical=\(game.vertical);w=\(game.w);h=\(game.h);secrets=\(app.progress.namedFound)"
       if line != probe { probe = line }
     }
     guard Debug.has("-demo"), game.status == .playing else { return }

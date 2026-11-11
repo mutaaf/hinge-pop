@@ -74,13 +74,14 @@ final class GameTests: XCTestCase {
   }
 
   func testEveryChapterMatchesTheSheet() {
-    XCTAssertEqual(Campaign.chapters.map(\.title), ["First Contact", "Electric Playground", "Magnetic Storm", "Overload Protocol", "Bosses & Beyond"])
+    XCTAssertEqual(Campaign.chapters.map(\.title), ["First Contact", "Electric Playground", "Magnetic Storm", "Overload Protocol", "Bosses & Beyond", "Frost Fair", "Coral Drift", "Magma Run"])
     XCTAssertTrue(Campaign.level(12).spawns.contains { $0.kind == .armored })
     XCTAssertTrue(Campaign.level(21).spawns.contains { $0.kind == .magnetic })
     XCTAssertTrue(Campaign.level(23).spawns.contains { $0.kind == .repel })
     XCTAssertGreaterThan(Campaign.level(33).gates, 0)
-    for n in [10, 20, 30, 40, 50] { XCTAssertTrue(Campaign.level(n).isBoss, "level \(n)") }
-    XCTAssertEqual(Campaign.chapter(of: 51).title, "Infinity")
+    for n in [10, 20, 30, 40, 50, 60, 70, 75, 80] { XCTAssertTrue(Campaign.level(n).isBoss, "level \(n)") }
+    XCTAssertEqual(Campaign.chapter(of: 80).title, "Magma Run")
+    XCTAssertEqual(Campaign.chapter(of: 81).title, "Infinity")
   }
 
   func testEveryActorKindAppearsInTheCampaign() {
@@ -767,5 +768,42 @@ final class GameTests: XCTestCase {
     for _ in 0..<300 { a.step(1.0 / 60); b.step(1.0 / 60) }
     XCTAssertEqual(a.bubbles.map(\.x), b.bubbles.map(\.x))
     XCTAssertEqual(a.rushSide, b.rushSide)
+  }
+
+  // MARK: New worlds
+
+  func testTheNewWorldsEachHaveTheirOwnChapterAndBackdrop() {
+    let chapters = Campaign.chapters
+    XCTAssertEqual(chapters.map(\.levels.lowerBound), stride(from: 1, through: 71, by: 10).map { $0 })
+    XCTAssertEqual(Set(chapters.map(\.arena)), Set(Arena.allCases), "every world gets a chapter")
+    for n in 51...60 { XCTAssertEqual(Campaign.level(n).arena, .frost) }
+    XCTAssertTrue(Campaign.level(52).spawns.filter { $0.kind == .frozen }.count >= 2)
+    XCTAssertEqual(Campaign.level(59).meterMax, 3)
+    XCTAssertEqual(Campaign.level(80).bossPhases, 4, "the last world's boss goes one phase longer")
+    // Generated levels visit all seven worlds.
+    XCTAssertEqual(Set((81...150).map { Campaign.level($0).arena }), Set(Arena.allCases))
+  }
+
+  func testOnlyCoralDriftHasACurrent() {
+    for n in 1...90 where !(61...70).contains(n) { XCTAssertEqual(Campaign.level(n).current, 0, "level \(n)") }
+    for n in 61...70 { XCTAssertGreaterThan(Campaign.level(n).current, 0, "level \(n)") }
+    XCTAssertLessThan(Campaign.level(61).current, Campaign.level(69).current)
+  }
+
+  func testTheCurrentCarriesBubblesAlongTheHinge() {
+    let g = Game(mode: .campaign(65), width: 390, height: 760, top: 70)
+    g.ready = 0
+    let b = g.bubbles[0]
+    b.vx = 0; b.vy = 0
+    let start = g.vertical ? b.y : b.x
+    for _ in 0..<60 { g.step(1.0 / 60); b.vx = 0; b.vy = 0 }
+    XCTAssertNotEqual(g.vertical ? b.y : b.x, start, accuracy: 5)
+    let calm = Game(mode: .campaign(55), width: 390, height: 760, top: 70)
+    calm.ready = 0
+    let c = calm.bubbles[0]
+    c.vx = 0; c.vy = 0
+    let from = (c.x, c.y)
+    for _ in 0..<60 { calm.step(1.0 / 60); c.vx = 0; c.vy = 0 }
+    XCTAssertEqual(c.x, from.0, accuracy: 0.001); XCTAssertEqual(c.y, from.1, accuracy: 0.001)
   }
 }
