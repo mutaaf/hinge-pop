@@ -60,4 +60,14 @@ final class TouchTests: XCTestCase {
     from.press(forDuration: 0.05, thenDragTo: to)
     waitFor("snaps", atLeast: 1, "Dragging off the line didn't snap it")
   }
+
+  func testTappingAWorldsHiddenSpotFindsItsSecret() {
+    launch("-level", "1")
+    // The Classic world hides its secret in the low bright star, measured on the whole screen like the backdrop.
+    let size = app.windows.firstMatch.frame.size
+    let w = Double(size.width), h = Double(size.height), u = min(w, h)
+    let spot = app.coordinate(withNormalizedOffset: .zero).withOffset(CGVector(dx: w * 0.14, dy: min(h * 0.92, h - u * 0.1)))
+    for _ in 0..<3 { spot.tap(); Thread.sleep(forTimeInterval: 0.25) }
+    waitFor("secrets", atLeast: 1, "Three taps on the hidden spot didn't find its secret")
+  }
 }

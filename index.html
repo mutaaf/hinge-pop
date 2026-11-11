@@ -1010,7 +1010,8 @@ function createSim(opts) {
   const ART = '../art/';
   // The bubble's body fills this share of its sprite. The rest is glow, so hit testing still uses the body.
   const SPRITE_BODY = 366 / 512;
-  const ARENAS = ['classic', 'neon', 'forest', 'space', 'neon'];
+  // Chapter by chapter, the same worlds as the app: then Frost Fair, Coral Drift and Magma Run, and round again.
+  const ARENAS = ['classic', 'neon', 'forest', 'space', 'neon', 'frost', 'reef', 'magma'];
   let bubbleArt = null, arenaWanted = '';
   const baked = new Map();
   function loadArt(name, done) {

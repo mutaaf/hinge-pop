@@ -112,6 +112,8 @@ public enum GameEvent: Equatable, Sendable {
   case rushOver
   case crossfold(x: Double, y: Double, combo: Double)
   case creaseClap(flung: Int)
+  /// The level's secret bubble was hit. Easter egg only: it plays like any other bubble.
+  case secretBubble(level: Int, x: Double, y: Double)
   case cameoArrived(Cameo, x: Double, y: Double)
   case cameoCaught(Cameo, x: Double, y: Double, points: Int, player: Int)
   case cameoDodged(Cameo, x: Double, y: Double)
@@ -153,6 +155,8 @@ public final class Game {
   private var rushClock = 0.0
   private var rushTurn = 0
   private var lastPage = [0, 0]
+  /// The id of the bubble that hides this level's nod, until it's hit.
+  public private(set) var secretBubble: Int?
   public private(set) var bubbles: [Bubble] = []
   public private(set) var pickups: [Pickup] = []
   public private(set) var visitors: [Visitor] = []
@@ -293,6 +297,7 @@ public final class Game {
       let cost = Campaign.work(of: [s])
       if i == 0 || work + cost <= tuning.arrivalOpening { opening.append(s); work += cost } else { arrivals.append(s) }
     }
+    let firstId = nextId
     let near = Int((Double(opening.count) / 2).rounded(.up))
     for (i, s) in opening.enumerated() {
       let inNear = i < near
@@ -303,6 +308,11 @@ public final class Game {
       let v = inNear ? 0.2 + stagger : 0.8 - stagger
       let deg = inNear ? (row % 2 == 1 ? 145.0 : 35.0) : (row % 2 == 1 ? 40.0 : 140.0)
       put(s.kind, size: s.size, u: u, v: v, degrees: deg)
+    }
+    // Every campaign level from 2 hides one secret bubble, picked the same way each time.
+    if case .campaign(let n) = mode, n >= 2 {
+      let pool = bubbles.filter { $0.id >= firstId && $0.kind != .boss }
+      if !pool.isEmpty { secretBubble = pool[n % pool.count].id }
     }
   }
 
@@ -400,6 +410,12 @@ public final class Game {
     events.append(.crossfold(x: b.x, y: b.y, combo: players[owner].combo))
   }
 
+  private func revealSecret(_ b: Bubble) {
+    guard b.id == secretBubble, case .campaign(let n) = mode else { return }
+    secretBubble = nil
+    events.append(.secretBubble(level: n, x: b.x, y: b.y))
+  }
+
   private func advanceStreak(_ owner: Int) {
     players[owner].streak += 1
     guard players[owner].streak >= tuning.rechargeStreak else { return }
@@ -441,6 +457,7 @@ public final class Game {
       events.append(.armorCrack(x: b.x, y: b.y, r: b.r, points: pts))
       return true
     }
+    revealSecret(b)
     let pts = points(b, &players[owner])
     players[owner].score += pts
     let fresh = players[owner].comboT <= 0
@@ -528,6 +545,7 @@ public final class Game {
   /// Chain Burst and Focus use this: it pops or splits without counting as a tap.
   private func burst(_ b: Bubble, by owner: Int) {
     guard bubbles.contains(where: { $0 === b }) else { return }
+    revealSecret(b)
     b.armor = 0
     let pts = points(b, &players[owner])
     players[owner].score += pts

@@ -30,6 +30,17 @@ public struct GameProgress: Codable, Equatable, Sendable {
   public init() {}
 
   public func hasCaught(_ cameo: Cameo) -> Bool { cameoLog?.contains(cameo.rawValue) ?? false }
+  /// Secrets found: named ids, and "nod-<level>" for a level's hidden bubble. Optional so older saves load.
+  private var secretLog: [String]? = nil
+  public func found(_ id: String) -> Bool { secretLog?.contains(id) ?? false }
+  /// Records a secret. True the first time.
+  @discardableResult public mutating func find(_ id: String) -> Bool {
+    guard !found(id) else { return false }
+    secretLog = (secretLog ?? []) + [id]
+    return true
+  }
+  public var nodsFound: Int { secretLog?.filter { $0.hasPrefix("nod-") }.count ?? 0 }
+  public var namedFound: Int { Secrets.named.filter { found($0.id) }.count }
   public mutating func caught(_ cameo: Cameo) {
     if !hasCaught(cameo) { cameoLog = (cameoLog ?? []) + [cameo.rawValue] }
   }

@@ -64,6 +64,9 @@ final class GameScene: SKScene {
   private var rushShown = 0
   /// Coral Drift: faint motes that ride the current, so you can see which way it flows.
   private var motes: [SKSpriteNode] = []
+  /// Easter eggs: a twinkle on the level's secret bubble, and taps counted on the world's hidden spot.
+  private let glint = SKLabelNode(text: "✦")
+  private var spotTaps: [Double] = []
   /// The last touch beside the crease, for spotting a clap: one finger on each page at once.
   private var creaseTouch: (side: Int, at: Double)?
   private var lastTime: TimeInterval = 0
@@ -254,6 +257,7 @@ final class GameScene: SKScene {
     drawSky(game, dt: dt, session: session)
     drawRush(game, dt: dt)
     drawCurrent(game, dt: dt)
+    drawGlint(game, alpha: alpha)
     drawHinge(game)
     drawGates(game)
     drawBubbles(game, alpha: alpha)
@@ -371,6 +375,47 @@ final class GameScene: SKScene {
     }
     rushTime.floatValue = reduceMotion ? 0 : Float(clock.truncatingRemainder(dividingBy: 1000))
     rushAlpha.floatValue = Float(rushGlow * (0.75 + 0.35 * hingeGlow()) + rushFlash * 0.8)
+  }
+
+  private func drawGlint(_ game: Game, alpha: Double) {
+    if glint.parent == nil {
+      glint.fontSize = 18; glint.fontColor = UIColor(red: 1, green: 0.95, blue: 0.7, alpha: 1)
+      glint.blendMode = .add; glint.zPosition = 6; glint.verticalAlignmentMode = .center
+      world.addChild(glint)
+    }
+    guard let id = game.secretBubble, let b = game.bubbles.first(where: { $0.id == id }) else { glint.isHidden = true; return }
+    glint.isHidden = false
+    let x = b.prevX + (b.x - b.prevX) * alpha, gy = b.prevY + (b.y - b.prevY) * alpha
+    glint.position = CGPoint(x: CGFloat(x + b.r * 0.55), y: y(gy + -b.r * 0.55))
+    // A slow twinkle: easy to miss, easy to spot once you know.
+    let t = reduceMotion ? 0.6 : 0.35 + 0.65 * max(0, sin(clock * 2.3))
+    glint.alpha = CGFloat(t)
+    glint.setScale(CGFloat(0.8 + t * 0.4))
+  }
+
+  /// Three taps on a world's hidden spot, close together, wakes its secret.
+  private func tapSpot(_ p: CGPoint, game: Game) -> Bool {
+    guard let session, size.width > 1 else { return false }
+    let arena = session.arena
+    let s = Secrets.spot(arena, width: Double(size.width), height: Double(size.height))
+    guard hypot(Double(p.x) - s.x, Double(p.y) - s.y) <= s.r else { return false }
+    spotTaps = spotTaps.filter { clock - $0 < 2 } + [clock]
+    let at = CGPoint(x: CGFloat(s.x) - insets.left, y: size.height - CGFloat(s.y) - insets.bottom)
+    sparks(at: at, r: 24, count: 8)
+    guard spotTaps.count >= 3 else { return true }
+    spotTaps.removeAll()
+    let secret = Secrets.spotSecret(arena)
+    shockwave(at: at, r: 90)
+    burst(at: at, r: 50, particles: 14)
+    bloom = 1
+    let label = SKLabelNode(text: secret.emoji)
+    label.fontSize = 64; label.position = at; label.zPosition = 20; label.verticalAlignmentMode = .center
+    world.addChild(label)
+    label.run(.sequence([.group([.moveBy(x: 0, y: 70, duration: 1.4), .sequence([.scale(to: 1.4, duration: 0.25), .scale(to: 1, duration: 0.3)]), .sequence([.wait(forDuration: 1), .fadeOut(withDuration: 0.4)])]), .removeFromParent()]))
+    let sound = Sound.shared
+    sound.blip(660, 0.1); sound.blip(990, 0.14); sound.blip(1320, 0.24, .sine, gain: 0.14)
+    session.reveal(secret)
+    return true
   }
 
   private func drawCurrent(_ game: Game, dt: Double) {
@@ -854,6 +899,13 @@ final class GameScene: SKScene {
       }
       sound.blip(520, 0.12, .triangle, gain: 0.12); sound.blip(780, 0.2, .triangle, gain: 0.1)
       haptic.hit()
+    case let .secretBubble(_, x, gy):
+      let at = CGPoint(x: x, y: y(gy))
+      sparks(at: at, r: 40, count: 26)
+      shockwave(at: at, r: 70)
+      bloom = max(bloom, 0.7)
+      sound.blip(1046, 0.08, .sine, gain: 0.1); sound.blip(1568, 0.16, .sine, gain: 0.1)
+      haptic.good()
     case .rushOver:
       sound.blip(330, 0.14, .sine, gain: 0.06)
     case let .crossfold(x, gy, combo):
@@ -962,6 +1014,8 @@ final class GameScene: SKScene {
         if let pickup = game.hitPickup(x: p.x, y: p.y) { game.collect(pickup); continue }
       }
       let b = game.hit(x: p.x, y: p.y)
+      // An empty tap on the world's hidden spot counts toward its Easter egg (and still plays normally).
+      if b == nil, session.overlay != .tour, !game.onHinge(x: p.x, y: p.y) { _ = tapSpot(touch.location(in: view), game: game) }
       // One finger on each page beside the fold, together, claps the crease.
       if b == nil, session.overlay != .tour, let side = game.besideCrease(x: p.x, y: p.y) {
         if let last = creaseTouch, last.side != side, clock - last.at <= game.tuning.clapWindow, game.clap() {

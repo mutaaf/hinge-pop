@@ -54,6 +54,9 @@ struct RootView: View {
 struct HomeView: View {
   @Environment(AppModel.self) private var app
   @Environment(DuoModel.self) private var duo
+  /// Swipes on the logo, listening for the old arcade code.
+  @State private var swipes: [SecretSwipe] = []
+  @State private var codeToast: String?
   var body: some View {
     GeometryReader { proxy in
       let fold = foldRect(proxy, duo: duo)
@@ -96,6 +99,25 @@ struct HomeView: View {
       AuroraAssemble(item: .logo, size: max(160, width), count: 1600)
         .accessibilityElement()
         .accessibilityLabel("Hinge Pop")
+        .contentShape(Rectangle())
+        .gesture(DragGesture(minimumDistance: 24).onEnded { g in
+          let dx = g.translation.width, dy = g.translation.height
+          swipes.append(abs(dx) > abs(dy) ? (dx > 0 ? .right : .left) : (dy > 0 ? .down : .up))
+          swipes = Array(swipes.suffix(Secrets.code.count))
+          guard Secrets.spells(swipes), let s = Secrets.named("cheat-code") else { return }
+          swipes.removeAll()
+          let new = app.progress.find(s.id)
+          Haptics.shared.good()
+          withAnimation(.spring(duration: 0.4)) { codeToast = new ? "\(s.emoji) Secret found: \(s.title). \(s.line)" : "\(s.emoji) \(s.line)" }
+          Task { try? await Task.sleep(for: .seconds(4)); withAnimation { codeToast = nil } }
+        })
+        .overlay(alignment: .bottom) {
+          if let codeToast {
+            Text(codeToast).font(.game(.subheadline, .bold)).foregroundStyle(Theme.ink).multilineTextAlignment(.center)
+              .padding(12).background(Capsule().fill(Theme.panel)).overlay(Capsule().stroke(Theme.sun, lineWidth: 1.5))
+              .transition(.scale.combined(with: .opacity))
+          }
+        }
       Text("POP · SPLIT · CHAIN · CLEAR").font(.game(.subheadline, .heavy)).foregroundStyle(Theme.ink)
       if app.progress.totalStars > 0 {
         HStack(spacing: 4) {
@@ -311,7 +333,21 @@ struct GuideView: View {
               }
               Fold(title: "Shields and meter", id: "meter", open: $open) { meterFacts }
               Fold(title: "Scoring", id: "score", open: $open) { scoreFacts }
-              Fold(title: "On iPhone Duo", id: "duo", open: $open) {
+              Fold(title: "Secrets", note: "\(app.progress.namedFound) of \(Secrets.named.count) · \(app.progress.nodsFound) nods", id: "secrets", open: $open) {
+              Text("Every world hides one. So does a bubble in every level.").font(.game(.subheadline, .semibold)).foregroundStyle(Theme.muted)
+              ForEach(Secrets.named) { s in
+                let got = app.progress.found(s.id)
+                HStack(alignment: .top, spacing: 10) {
+                  Text(got ? s.emoji : "❔").font(.system(size: 26)).frame(width: 36)
+                  VStack(alignment: .leading, spacing: 2) {
+                    Text(got ? s.title : "???").font(.game(.headline, .heavy)).foregroundStyle(got ? Theme.sun : Theme.muted)
+                    Text(got ? s.line : s.hint).font(.game(.subheadline, .semibold)).foregroundStyle(Theme.ink.opacity(got ? 1 : 0.7))
+                  }
+                }
+                .accessibilityElement(children: .combine)
+              }
+            }
+            Fold(title: "On iPhone Duo", id: "duo", open: $open) {
                 FactRow(art: .bubble(.golden), text: "A page lights up: faster bubbles, double points.")
                 FactRow(art: .glyph(.starOn), text: "Pop across the fold for a crossfold combo.")
                 FactRow(art: .glyph(.shieldOn), text: "Touch both pages by the fold at once to clap it.")
