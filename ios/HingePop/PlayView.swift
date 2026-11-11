@@ -114,6 +114,8 @@ struct PlayView: View {
 /// Every screen sits on this: the arena's art with a living aurora over it.
 struct ArenaBackground: View {
   let arena: Arena
+  /// Which take on the biome (`LevelSpec.variant`, 0-3): time of day, weather and curtain colours.
+  var variant = 0
   var heat: Double = 0
   var alwaysOn = false
   var strength = 0.42
@@ -124,11 +126,11 @@ struct ArenaBackground: View {
     ZStack {
       GeometryReader { p in
         if let art = ArenaKind(rawValue: arena.rawValue), p.size.width > 1, p.size.height > 1 {
-          Image(decorative: Art.arena(art, size: p.size, scale: scale), scale: scale)
+          Image(decorative: Art.arena(art, variant: variant, size: p.size, scale: scale), scale: scale)
         }
       }
       .ignoresSafeArea()
-      if !still { AuroraField(arena: arena, heat: heat, strength: strength, alwaysOn: alwaysOn) }
+      if !still { AuroraField(arena: arena, variant: variant, heat: heat, strength: strength, alwaysOn: alwaysOn) }
     }
     .background(Theme.night.ignoresSafeArea())
   }

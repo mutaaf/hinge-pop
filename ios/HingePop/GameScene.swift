@@ -25,7 +25,14 @@ final class GameScene: SKScene {
   private var ripples = [SIMD3<Float>](repeating: .init(0, 0, 1), count: 4)
   private var nextRipple = 0
   private var skyArena: Arena?
+  private var skyVariant = -1
   private var arenaKey = ""
+  /// Darkens the art toward the hinge and calms it behind play, so bubbles are the brightest thing on screen.
+  private let calmNode = SKSpriteNode(color: .white, size: CGSize(width: 10, height: 10))
+  private let calmLine = SKUniform(name: "u_line", float: 0.5)
+  private let calmAxis = SKUniform(name: "u_axis", float: 0)
+  /// The biome bubbles are dressed for (`Art.bubble(..., biome:)`).
+  private var skin: ArenaKind?
   private var energy = 0.0
   private var bloom = 0.0
   private var skyClock = 0.0
@@ -88,39 +95,46 @@ final class GameScene: SKScene {
     scaleMode = .resizeFill
     anchorPoint = .zero
     addChild(arenaNode)
+    addChild(calmNode)
     addChild(skyNode)
     addChild(world)
     arenaNode.zPosition = -20
     arenaNode.anchorPoint = .zero
+    // The sky: two aurora curtains hung in the halves either side of the hinge, never on it, with slow broad
+    // rays. Time arrives already wrapped (see drawSky) and every phase speed is a multiple of 0.1, so the
+    // numbers stay small: large sine arguments lose precision on the GPU and step the light into bands.
     let sky = SKShader(source: """
-    float wave(vec2 p, float t, float s, float f, float ph) { return sin(p.x * f + t * s + ph + 1.6 * sin(p.x * f * 0.37 - t * s * 0.61 + ph)); }
+    float wave(vec2 p, float t, float s, float f, float ph) { return sin(p.x * f + t * s + ph + 1.6 * sin(p.x * f * 0.37 - t * s * 0.5 + ph)); }
     float ring(vec3 r, vec2 p, float aspect) {
       if (r.z >= 1.0) { return 0.0; }
       float l = length(p - vec2(r.x * aspect, r.y));
       float d = (l - r.z * 0.62) * 11.0;
       return exp(-d * d) * (1.0 - r.z);
     }
+    float curtain(float y, float c) {
+      float d = y - c;
+      return d > 0.0 ? exp(-d * d * 18.0) : exp(-d * d * 90.0);
+    }
     void main() {
       vec2 uv = vec2(v_tex_coord.x, 1.0 - v_tex_coord.y);
       vec2 p = vec2(uv.x * u_aspect, uv.y);
       float rip = ring(u_r0, p, u_aspect) + ring(u_r1, p, u_aspect) + ring(u_r2, p, u_aspect) + ring(u_r3, p, u_aspect);
       p.y += rip * 0.045;
-      float speed = 1.0 + u_energy * 1.6;
-      float t = u_t * speed;
+      float t = u_t;
       vec3 col = vec3(0.0);
-      float c0 = u_hinge * 0.42 + 0.03 * wave(p, t, 0.17, 2.2, 0.0);
-      float d0 = p.y - c0;
-      col += u_c1 * (d0 > 0.0 ? exp(-d0 * d0 * 26.0) : exp(-d0 * d0 * 150.0)) * (0.6 + 0.4 * sin(p.x * 34.0 + 1.8 * wave(p, t, 0.31, 3.4, 0.0) + t * 0.22));
-      float c1 = u_hinge + 0.08 * wave(p, t, 0.2, 2.9, 2.1);
-      float d1 = p.y - c1;
-      col += u_c2 * (d1 > 0.0 ? exp(-d1 * d1 * 26.0) : exp(-d1 * d1 * 150.0)) * (0.6 + 0.4 * sin(p.x * 47.0 + 1.8 * wave(p, t, 0.31, 3.4, 1.0) + t * 0.22));
-      float c2 = u_hinge + (1.0 - u_hinge) * 0.56 + 0.07 * wave(p, t, 0.23, 3.6, 4.2);
-      float d2 = p.y - c2;
-      col += u_c3 * (d2 > 0.0 ? exp(-d2 * d2 * 26.0) : exp(-d2 * d2 * 150.0)) * (0.6 + 0.4 * sin(p.x * 60.0 + 1.8 * wave(p, t, 0.31, 3.4, 2.0) + t * 0.22));
-      col *= 0.46 + u_energy * 0.5;
-      col += (u_c1 * 0.5 + u_c2 * 0.5) * rip * 0.55;
+      float c0 = u_hinge * 0.32 + 0.035 * wave(p, t, 0.2, 2.2, 0.0);
+      col += u_c1 * curtain(p.y, c0) * (0.78 + 0.22 * sin(p.x * 7.0 + 1.2 * wave(p, t, 0.4, 3.0, 0.0) + t * 0.2));
+      float c1 = u_hinge + (1.0 - u_hinge) * 0.64 + 0.045 * wave(p, t, 0.2, 2.9, 4.2);
+      col += u_c2 * curtain(p.y, c1) * (0.78 + 0.22 * sin(p.x * 9.0 + 1.2 * wave(p, t, 0.4, 3.0, 2.0) + t * 0.2));
+      // The third colour glows faintly along the top and bottom edges, framing the play.
+      col += u_c3 * (exp(-uv.y * uv.y * 40.0) + exp(-(1.0 - uv.y) * (1.0 - uv.y) * 40.0)) * 0.35;
+      // Quiet near the hinge, where the play is decided; the combo brightens it, but never to a wash.
+      col *= (0.2 + u_energy * 0.22) * (0.25 + 0.75 * smoothstep(0.06, 0.4, abs(uv.y - u_hinge)));
+      col += (u_c1 * 0.5 + u_c2 * 0.5) * rip * 0.5;
       float luma = dot(col, vec3(0.34));
       col = mix(col, vec3(1.0, 0.24, 0.32) * luma * 1.6, clamp(u_heat, 0.0, 1.0) * 0.8);
+      float n = fract(sin(dot(v_tex_coord, vec2(12.9898, 78.233)) * 43.7585) * 1000.0);
+      col = max(col + (n - 0.5) * (2.0 / 255.0), vec3(0.0));
       gl_FragColor = vec4(col, 0.0);
     }
     """)
@@ -128,6 +142,18 @@ final class GameScene: SKScene {
     skyNode.shader = sky
     skyNode.blendMode = .add
     skyNode.zPosition = -10
+    let calm = SKShader(source: """
+    void main() {
+      vec2 uv = vec2(v_tex_coord.x, 1.0 - v_tex_coord.y);
+      float d = u_axis > 0.5 ? abs(uv.x - u_line) : abs(uv.y - u_line);
+      float near = 1.0 - smoothstep(0.0, 0.45, d);
+      float a = 0.2 + 0.32 * near * near;
+      gl_FragColor = vec4(vec3(0.02, 0.01, 0.06) * a, a);
+    }
+    """)
+    calm.uniforms = [calmLine, calmAxis]
+    calmNode.shader = calm
+    calmNode.zPosition = -15
     let shader = SKShader(source: """
     void main() {
       vec2 uv = v_tex_coord;
@@ -287,8 +313,10 @@ final class GameScene: SKScene {
   /// Every sprite this screen could need is drawn ahead of time, off the main thread, so a split never
   /// waits for artwork in the middle of play.
   private func prewarm(_ game: Game) {
-    guard game.scale != prewarmedFor else { return }
+    let biome = ArenaKind(rawValue: (session?.arena ?? .classic).rawValue)
+    guard game.scale != prewarmedFor || biome != skin else { return }
     prewarmedFor = game.scale
+    skin = biome
     let scale = displayScale
     var bubbles: [(BubbleKind, CGFloat)] = []
     for kind in BubbleKind.allCases {
@@ -300,7 +328,7 @@ final class GameScene: SKScene {
     let cameo = CGFloat(game.visitorRadius * 2) / 0.72
     let power = CGFloat(54 * max(1, min(1.6, game.scale)))
     Task.detached(priority: .userInitiated) {
-      for (k, px) in bubbles { _ = Art.bubble(k, size: px, scale: scale) }
+      for (k, px) in bubbles { _ = Art.bubble(k, size: px, scale: scale, biome: biome) }
       for k in CameoKind.allCases { _ = Art.cameo(k, size: cameo, scale: scale) }
       for k in PowerKind.allCases { _ = Art.power(k, size: power, scale: scale) }
       for k in [FXKind.popBurst, .particleStar] { _ = Art.fx(k, size: 96, scale: scale) }
@@ -311,19 +339,23 @@ final class GameScene: SKScene {
   private func placeBackdrop() {
     guard size.width > 1, size.height > 1, let session else { return }
     let arena = session.game == nil ? Arena.classic : session.arena
+    let variant = session.game == nil ? 0 : session.variant
     skyNode.size = size
     skyNode.position = CGPoint(x: size.width / 2, y: size.height / 2)
+    calmNode.size = size
+    calmNode.position = skyNode.position
     skyAspect.floatValue = Float(size.width / size.height)
-    if skyArena != arena {
+    if skyArena != arena || skyVariant != variant {
       skyArena = arena
-      for (uniform, color) in zip(skyTints, arena.skyColors) { uniform.vectorFloat3Value = color }
+      skyVariant = variant
+      for (uniform, color) in zip(skyTints, arena.skyColors(variant: variant)) { uniform.vectorFloat3Value = color }
     }
-    let key = "\(arena.rawValue)-\(Int(size.width))x\(Int(size.height))"
+    let key = "\(arena.rawValue)-\(variant)-\(Int(size.width))x\(Int(size.height))"
     guard key != arenaKey, let art = ArenaKind(rawValue: arena.rawValue) else { return }
     arenaKey = key
     let box = size, scale = min(displayScale, 2)
     Task.detached(priority: .userInitiated) { [weak self] in
-      let image = Art.arena(art, size: box, scale: scale)
+      let image = Art.arena(art, variant: variant, size: box, scale: scale)
       await MainActor.run {
         guard let self, self.arenaKey == key else { return }
         self.arenaNode.texture = SKTexture(cgImage: image)
@@ -340,12 +372,19 @@ final class GameScene: SKScene {
     let target = min(1, (combo - 1) / 6)
     energy += (target - energy) * min(1, dt * 3)
     bloom = max(0, bloom - dt * 1.1)
-    if !reduceMotion && !ProcessInfo.processInfo.isLowPowerModeEnabled { skyClock += dt * (session.isHeld ? 0.35 : 1) }
-    skyTime.floatValue = Float(skyClock.truncatingRemainder(dividingBy: 2000))
+    // The clock runs faster with the combo here rather than in the shader, and wraps at 20π: every phase
+    // speed in the sky is a multiple of 0.1, so the wrap is seamless and the numbers stay small.
+    if !reduceMotion && !ProcessInfo.processInfo.isLowPowerModeEnabled {
+      skyClock += dt * (session.isHeld ? 0.35 : 1) * (1 + min(1.6, energy + bloom) * 1.6)
+    }
+    skyClock = skyClock.truncatingRemainder(dividingBy: 20 * .pi)
+    skyTime.floatValue = Float(skyClock)
     let windup = game.bubbles.contains { $0.bossWindup > 0 } ? 0.6 : 0
     skyHeat.floatValue = Float(max(session.heat, windup))
     skyEnergy.floatValue = Float(min(1.6, energy + bloom + hingeGlow() * 0.25))
     skyHinge.floatValue = game.vertical ? 0.5 : Float(game.hinge / max(1, game.h))
+    calmAxis.floatValue = game.vertical ? 1 : 0
+    calmLine.floatValue = game.vertical ? Float(game.hinge / max(1, game.w)) : skyHinge.floatValue
     for i in ripples.indices where ripples[i].z < 1 {
       ripples[i].z = min(1, ripples[i].z + Float(dt) / 0.95)
       skyRipples[i].vectorFloat3Value = ripples[i]
@@ -518,9 +557,9 @@ final class GameScene: SKScene {
   }
 
   private func texture(_ kind: BubbleKind, size px: CGFloat) -> SKTexture {
-    let key = "\(kind.rawValue)-\(Int(px))"
+    let key = "\(kind.rawValue)-\(skin?.rawValue ?? "")-\(Int(px))"
     if let t = textures[key] { return t }
-    let t = SKTexture(cgImage: Art.bubble(kind, size: px, scale: displayScale))
+    let t = SKTexture(cgImage: Art.bubble(kind, size: px, scale: displayScale, biome: skin))
     textures[key] = t
     return t
   }

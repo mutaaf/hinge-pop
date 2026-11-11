@@ -76,6 +76,12 @@ final class Session {
     if let chosen = app.progress.arena { return chosen }
     return game?.spec.arena ?? .classic
   }
+  /// Which take on the biome's art this level uses (`LevelSpec.variant`). A biome picked in settings shows
+  /// its original take, since the level's variant belongs to the level's own biome.
+  var variant: Int {
+    if app.progress.arena != nil { return 0 }
+    return game?.spec.variant ?? 0
+  }
   var isHeld: Bool { overlay != .none || tip != nil }
   /// How far between the last two physics steps this frame lands.
   var stepAlpha: Double { min(1, acc * 120) }
