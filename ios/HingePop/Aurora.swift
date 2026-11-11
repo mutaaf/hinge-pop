@@ -14,6 +14,15 @@ extension Arena {
     case .frost: [Color(red: 0.2, green: 0.95, blue: 0.72), Color(red: 0.3, green: 0.78, blue: 1), Color(red: 0.6, green: 0.5, blue: 1)]
     case .reef: [Color(red: 0.2, green: 0.9, blue: 0.9), Color(red: 1, green: 0.45, blue: 0.62), Color(red: 0.4, green: 1, blue: 0.7)]
     case .magma: [Color(red: 1, green: 0.42, blue: 0.15), Color(red: 1, green: 0.75, blue: 0.3), Color(red: 1, green: 0.3, blue: 0.5)]
+    case .candy: [Color(red: 1, green: 0.5, blue: 0.8), Color(red: 0.6, green: 0.85, blue: 1), Color(red: 1, green: 0.85, blue: 0.4)]
+    case .dunes: [Color(red: 1, green: 0.7, blue: 0.35), Color(red: 1, green: 0.45, blue: 0.3), Color(red: 0.5, green: 0.7, blue: 1)]
+    case .storm: [Color(red: 0.45, green: 0.65, blue: 1), Color(red: 0.85, green: 0.9, blue: 1), Color(red: 0.6, green: 0.4, blue: 1)]
+    case .crystal: [Color(red: 0.4, green: 1, blue: 0.95), Color(red: 0.75, green: 0.5, blue: 1), Color(red: 0.4, green: 0.6, blue: 1)]
+    case .haunted: [Color(red: 0.55, green: 1, blue: 0.5), Color(red: 0.6, green: 0.3, blue: 0.9), Color(red: 1, green: 0.55, blue: 0.2)]
+    case .circuit: [Color(red: 0.1, green: 1, blue: 0.9), Color(red: 1, green: 0.2, blue: 0.75), Color(red: 0.4, green: 0.5, blue: 1)]
+    case .jungle: [Color(red: 0.4, green: 1, blue: 0.4), Color(red: 1, green: 0.8, blue: 0.3), Color(red: 0.2, green: 0.8, blue: 0.6)]
+    case .clouds: [Color(red: 1, green: 0.75, blue: 0.85), Color(red: 0.6, green: 0.85, blue: 1), Color(red: 1, green: 0.95, blue: 0.6)]
+    case .clockwork: [Color(red: 1, green: 0.7, blue: 0.35), Color(red: 0.6, green: 0.85, blue: 0.8), Color(red: 0.85, green: 0.55, blue: 0.3)]
     }
   }
 }
@@ -29,6 +38,15 @@ extension Arena {
     case .frost: [.init(0.2, 0.95, 0.72), .init(0.3, 0.78, 1), .init(0.6, 0.5, 1)]
     case .reef: [.init(0.2, 0.9, 0.9), .init(1, 0.45, 0.62), .init(0.4, 1, 0.7)]
     case .magma: [.init(1, 0.42, 0.15), .init(1, 0.75, 0.3), .init(1, 0.3, 0.5)]
+    case .candy: [.init(1, 0.5, 0.8), .init(0.6, 0.85, 1), .init(1, 0.85, 0.4)]
+    case .dunes: [.init(1, 0.7, 0.35), .init(1, 0.45, 0.3), .init(0.5, 0.7, 1)]
+    case .storm: [.init(0.45, 0.65, 1), .init(0.85, 0.9, 1), .init(0.6, 0.4, 1)]
+    case .crystal: [.init(0.4, 1, 0.95), .init(0.75, 0.5, 1), .init(0.4, 0.6, 1)]
+    case .haunted: [.init(0.55, 1, 0.5), .init(0.6, 0.3, 0.9), .init(1, 0.55, 0.2)]
+    case .circuit: [.init(0.1, 1, 0.9), .init(1, 0.2, 0.75), .init(0.4, 0.5, 1)]
+    case .jungle: [.init(0.4, 1, 0.4), .init(1, 0.8, 0.3), .init(0.2, 0.8, 0.6)]
+    case .clouds: [.init(1, 0.75, 0.85), .init(0.6, 0.85, 1), .init(1, 0.95, 0.6)]
+    case .clockwork: [.init(1, 0.7, 0.35), .init(0.6, 0.85, 0.8), .init(0.85, 0.55, 0.3)]
     }
   }
 }

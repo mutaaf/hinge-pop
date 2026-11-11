@@ -34,7 +34,11 @@ public enum Cameo: String, CaseIterable, Sendable, Codable {
   case captainFizz, docFlux, sirGlowstick, chosenFizz, merlinFizz, bigBurp, booBubble, discoDot
 }
 
-public enum Arena: String, CaseIterable, Sendable, Codable { case classic, neon, forest, space, frost, reef, magma }
+/// A world's biome: its backdrop art and colours. Worlds reuse biomes with a variant (see `Worlds`).
+public enum Arena: String, CaseIterable, Sendable, Codable {
+  case classic, neon, forest, space, frost, reef, magma
+  case candy, dunes, storm, crystal, haunted, circuit, jungle, clouds, clockwork
+}
 
 public struct Spawn: Equatable, Sendable {
   public var kind: ActorKind
@@ -53,6 +57,13 @@ public struct LevelSpec: Equatable, Sendable {
   public var arena: Arena
   /// Coral Drift: how hard the current pushes everything along the hinge, before scaling. It turns around slowly.
   public var current = 0.0
+  /// The world's rules on top of the core ones (see `Twist`). Empty for the first realm, except Coral Drift.
+  public var twists: [Twist] = []
+  /// How this level's boss fights, when it has one.
+  public var boss: BossStyle = .crown
+  /// Which take on the biome's art to draw (0 is the original).
+  public var variant = 0
+  public func has(_ t: Twist) -> Bool { twists.contains(t) }
   public var isBoss: Bool { bossPhases > 0 }
 }
 
@@ -62,24 +73,22 @@ public struct Chapter: Sendable, Equatable {
   public var levels: ClosedRange<Int>
   public var teaches: String
   public var arena: Arena
+  public var realm = 1
+  public var variant = 0
+  public var twists: [Twist] = []
+  public var boss: BossStyle = .crown
 }
 
 public enum Campaign {
-  public static let chapters: [Chapter] = [
-    .init(number: 1, title: "First Contact", levels: 1...10, teaches: "Pop and split, then faster bubbles.", arena: .classic),
-    .init(number: 2, title: "Electric Playground", levels: 11...20, teaches: "Armored bubbles and a touchier hinge.", arena: .neon),
-    .init(number: 3, title: "Magnetic Storm", levels: 21...30, teaches: "Magnetic and repel bubbles move everything around them.", arena: .forest),
-    .init(number: 4, title: "Overload Protocol", levels: 31...40, teaches: "Moving gates and mixed bubbles.", arena: .space),
-    .init(number: 5, title: "Bosses & Beyond", levels: 41...50, teaches: "Boss patterns and combos.", arena: .neon),
-    .init(number: 6, title: "Frost Fair", levels: 51...60, teaches: "Frozen crowds and a shorter meter.", arena: .frost),
-    .init(number: 7, title: "Coral Drift", levels: 61...70, teaches: "A current pushes everything along the hinge.", arena: .reef),
-    .init(number: 8, title: "Magma Run", levels: 71...80, teaches: "Fast and golden, with a boss halfway.", arena: .magma),
-  ]
-  public static let finalAuthored = 80
+  /// One chapter per world (`Worlds.all`): ten levels each.
+  public static let chapters: [Chapter] = Worlds.all.map { w in
+    Chapter(number: w.number, title: w.name, levels: w.levels, teaches: w.teaches, arena: w.biome, realm: w.realm, variant: w.variant, twists: w.twists, boss: w.boss)
+  }
+  public static let finalAuthored = Worlds.count * 10
 
   public static func chapter(of level: Int) -> Chapter {
     chapters.first { $0.levels.contains(level) }
-      ?? .init(number: 9, title: "Infinity", levels: (finalAuthored + 1)...Int.max, teaches: "Generated levels that keep climbing.", arena: Arena.allCases[(level / 10) % Arena.allCases.count])
+      ?? .init(number: Worlds.count + 1, title: "Infinity", levels: (finalAuthored + 1)...Int.max, teaches: "Generated levels that keep climbing.", arena: Arena.allCases[(level / 10) % Arena.allCases.count])
   }
 
   /// How many taps a size takes to clear by hand. A level's difficulty is measured in this, not in bubbles:
@@ -128,6 +137,7 @@ public enum Campaign {
     let ch = chapter(of: n)
     let k = (n - 1) % 10 + 1
     if n > finalAuthored { return generated(n, chapter: ch) }
+    if ch.number > 8 { return worldLevel(n, chapter: ch, step: k) }
     let index = ch.number - 1
     let pace = index == 7 ? min(0.94, speed(chapter: index, step: k)) : speed(chapter: index, step: k)
     if k == 10 {
@@ -190,7 +200,31 @@ public enum Campaign {
       phases = 3
     }
     var spec = LevelSpec(number: n, chapter: ch.number, spawns: spawns, speed: pace, meterMax: meter, gates: gates, bossPhases: phases, arena: ch.arena)
-    if index == 6 { spec.current = 30 + 4 * Double(k) }
+    if index == 6 { spec.current = 30 + 4 * Double(k); spec.twists = [.current] }
+    return spec
+  }
+
+  /// Levels for worlds 9–80, from the world's recipe: the same number always gives the same level.
+  /// Difficulty climbs by realm and eases back a little at the start of each world so its twist gets room.
+  public static func worldLevel(_ n: Int, chapter ch: Chapter, step k: Int) -> LevelSpec {
+    var rng = SplitMix(seed: UInt64(n) &* 0x9E37)
+    let tier = Double(ch.number - 9) / Double(max(1, Worlds.count - 9))   // 0 at world 9, 1 at the last
+    let pace = min(1.1, 0.78 + 0.22 * tier + 0.012 * Double(k - 1))
+    var spec: LevelSpec
+    if k == 10 {
+      var spawns = [Spawn(.boss), Spawn(.fast, size: 2)]
+      if tier > 0.3 { spawns.append(Spawn(.armored, size: 1)) }
+      if tier > 0.6 { spawns.append(Spawn(.fast, size: 2)) }
+      spec = LevelSpec(number: n, chapter: ch.number, spawns: spawns, speed: pace, meterMax: 4, gates: 0, bossPhases: tier > 0.5 ? 4 : 3, arena: ch.arena)
+    } else {
+      let budget = min(90, 40 + Int(30 * tier) + (k - 1) * 3 - (k <= 2 ? 6 : 0))
+      spec = mixed(number: n, chapter: ch.number, budget: budget, speed: pace, gates: k >= 7 && rng.int(3) == 0 ? 1 : 0, arena: ch.arena, rng: &rng)
+      if k >= 6 && tier > 0.4 { spec.meterMax = 3 }
+    }
+    spec.twists = ch.twists
+    spec.boss = ch.boss
+    spec.variant = ch.variant
+    if ch.twists.contains(.current) { spec.current = 30 + 3 * Double(k) }
     return spec
   }
 

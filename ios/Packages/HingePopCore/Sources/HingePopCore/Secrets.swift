@@ -21,6 +21,15 @@ public enum Secrets {
     .init(id: "frost-tracks", emoji: "👣", title: "Big feet", line: "Huge footprints in the snow. Someone loves bubbles.", hint: "Something hides by the tallest fir."),
     .init(id: "reef-treasure", emoji: "🪙", title: "Sunken treasure", line: "X never marks the spot. Taps do.", hint: "The coral keeps a secret."),
     .init(id: "magma-lair", emoji: "🐈‍⬛", title: "Volcano lair", line: "Every volcano lair needs a cat to pet menacingly.", hint: "Knock on the tallest volcano."),
+    .init(id: "candy-house", emoji: "🍭", title: "Gingerbread door", line: "The candy cottage is open. Mind the oven.", hint: "Knock on the biggest lollipop."),
+    .init(id: "dunes-lamp", emoji: "🪔", title: "Old lamp", line: "Rub it. Three wishes, all of them pops.", hint: "Something glints in the sand by the dune's foot."),
+    .init(id: "storm-cape", emoji: "🦸", title: "Up in the clouds", line: "Cape on, chin up, bubbles down.", hint: "Tap the brightest bolt three times."),
+    .init(id: "crystal-sword", emoji: "🗡️", title: "Sword in the crystal", line: "Only the worthy can pull it. You tapped it. Close enough.", hint: "The tallest crystal holds something."),
+    .init(id: "haunted-portrait", emoji: "🖼️", title: "Watching portrait", line: "Its eyes follow you. So do the bubbles.", hint: "Knock on the manor's lit window."),
+    .init(id: "circuit-arcade", emoji: "👾", title: "Insert coin", line: "High score: you. Initials: POP.", hint: "Tap the flickering sign three times."),
+    .init(id: "jungle-idol", emoji: "🗿", title: "Golden idol", line: "Swap it for a bag of sand. What could go wrong?", hint: "The temple door hides a treasure."),
+    .init(id: "clouds-goose", emoji: "🪿", title: "Golden goose", line: "One golden egg per pop. Results may vary.", hint: "Something nests on the highest cloud."),
+    .init(id: "clockwork-flux", emoji: "⏱️", title: "Time machine", line: "Set the dial to yesterday. Pop it again.", hint: "Knock on the big clock face."),
     .init(id: "answer", emoji: "🌌", title: "The answer", line: "Level 42. The answer was pop all along.", hint: "Clear a very meaningful level."),
     .init(id: "cheat-code", emoji: "🕹️", title: "Old-school code", line: "Up, up, down, down... the arcade remembers.", hint: "Some codes never die. Swipe them on the logo."),
     .init(id: "witching", emoji: "🦇", title: "Witching hour", line: "Popping at 3 a.m.? Bold.", hint: "Play when the clock strikes three."),
@@ -102,11 +111,21 @@ public enum Secrets {
     case .frost: return (w * 0.85, h - max(u * 0.26, h * 0.16) - u * 0.15, u * 0.15)
     case .reef: return (w * 0.08, h - max(u * 0.2, h * 0.12) - u * 0.1, u * 0.16)
     case .magma: return (w * 0.97, h - max(u * 0.3, h * 0.2) - u * 0.38, u * 0.14)
+    // The new biomes: provisional spots until their art is final (HingePopArt/Arenas.swift); keep these in step with it.
+    case .candy: return (w * 0.15, h - max(u * 0.28, h * 0.18), u * 0.15)
+    case .dunes: return (w * 0.82, h - max(u * 0.22, h * 0.14), u * 0.15)
+    case .storm: return (w * 0.7, h * 0.12, u * 0.15)
+    case .crystal: return (w * 0.5, h - max(u * 0.32, h * 0.22), u * 0.16)
+    case .haunted: return (w * 0.78, h - max(u * 0.38, h * 0.26), u * 0.13)
+    case .circuit: return (w * 0.2, h - max(u * 0.4, h * 0.28), u * 0.14)
+    case .jungle: return (w * 0.5, h - max(u * 0.24, h * 0.15), u * 0.16)
+    case .clouds: return (w * 0.85, h * 0.14, u * 0.15)
+    case .clockwork: return (w * 0.5, h * 0.16, u * 0.17)
     }
   }
 
   public static func spotSecret(_ arena: Arena) -> Secret {
-    named("\(arena.rawValue)-" + ["classic": "star", "neon": "cruise", "forest": "howl", "space": "saucer", "frost": "tracks", "reef": "treasure", "magma": "lair"][arena.rawValue, default: ""])!
+    named("\(arena.rawValue)-" + ["classic": "star", "neon": "cruise", "forest": "howl", "space": "saucer", "frost": "tracks", "reef": "treasure", "magma": "lair", "candy": "house", "dunes": "lamp", "storm": "cape", "crystal": "sword", "haunted": "portrait", "circuit": "arcade", "jungle": "idol", "clouds": "goose", "clockwork": "flux"][arena.rawValue, default: ""])!
   }
 
   /// A date or hour that hides something.
