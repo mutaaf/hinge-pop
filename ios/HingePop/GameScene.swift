@@ -62,6 +62,8 @@ final class GameScene: SKScene {
   private var rushGlow = 0.0
   private var rushFlash = 0.0
   private var rushShown = 0
+  /// Coral Drift: faint motes that ride the current, so you can see which way it flows.
+  private var motes: [SKSpriteNode] = []
   /// The last touch beside the crease, for spotting a clap: one finger on each page at once.
   private var creaseTouch: (side: Int, at: Double)?
   private var lastTime: TimeInterval = 0
@@ -251,6 +253,7 @@ final class GameScene: SKScene {
     let alpha = session.stepAlpha
     drawSky(game, dt: dt, session: session)
     drawRush(game, dt: dt)
+    drawCurrent(game, dt: dt)
     drawHinge(game)
     drawGates(game)
     drawBubbles(game, alpha: alpha)
@@ -269,6 +272,8 @@ final class GameScene: SKScene {
     gateNodes.removeAll()
     active.removeAll()
     rushGlow = 0; rushFlash = 0; rushShown = 0; creaseTouch = nil
+    motes.forEach { $0.removeFromParent() }
+    motes.removeAll()
     rushNode.isHidden = true
     dashLine.isHidden = true
     prewarm(game)
@@ -366,6 +371,37 @@ final class GameScene: SKScene {
     }
     rushTime.floatValue = reduceMotion ? 0 : Float(clock.truncatingRemainder(dividingBy: 1000))
     rushAlpha.floatValue = Float(rushGlow * (0.75 + 0.35 * hingeGlow()) + rushFlash * 0.8)
+  }
+
+  private func drawCurrent(_ game: Game, dt: Double) {
+    guard game.spec.current != 0 else { motes.forEach { $0.isHidden = true }; return }
+    if motes.isEmpty {
+      var d = SystemRandomNumberGenerator()
+      for _ in 0..<18 {
+        let m = SKSpriteNode(color: UIColor(red: 0.8, green: 1, blue: 1, alpha: 1), size: CGSize(width: 3, height: 3))
+        m.blendMode = .add
+        m.zPosition = -4
+        m.alpha = CGFloat.random(in: 0.15...0.4, using: &d)
+        m.position = CGPoint(x: CGFloat.random(in: 0...max(1, area.width), using: &d), y: CGFloat.random(in: 0...max(1, area.height), using: &d))
+        world.addChild(m)
+        motes.append(m)
+      }
+    }
+    // The same flow the rules use, drawn a little faster so it reads at a glance.
+    let flow = game.spec.current * game.scale * sin(game.time * 2 * .pi / game.tuning.currentPeriod)
+    let step = CGFloat(flow * dt * (reduceMotion ? 0 : 2.2))
+    for m in motes {
+      m.isHidden = false
+      if game.vertical {
+        m.position.y -= step
+        m.xScale = 1; m.yScale = 1 + min(5, abs(step) * 1.5)
+        if m.position.y < 0 { m.position.y += area.height } else if m.position.y > area.height { m.position.y -= area.height }
+      } else {
+        m.position.x += step
+        m.yScale = 1; m.xScale = 1 + min(5, abs(step) * 1.5)
+        if m.position.x < 0 { m.position.x += area.width } else if m.position.x > area.width { m.position.x -= area.width }
+      }
+    }
   }
 
   /// A pop shakes the sky: a ring of light runs out through the curtains from where it happened.

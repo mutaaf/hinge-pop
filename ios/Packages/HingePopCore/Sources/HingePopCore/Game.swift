@@ -1012,6 +1012,11 @@ public final class Game {
         }
       }
       b.x += b.vx * dt; b.y += b.vy * dt
+      // Coral Drift: the current carries everything along the hinge, turning around every few seconds.
+      if spec.current != 0 && b.kind != .boss {
+        let drift = spec.current * scale * sin(time * 2 * .pi / tuning.currentPeriod) * dt
+        if vertical { b.y += drift } else { b.x += drift }
+      }
       let bounce = b.kind == .boss ? 0.9 : tuning.bounce[b.size]
       if b.x < b.r { impact(b, 0, abs(b.vx)); b.x = b.r; b.vx = abs(b.vx) * bounce }
       if b.x > w - b.r { impact(b, 0, abs(b.vx)); b.x = w - b.r; b.vx = -abs(b.vx) * bounce }

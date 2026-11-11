@@ -158,6 +158,10 @@ final class Session {
       app.progress.taught.insert("gate")
       show("Green gaps are gates. Bubbles pass through them for free, with no split and no charge.", seconds: 5)
     }
+    if game.spec.current > 0, !app.progress.taught.contains("current") {
+      app.progress.taught.insert("current")
+      show("A current flows along the line. It carries every bubble with it, then turns around.", seconds: 5)
+    }
     if let first = meetQueue.first {
       overlay = .meet(first)
     } else if versus {

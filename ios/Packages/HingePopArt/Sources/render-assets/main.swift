@@ -141,7 +141,7 @@ for (i, g) in buttons.enumerated() {
 
 // Environment and FX.
 panel(CGRect(x: 16, y: 900, width: W - 32, height: 340), "ENVIRONMENT & FX")
-let arenaNames: [(ArenaKind, String)] = [(.classic, "Arena - Classic"), (.neon, "Arena - Neon"), (.forest, "Arena - Forest"), (.space, "Arena - Space")]
+let arenaNames: [(ArenaKind, String)] = [(.classic, "Arena - Classic"), (.neon, "Arena - Neon"), (.forest, "Arena - Forest"), (.space, "Arena - Space"), (.frost, "Arena - Frost"), (.reef, "Arena - Reef"), (.magma, "Arena - Magma")]
 for (i, (k, n)) in arenaNames.enumerated() {
     let x = 34 + CGFloat(i) * 150
     let a = Art.arena(k, size: CGSize(width: 130, height: 240), scale: scale)
