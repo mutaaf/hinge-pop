@@ -2,7 +2,7 @@
   "lobby": 1,
   "slug": "hinge-pop",
   "name": "Hinge Pop",
-  "category": "Games \u203a Arcade",
+  "category": "Games › Arcade",
   "tagline": "Snap the hinge. Save the day.",
   "audience": "general",
   "stores": [
@@ -11,7 +11,8 @@
   ],
   "ipad": true,
   "ios": {
-    "bundleId": "com.mutaafaziz.hingepop"
+    "bundleId": "com.mutaafaziz.hingepop",
+    "ascAppId": "6830968334"
   },
   "android": {
     "package": ""
