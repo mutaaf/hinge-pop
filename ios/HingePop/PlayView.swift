@@ -43,13 +43,17 @@ struct PlayView: View {
             .ignoresSafeArea()
             .accessibilityLabel("Game arena. Tap bubbles to split them.")
         }
-        VStack(spacing: 4) {
-          HUDView(session: session)
-          if let left = session.bossLeft { BossBar(left: left) { session.openTip(session.tipBoss()) } }
-          EffectRow(session: session)
+        if session.versus {
+          VersusHUD(session: session, size: proxy.size, fold: fold)
+        } else {
+          VStack(spacing: 4) {
+            HUDView(session: session)
+            if let left = session.bossLeft { BossBar(left: left) { session.openTip(session.tipBoss()) } }
+            EffectRow(session: session)
+          }
+          ToastView(toast: session.toast)
+            .padding(.top, session.hudHeight + (session.bossLeft == nil ? 16 : 44))
         }
-        ToastView(toast: session.toast)
-          .padding(.top, session.hudHeight + (session.bossLeft == nil ? 16 : 44))
         overlays(size: proxy.size, fold: fold)
         #if DEBUG
         if Debug.has("-probe") {
@@ -99,12 +103,15 @@ struct PlayView: View {
   @ViewBuilder
   private func overlays(size: CGSize, fold: CGRect?) -> some View {
     if let tip = session.tip {
-      TipOverlay(tip: tip) { session.tip = nil }
+      // A two-player tip turns to face whoever asked.
+      SeatTurn(degrees: tip.seat.map { session.seatDegrees($0) } ?? 0) {
+        TipOverlay(tip: tip) { session.tip = nil }
+      }
     }
     switch session.overlay {
     case .none: EmptyView()
-    case .paused: PauseOverlay(session: session)
-    case .result: ResultOverlay(session: session)
+    case .paused: if session.versus { VersusPauseOverlay(session: session) } else { PauseOverlay(session: session) }
+    case .result: if session.versus { VersusResultOverlay(session: session) } else { ResultOverlay(session: session) }
     case .meet(let kind): MeetOverlay(kind: kind) { session.dismissMeet() }
     case .world(let n): if let w = Worlds.world(n) { WorldIntroOverlay(world: w) { session.dismissWorld() } }
     case .tour: TourOverlay(session: session, spots: spots, size: size, fold: fold)
@@ -187,9 +194,14 @@ struct HUDView: View {
 struct PlayerCluster: View {
   let session: Session
   let index: Int
+  /// Two-player face-off: this player's own scoreboard at their own edge, read the normal way round.
+  var seated = false
   @Environment(\.horizontalSizeClass) private var hClass
-  private var mirrored: Bool { index == 1 }
-  private var compact: Bool { session.versus && hClass == .compact }
+  private var mirrored: Bool { index == 1 && !seated }
+  /// Player 1 wears the game's cyan, Player 2 the warm peach, wherever they sit.
+  private var peach: Bool { seated ? index == 0 : mirrored }
+  private var compact: Bool { session.versus && hClass == .compact && !seated }
+  private var who: String { session.versus ? Seat.name(index) : "Your" }
   private var hud: PlayerHUD { session.hud.indices.contains(index) ? session.hud[index] : PlayerHUD() }
   @Environment(\.accessibilityReduceMotion) private var reduceMotion
   @State private var crackedIndex: Int?
@@ -197,7 +209,14 @@ struct PlayerCluster: View {
 
   var body: some View {
     Group {
-      if compact {
+      if seated {
+        HStack(spacing: 10) {
+          shields
+          meter.frame(maxWidth: 220)
+          Spacer(minLength: 2)
+          score
+        }
+      } else if compact {
         VStack(spacing: 2) {
           HStack(spacing: 6) { shields; Spacer(minLength: 2); score }
             .environment(\.layoutDirection, mirrored ? .rightToLeft : .leftToRight)
@@ -231,7 +250,7 @@ struct PlayerCluster: View {
         GeometryReader { p in
           ZStack(alignment: .leading) {
             Capsule().fill(.white.opacity(0.16))
-            Capsule().fill(mirrored ? Theme.p2 : Theme.cyan)
+            Capsule().fill(peach ? Theme.p2 : Theme.cyan)
               .frame(width: p.size.width * min(1, Double(hud.streak) / streakMax))
               .animation(.easeOut(duration: 0.14), value: hud.streak)
           }
@@ -244,7 +263,7 @@ struct PlayerCluster: View {
       .contentShape(Rectangle())
     }
     .buttonStyle(.plain)
-    .accessibilityLabel("\(mirrored ? "Right" : session.versus ? "Left" : "Your") shields: \(hud.shields) of \(maxShields). Show details.")
+    .accessibilityLabel("\(who) shields: \(hud.shields) of \(maxShields). Show details.")
     .onChange(of: hud.shields) { old, new in
       guard new < old else { crackedIndex = nil; return }
       // The shield that just went cracks, and the row jolts.
@@ -264,6 +283,8 @@ struct PlayerCluster: View {
             Text(label).font(.game(.caption2, .heavy)).foregroundStyle(Theme.muted).lineLimit(1).minimumScaleFactor(0.8)
             if session.overdrive { OverdriveTag() }
           }
+        } else if seated {
+          Text(Seat.name(index).uppercased()).font(.game(.caption2, .heavy)).tracking(1).foregroundStyle(peach ? Theme.p2 : Theme.cyan).lineLimit(1).minimumScaleFactor(0.8)
         }
         HStack(spacing: 3) {
           ForEach(0..<max, id: \.self) { i in
@@ -276,7 +297,7 @@ struct PlayerCluster: View {
     }
     .buttonStyle(.plain)
     .spotFrame(index == 0 ? .meter : .hud)
-    .accessibilityLabel("Overload meter: \(hud.meter) of \(max). Show details.")
+    .accessibilityLabel("\(session.versus ? "\(who) overload" : "Overload") meter: \(hud.meter) of \(max). Show details.")
   }
 
   private var label: String {
@@ -292,7 +313,7 @@ struct PlayerCluster: View {
     Button { session.openTip(session.tipScore(index)) } label: {
       VStack(alignment: mirrored ? .leading : .trailing, spacing: 0) {
         RollingScore(value: hud.score, big: !compact)
-        ComboBadge(combo: hud.combo, mirrored: mirrored)
+        ComboBadge(combo: hud.combo, mirrored: peach)
       }
       .environment(\.layoutDirection, .leftToRight)
       .frame(minWidth: 44, minHeight: compact ? 34 : Theme.target)
@@ -300,7 +321,7 @@ struct PlayerCluster: View {
     }
     .buttonStyle(.plain)
     .spotFrame(index == 0 ? .score : .hud)
-    .accessibilityLabel("Score \(hud.score), combo \(hud.combo.formatted()). Show details.")
+    .accessibilityLabel("\(session.versus ? "\(who) score" : "Score") \(hud.score), combo \(hud.combo.formatted()). Show details.")
   }
 }
 
@@ -427,9 +448,12 @@ struct BossBar: View {
 /// Timers for whatever power-ups are running.
 struct EffectRow: View {
   let session: Session
+  /// Two players: only this player's overcharge (freeze and focus hold everyone).
+  var player: Int? = nil
   var body: some View {
+    let charge = player.flatMap { session.hud.indices.contains($0) ? session.hud[$0].overcharge : nil } ?? (session.hud.map(\.overcharge).max() ?? 0)
     let items: [(PowerUp, Double)] = [
-      (.overcharge, session.hud.map(\.overcharge).max() ?? 0), (.freeze, session.freezeLeft), (.focus, session.focusLeft),
+      (.overcharge, charge), (.freeze, session.freezeLeft), (.focus, session.focusLeft),
     ].filter { $0.1 > 0 }
     if !items.isEmpty {
       HStack(spacing: 8) {
@@ -591,15 +615,15 @@ struct StatGrid: View {
   }
   private func rows(_ g: Game) -> [(String, String, String)] {
     if g.versus {
-      let a = g.players[0], b = g.players[1]
-      return [
-        ("Left score", a.score.formatted(), "The left player's points. If every bubble gets cleared, the higher score wins."),
-        ("Left cross", "\(a.crossings)", "Bubbles the left player let through. Each charged their meter and landed on the right."),
-        ("Left shield", "\(a.shields)", "A player with no shields loses the match, whatever the score."),
-        ("Right score", b.score.formatted(), "The right player's points. If every bubble gets cleared, the higher score wins."),
-        ("Right cross", "\(b.crossings)", "Bubbles the right player let through. Each charged their meter and landed on the left."),
-        ("Right shield", "\(b.shields)", "A player with no shields loses the match, whatever the score."),
-      ]
+      // Player 1 (the bottom seat) first.
+      return [1, 0].flatMap { i -> [(String, String, String)] in
+        let p = g.players[i], n = i == 1 ? "P1" : "P2", who = Seat.name(i)
+        return [
+          ("\(n) score", p.score.formatted(), "\(who)'s points. If every bubble gets cleared, the higher score wins."),
+          ("\(n) cross", "\(p.crossings)", "Bubbles \(who) let through. Each charged their meter and landed on the rival's half."),
+          ("\(n) shield", "\(p.shields)", "A player with no shields loses the match, whatever the score."),
+        ]
+      }
     }
     let p = g.players[0]
     return [
@@ -637,8 +661,25 @@ struct TourOverlay: View {
           .allowsHitTesting(false)
           .animation(reduceMotion ? nil : .spring(duration: 0.34), value: rect)
       }
-      card(step)
+      if session.versus {
+        // Both players read the tour: one card in each half, facing its player.
+        ForEach(0..<2, id: \.self) { i in
+          SeatTurn(degrees: session.seatDegrees(i)) { seatCard(step) }
+        }
+      } else {
+        card(step)
+      }
     }
+  }
+
+  /// A two-player tour card, at the reader's own edge (inside a `SeatTurn`), clear of the hinge.
+  private func seatCard(_ step: TourStep) -> some View {
+    VStack {
+      Spacer(minLength: 0)
+      content(step).frame(maxWidth: 460)
+    }
+    .padding(.horizontal, 8)
+    .padding(.bottom, 8)
   }
 
   /// The card stays clear of the action: on the trailing side when the hinge is vertical, at the bottom otherwise.

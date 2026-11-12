@@ -19,6 +19,25 @@ struct Tip: Identifiable, Equatable {
   var live: String = ""
   var body: String
   var anchor: UnitPoint = .top
+  /// In two-player games, the player it's for, so it turns to face them.
+  var seat: Int? = nil
+}
+
+/// Two-player seats. The phone lies flat between two players at opposite ends, facing each other across the
+/// long axis. Player index 0 owns the near half (top in portrait, left on a wide screen) and index 1 the far
+/// half (bottom, or right). Everything that belongs to a player turns to face their edge.
+enum Seat {
+  /// How far that player's things turn, in SwiftUI degrees (clockwise): 0 reads from the bottom edge, 180 from
+  /// the top, 90 from the left, -90 from the right.
+  static func degrees(_ player: Int, vertical: Bool) -> Double {
+    vertical ? (player == 0 ? 90 : -90) : (player == 0 ? 180 : 0)
+  }
+  /// The same turn for SpriteKit, whose angles run counter-clockwise.
+  static func radians(_ player: Int, vertical: Bool) -> CGFloat { CGFloat(-degrees(player, vertical: vertical) * .pi / 180) }
+  /// What the readouts call each player. Player 1 sits at the bottom (or the right), Player 2 across from them.
+  static func name(_ player: Int) -> String { player == 1 ? "Player 1" : "Player 2" }
+  /// How thick each player's scoreboard band is.
+  static func band(wide: Bool) -> CGFloat { wide ? 64 : 56 }
 }
 
 struct Toast: Identifiable, Equatable {
@@ -114,33 +133,63 @@ final class Session {
     guard changed, size.width > 0, size.height > 0 else { return }
     self.size = size
     self.fold = fold
+    playRect = arenaRect()
     if game == nil {
       begin()
       return
     }
-    let place = placement(size: size, fold: fold, top: Double(hudHeight))
-    let turned = game.resize(width: size.width, height: size.height, top: Double(hudHeight), vertical: place?.vertical, hinge: place?.hinge)
+    let place = placement()
+    let turned = game.resize(width: playRect.width, height: playRect.height, top: versus ? 0 : Double(hudHeight), vertical: place?.vertical ?? versusAxis, hinge: place?.hinge)
     game.foldPlay = place != nil
-    if turned && overlay == .none && tip == nil && !versus { overlay = .paused }
+    // Turning keeps the level and pauses it. In two-player games the seats move with the hinge, so both
+    // players get a moment to see where their half went.
+    var holdOnTurn = true
+    #if DEBUG
+    holdOnTurn = !Debug.has("-demo")
+    #endif
+    if turned && holdOnTurn && overlay == .none && tip == nil { overlay = .paused }
     if overlay == .tour { enterTour(tourIndex) }
     generation += 1
   }
 
-  private func placement(size: CGSize, fold: CGRect?, top: Double) -> FoldLayout? {
+  /// Where play happens, in the safe area's coordinates. Solo play fills it (the HUD reserves `top` inside the
+  /// game). Two players each get a scoreboard band at their own edge, so the arena sits between the bands and
+  /// both halves are the same size.
+  private(set) var playRect = CGRect.zero
+  /// Two players face each other across the long axis, so the hinge splits it. A real fold wins, whichever way
+  /// it runs: each page is a player's half.
+  private var versusAxis: Bool? {
+    guard versus else { return nil }
+    if let fold, fold.width > 0, fold.height > 0, fold.intersects(CGRect(origin: .zero, size: size)) { return fold.height >= fold.width }
+    return size.width > size.height
+  }
+  var seatBand: CGFloat { Seat.band(wide: min(size.width, size.height) >= 600) }
+  private func arenaRect() -> CGRect {
+    guard let vertical = versusAxis else { return CGRect(origin: .zero, size: size) }
+    let b = seatBand
+    return vertical ? CGRect(x: b, y: 0, width: max(1, size.width - b * 2), height: size.height)
+                    : CGRect(x: 0, y: b, width: size.width, height: max(1, size.height - b * 2))
+  }
+
+  private func placement() -> FoldLayout? {
     guard let fold else { return nil }
-    return FoldLayout.resolve(width: size.width, height: size.height, top: top, fold: (fold.minX, fold.minY, fold.width, fold.height), versus: versus)
+    let o = playRect.origin
+    return FoldLayout.resolve(width: playRect.width, height: playRect.height, top: versus ? 0 : Double(hudHeight),
+                              fold: (fold.minX - o.x, fold.minY - o.y, fold.width, fold.height), versus: versus)
   }
 
   /// True when the game's hinge sits on a real or synthesized fold.
-  var onFold: Bool { placement(size: size, fold: fold, top: Double(hudHeight)) != nil }
+  var onFold: Bool { placement() != nil }
   /// The fold's position along the HUD, when it splits left from right.
-  var verticalFoldX: CGFloat? { fold.flatMap { placement(size: size, fold: $0, top: Double(hudHeight))?.vertical == true ? $0.midX : nil } }
+  var verticalFoldX: CGFloat? { fold.flatMap { placement()?.vertical == true ? $0.midX : nil } }
+  /// Which way a player's things turn to face them (SwiftUI degrees); 0 outside two-player games.
+  func seatDegrees(_ player: Int) -> Double { versus ? Seat.degrees(player, vertical: game?.vertical ?? (size.width > size.height)) : 0 }
 
   func setTourGame(_ g: Game) { game = g; generation += 1; acc = 0; endTimer = 0 }
 
   func makeGame(_ m: GameMode) -> Game {
-    let place = placement(size: size, fold: fold, top: Double(hudHeight))
-    let g = Game(mode: m, width: size.width, height: size.height, top: Double(hudHeight), vertical: place?.vertical, hinge: place?.hinge, score: m == mode && isCampaign ? runScore : 0, difficulty: app.progress.difficulty)
+    let place = placement()
+    let g = Game(mode: m, width: playRect.width, height: playRect.height, top: versus ? 0 : Double(hudHeight), vertical: place?.vertical ?? versusAxis, hinge: place?.hinge, score: m == mode && isCampaign ? runScore : 0, difficulty: app.progress.difficulty)
     g.flick = app.progress.flick
     g.graceOn = app.progress.hingeGrace
     // Page play follows where the fold is. The fold's angle stays effects-only.
@@ -198,7 +247,7 @@ final class Session {
     } else if let first = meetQueue.first {
       overlay = .meet(first)
     } else if versus {
-      show(size.width < 600 && size.height > size.width ? "One side each. Turn sideways for more room." : "One side each. Tap your own bubbles.")
+      show("Face to face. Your half is the one nearest you.")
     } else if isCampaign {
       show("Level \(levelNumber): \(Campaign.chapter(of: levelNumber).title)", seconds: 1.6)
     }
@@ -413,17 +462,17 @@ final class Session {
     let p = game.players[i], r = game.tuning.rechargeStreak, left = r - p.streak
     let end = versus ? "you lose the match." : isCampaign ? "the level starts again from the score you began it with." : "the run ends."
     return Tip(title: "Shields", live: "\(p.shields) of \(game.tuning.shields) left. Streak: \(p.streak) of \(r) taps.",
-      body: "Full meter costs one. Lose the last and \(end) \(left) more \(left == 1 ? "tap" : "taps") with no crossing \(p.shields < game.tuning.shields ? "wins one back." : "clears the meter.")")
+      body: "Full meter costs one. Lose the last and \(end) \(left) more \(left == 1 ? "tap" : "taps") with no crossing \(p.shields < game.tuning.shields ? "wins one back." : "clears the meter.")", seat: versus ? i : nil)
   }
   func tipMeter(_ i: Int) -> Tip {
     let p = game.players[i], left = game.meterMax - p.meter
     return Tip(title: "Overload meter", live: "\(p.meter) of \(game.meterMax) charged. \(left) to go.",
-      body: "Big fills it. Medium adds \(game.crossingCost(size: 1)). Small adds 1. Tiny adds nothing, and neither do green gates. Full costs a shield.")
+      body: "Big fills it. Medium adds \(game.crossingCost(size: 1)). Small adds 1. Tiny adds nothing, and neither do green gates. Full costs a shield.", seat: versus ? i : nil)
   }
   func tipScore(_ i: Int) -> Tip {
     let p = game.players[i]
     return Tip(title: "Score and combo", live: "\(p.score.formatted()) points at x\(p.combo.formatted()).",
-      body: "Smaller pays more, times your combo. Keep tapping to build it. A crossing resets it.\(isCampaign ? " No crossings: +25%." : "")")
+      body: "Smaller pays more, times your combo. Keep tapping to build it. A crossing resets it.\(isCampaign ? " No crossings: +25%." : "")", seat: versus ? i : nil)
   }
   func tipBoss() -> Tip {
     Tip(title: "Boss", live: "\(max(1, game.spec.bossPhases)) phases, \(game.bossHitsPerPhase) hits each.", body: ActorKind.boss.detail)
@@ -441,6 +490,8 @@ final class Session {
   private func demoTick(_ dt: Double) {
     let endCard = Debug.string("-endCard")
     if Debug.has("-win") || endCard == "win", game.status == .playing, game.time > 0.6 {
+      // Two players: Player 1 (the bottom seat) edges it, so captures show a win and a loss.
+      if versus { game.players[1].score += 50 }
       var guardCount = 0
       while let b = game.bubbles.first, game.status == .playing, guardCount < 800 { game.tap(b); guardCount += 1 }
     }

@@ -20,23 +20,24 @@ final class WhatsNewTests: XCTestCase {
     app.buttons.containing(NSPredicate(format: "label CONTAINS %@", text)).firstMatch
   }
 
-  func testSettingsCalloutOpensTheSwitch() {
+  func testVersusCalloutStartsAFaceOff() {
     openCard()
-    let flip = callout("Overdrive. Same levels")
-    XCTAssertTrue(flip.waitForExistence(timeout: 5))
+    let faceOff = callout("Two players, face to face")
+    XCTAssertTrue(faceOff.waitForExistence(timeout: 5))
     shot("card")
-    flip.tap()
-    XCTAssertTrue(app.buttons["difficulty-overdrive"].waitForExistence(timeout: 5), "didn't land on the difficulty switch")
+    faceOff.tap()
+    XCTAssertTrue(app.descendants(matching: .any).matching(NSPredicate(format: "label BEGINSWITH %@", "Player 1 shields")).firstMatch.waitForExistence(timeout: 10)
+      || app.staticTexts["Step 1 of 4"].firstMatch.waitForExistence(timeout: 5), "didn't land in two-player")
     XCTAssertFalse(app.buttons["Let's pop!"].exists, "the card stayed open")
-    shot("settings")
+    shot("versus")
   }
 
-  func testMapCalloutOpensTheMap() {
+  func testGuideCalloutOpensTwoPlayers() {
     openCard()
-    let map = callout("earns a flame")
-    if !map.isHittable { app.swipeUp() }
-    map.tap()
-    XCTAssertTrue(app.staticTexts["Journey"].waitForExistence(timeout: 5), "didn't land on the journey")
-    shot("map")
+    let guide = callout("spin round")
+    if !guide.isHittable { app.swipeUp() }
+    guide.tap()
+    XCTAssertTrue(app.staticTexts["Lay it flat, face to face. The half nearest you is yours."].waitForExistence(timeout: 5), "didn't open the two-player section")
+    shot("guide")
   }
 }

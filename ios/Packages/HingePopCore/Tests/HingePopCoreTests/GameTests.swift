@@ -350,17 +350,152 @@ final class GameTests: XCTestCase {
 
   // MARK: Two players
 
-  func testVersusIsMirroredAndAlwaysVertical() {
-    for (w, h) in [(844.0, 390.0), (390.0, 844.0)] {
-      let g = Game(mode: .versus, width: w, height: h, top: 65)
-      XCTAssertTrue(g.vertical)
-      let l = g.bubbles.filter { $0.side < 0 }, r = g.bubbles.filter { $0.side > 0 }
-      XCTAssertEqual(l.count, r.count)
-      for (a, b) in zip(l, r) {
-        XCTAssertEqual(a.x, w - b.x, accuracy: 1e-6)
-        XCTAssertEqual(a.y, b.y, accuracy: 1e-6)
-        XCTAssertEqual(a.vx, -b.vx, accuracy: 1e-6)
+  func testVersusSplitsTheLongAxisAndIsMirrored() {
+    // Players face each other across the long axis: a portrait phone splits top from bottom, a wide screen
+    // left from right.
+    for (w, h) in [(844.0, 390.0), (390.0, 844.0), (1194.0, 834.0), (834.0, 1194.0)] {
+      let g = Game(mode: .versus, width: w, height: h, top: 0)
+      XCTAssertEqual(g.vertical, w > h, "\(w)x\(h)")
+      XCTAssertEqual(g.hinge, (w > h ? w : h) / 2, accuracy: 1e-6, "the hinge splits the screen in half")
+      let near = g.bubbles.filter { $0.side < 0 }, far = g.bubbles.filter { $0.side > 0 }
+      XCTAssertEqual(near.count, far.count)
+      XCTAssertGreaterThan(near.count, 0)
+      for (a, b) in zip(near, far) {
+        if g.vertical {
+          XCTAssertEqual(a.x, w - b.x, accuracy: 1e-6)
+          XCTAssertEqual(a.y, b.y, accuracy: 1e-6)
+          XCTAssertEqual(a.vx, -b.vx, accuracy: 1e-6)
+        } else {
+          XCTAssertEqual(a.y, h - b.y, accuracy: 1e-6)
+          XCTAssertEqual(a.x, b.x, accuracy: 1e-6)
+          XCTAssertEqual(a.vy, -b.vy, accuracy: 1e-6)
+        }
       }
+    }
+  }
+
+  /// A phone lying flat between two players: the top half is player index 0, the bottom half index 1.
+  func faceOff() -> Game { let g = Game(mode: .versus, width: 390, height: 760, top: 0); g.ready = 0; return g }
+
+  func testFaceOffOwnsHalvesTopAndBottom() {
+    let g = faceOff()
+    XCTAssertFalse(g.vertical)
+    XCTAssertEqual(g.hinge, 380, accuracy: 1e-6)
+    let top = g.bubbles.first { $0.side < 0 }!, bottom = g.bubbles.first { $0.side > 0 }!
+    XCTAssertLessThan(top.y, g.hinge); XCTAssertGreaterThan(bottom.y, g.hinge)
+    XCTAssertEqual(g.playerIndex(of: top), 0)
+    XCTAssertEqual(g.playerIndex(of: bottom), 1)
+    g.tap(bottom)
+    XCTAssertEqual(g.players.map(\.taps), [0, 1])
+    g.tap(top)
+    XCTAssertEqual(g.players.map(\.taps), [1, 1])
+  }
+
+  func testFaceOffTouchCannotReachAcrossTheHinge() {
+    let g = faceOff()
+    let b = g.bubbles.first { $0.side > 0 }!
+    b.y = g.hinge + 4
+    XCTAssertFalse(g.hit(x: b.x, y: g.hinge - 4) === b, "a touch on the top half never reaches the bottom")
+    XCTAssertTrue(g.hit(x: b.x, y: g.hinge + 8) === b)
+    // A swipe that starts on the top half stays there, even if it drags across.
+    g.clearScene()
+    let mine = g.add(.basic, size: 1, x: 120, y: 250, angle: 0, speed: 0)
+    let theirs = g.add(.basic, size: 1, x: 120, y: 520, angle: 0, speed: 0)
+    var skip = Set<Int>()
+    g.slice(fromX: 120, fromY: 200, toX: 120, toY: 600, skip: &skip)
+    XCTAssertFalse(g.bubbles.contains { $0 === mine })
+    XCTAssertTrue(g.bubbles.contains { $0 === theirs })
+    XCTAssertEqual(g.players[0].slices, 1)
+    XCTAssertEqual(g.players[1].taps, 0)
+  }
+
+  func testFaceOffCrossingCostsTheCrosserAndLandsOnTheRival() {
+    let g = faceOff()
+    let bottomBefore = g.bubbles.filter { $0.side > 0 }.count
+    // A big one leaves the top half: it costs the top player a whole shield and its pieces land on the bottom.
+    send(g, g.bubbles.first { $0.side < 0 && $0.size == 0 }!)
+    XCTAssertEqual(g.players.map(\.shieldsLost), [1, 0])
+    XCTAssertEqual(g.players.map(\.crossings), [1, 0])
+    XCTAssertEqual(g.bubbles.filter { $0.side > 0 }.count, bottomBefore + 2)
+    XCTAssertTrue(g.bubbles.filter { $0.side > 0 }.allSatisfy { $0.y > g.hinge })
+    // And the other way: the bottom player pays for theirs.
+    let m = faceOff()
+    m.clearScene()
+    let medium = m.add(.basic, size: 1, x: 200, y: 600, angle: 0, speed: 0)
+    send(m, medium)
+    XCTAssertEqual(m.players[1].meter, m.crossingCost(size: 1))
+    XCTAssertEqual(m.players[0].meter, 0)
+    XCTAssertTrue(m.bubbles.allSatisfy { $0.side < 0 && $0.y < m.hinge })
+  }
+
+  func testFaceOffSnapsOnlyMoveYourOwnHalf() {
+    let g = faceOff()
+    g.clearScene()
+    let mine = g.add(.basic, size: 1, x: 200, y: g.hinge + 30, angle: 0, speed: 0)
+    let theirs = g.add(.basic, size: 1, x: 200, y: g.hinge - 30, angle: 0, speed: 0)
+    XCTAssertTrue(g.snap(along: 200, owner: 1))
+    XCTAssertGreaterThan(mine.vy, 0, "flung down, away from the line, toward the bottom player")
+    XCTAssertEqual(theirs.vy, 0)
+    XCTAssertEqual(theirs.vx, 0)
+    XCTAssertEqual(g.players.map(\.snaps), [0, 1])
+    XCTAssertGreaterThan(g.players[1].snapLeft, 0)
+    XCTAssertTrue(g.snap(along: 200, owner: 0), "the rival's snap has its own recharge")
+    XCTAssertLessThan(theirs.vy, 0)
+  }
+
+  func testFaceOffPickupsCreditTheHalfTheyAreOn() {
+    let g = faceOff()
+    g.clearScene()
+    g.players[0].shields = 1; g.players[1].shields = 1
+    g.addPickup(.shield, x: 200, y: 600)
+    XCTAssertTrue(g.collect(g.pickups[0]))
+    XCTAssertEqual(g.players.map(\.shields), [1, 2])
+    XCTAssertEqual(g.players.map(\.pickups), [0, 1])
+    let near = g.add(.basic, size: 2, x: 200, y: 300, angle: 0, speed: 0)
+    let far = g.add(.basic, size: 2, x: 200, y: 460, angle: 0, speed: 0)
+    g.addPickup(.chainBurst, x: 200, y: 340)
+    XCTAssertTrue(g.collect(g.pickups[0]))
+    XCTAssertEqual(g.players[0].pickups, 1)
+    XCTAssertFalse(g.bubbles.contains { $0 === near })
+    XCTAssertTrue(g.bubbles.contains { $0 === far }, "a burst on the top half leaves the bottom alone")
+  }
+
+  func testFaceOffWinnersAndTurningKeepsEachHalf() {
+    let g = faceOff()
+    g.players[0].shields = 1; g.players[0].meter = g.meterMax - 1
+    send(g, g.bubbles.first { $0.side < 0 }!)
+    XCTAssertEqual(g.status, .ended)
+    XCTAssertEqual(g.winner, 1, "the top player ran out, so the bottom player wins")
+    // Turning the device keeps the hinge on the long axis, and each half's bubbles stay with their owner.
+    let t = faceOff()
+    let owners = t.bubbles.map { t.playerIndex(of: $0) }
+    XCTAssertTrue(t.resize(width: 760, height: 390, top: 0))
+    XCTAssertTrue(t.vertical)
+    XCTAssertEqual(t.bubbles.map { t.playerIndex(of: $0) }, owners)
+  }
+
+  func testFaceOffIsAsFairAsSideBySide() {
+    // The same bot on both halves, each with its own random reaction times: over many matches neither seat
+    // comes out ahead, top/bottom or left/right.
+    for (w, h) in [(390.0, 760.0), (760.0, 390.0)] {
+      var wins = [0, 0]
+      for seed in 1...120 {
+        let g = Game(mode: .versus, width: w, height: h, top: 0, seed: UInt64(seed))
+        g.ready = 0
+        var hands = [SplitMix(seed: UInt64(seed) &* 2 &+ 11), SplitMix(seed: UInt64(seed) &* 2 &+ 12)]
+        var next = [0.3 + hands[0].unit() * 0.5, 0.3 + hands[1].unit() * 0.5]
+        while g.status == .playing && g.time < 90 {
+          g.step(1.0 / 60); g.events.removeAll()
+          for owner in 0...1 where g.time >= next[owner] && g.status == .playing {
+            next[owner] = g.time + 0.3 + hands[owner].unit() * 0.5
+            let mine = g.bubbles.filter { g.playerIndex(of: $0) == owner && $0.grace <= 0 }
+            if let b = mine.min(by: { abs((g.vertical ? $0.x : $0.y) - g.hinge) < abs((g.vertical ? $1.x : $1.y) - g.hinge) }) { g.tap(b) }
+          }
+        }
+        if let win = g.winner { wins[win] += 1 }
+      }
+      let share = Double(wins[1]) / Double(max(1, wins[0] + wins[1]))
+      XCTAssertTrue((0.35...0.65).contains(share), "\(w)x\(h): wins \(wins)")
     }
   }
 
@@ -443,7 +578,8 @@ final class GameTests: XCTestCase {
     XCTAssertTrue(g.bubbles.contains { $0.side < 0 } && g.bubbles.contains { $0.side > 0 })
     let table = FoldLayout.resolve(width: 669, height: 951, top: 60, fold: (0, 455.5, 669, 40), versus: false)
     XCTAssertEqual(table, FoldLayout(vertical: false, hinge: 475.5))
-    XCTAssertNil(FoldLayout.resolve(width: 669, height: 951, top: 60, fold: (0, 455.5, 669, 40), versus: true), "two players stay left and right")
+    XCTAssertEqual(FoldLayout.resolve(width: 669, height: 951, top: 60, fold: (0, 455.5, 669, 40), versus: true), table, "two players get a page each, top and bottom")
+    XCTAssertEqual(FoldLayout.resolve(width: 951, height: 669, top: 60, fold: (455.5, 0, 40, 669), versus: true), book, "or left and right")
     XCTAssertNil(FoldLayout.resolve(width: 390, height: 844, top: 60, fold: nil, versus: false))
   }
 

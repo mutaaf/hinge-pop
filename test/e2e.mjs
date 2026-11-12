@@ -111,21 +111,21 @@ const clearAll = (page) => page.evaluate(() => { const s = window.hingePop.sim; 
   const z1 = await info();
   r.freePop = { rightZaps: [z0.players[1].zaps, z1.players[1].zaps], rightMeter: [z0.players[1].meter, z1.players[1].meter], rightScoreGain: z1.players[1].score - z0.players[1].score, leftZaps: z1.players[0].zaps };
 
-  // Knock out the left player: right wins.
+  // Knock out the left player (Player 2): each half shows its own result.
   await page.evaluate(() => { const s = window.hingePop.sim; s.players[0].shields = 1; s.players[0].meter = 3; const b = s.bubbles.find(x => x.side < 0 && x.g < 3); b.x = s.line() - 2; b.vx = 300; b.vy = 0; b.grace = 0; });
   await page.waitForTimeout(900);
-  r.knockout = await page.textContent('#heading');
-  r.knockoutPanel = await page.evaluate(() => { const b = document.getElementById('play').getBoundingClientRect(); return { bottom: Math.round(b.bottom), vh: innerHeight }; });
+  r.knockout = await page.evaluate(() => [...document.querySelectorAll('#duel .verdict')].map((e) => e.textContent));
+  r.knockoutPanel = await page.evaluate(() => { const b = document.getElementById('rematch').getBoundingClientRect(); return { bottom: Math.round(b.bottom), vh: innerHeight }; });
   await page.screenshot({ path: out + '/m5-result.png' });
 
   // Rematch resets, then clearing every bubble decides by score.
-  await page.tap('#play');
+  await page.tap('#rematch');
   await page.waitForTimeout(100);
   r.rematch = (await info()).players.map(x => [x.score, x.shields]);
   await page.evaluate(() => { const s = window.hingePop.sim; s.ready = 0; let g = 0; while (s.bubbles.length && g++ < 500) s.tap(s.bubbles[0]); });
   await page.waitForTimeout(800);
-  r.clearedHeading = await page.textContent('#heading');
-  await page.tap('#menu');
+  r.clearedHeading = await page.evaluate(() => [...document.querySelectorAll('#duel .verdict')].map((e) => e.textContent));
+  await page.tap('#duelMenu');
   await page.waitForTimeout(100);
   r.menuHudSolo = await page.evaluate(() => document.getElementById('p1').hidden);
 
@@ -134,8 +134,22 @@ const clearAll = (page) => page.evaluate(() => { const s = window.hingePop.sim; 
   await page.waitForTimeout(200);
   await page.tap('#two');
   await page.waitForTimeout(1000);
-  r.portrait = await page.evaluate(() => { const s = window.hingePop.sim; const a = document.getElementById('p0').getBoundingClientRect(), b = document.getElementById('p1').getBoundingClientRect(), hud = document.getElementById('hud'); return { vertical: s.vertical, overflow: document.documentElement.scrollWidth > innerWidth, hudOverflow: hud.scrollWidth > hud.clientWidth, p0: [Math.round(a.left), Math.round(a.right)], p1: [Math.round(b.left), Math.round(b.right)] }; });
+  r.portrait = await page.evaluate(() => { const s = window.hingePop.sim; const a = document.getElementById('p0').getBoundingClientRect(), b = document.getElementById('p1').getBoundingClientRect(); return { vertical: s.vertical, overflow: document.documentElement.scrollWidth > innerWidth, line: Math.round(s.line()), p0: [Math.round(a.top), Math.round(a.bottom)], p1: [Math.round(b.top), Math.round(b.bottom)], p0turn: getComputedStyle(document.getElementById('p0')).transform, top: s.top, h: s.h }; });
   await page.screenshot({ path: out + '/m6-versus-portrait.png' });
+  // Face to face: a finger in the top half scores for the top player.
+  await page.evaluate(() => { for (const b of window.hingePop.sim.bubbles) { b.vx = 0; b.vy = 0; } });
+  const tb = await page.evaluate(() => { const s = window.hingePop.sim, b = s.bubbles.find((x) => x.side < 0 && x.g === 0); return { x: b.x, y: b.y }; });
+  const st = await page.evaluate(() => { const r = document.getElementById('stage').getBoundingClientRect(); return { x: r.left, y: r.top }; });
+  await page.touchscreen.tap(tb.x + st.x, tb.y + st.y); await page.waitForTimeout(60);
+  r.portraitTopTap = (await info()).players.map((x) => x.taps);
+  const bad = [];
+  if (r.portrait.vertical !== false) bad.push('portrait versus should split top from bottom');
+  if (!(r.portrait.p0[1] <= r.portrait.top + 1 && r.portrait.p1[0] >= r.portrait.h - 1)) bad.push('scoreboards should sit at the top and bottom edges');
+  if (!/matrix\(-1/.test(r.portrait.p0turn)) bad.push('the top scoreboard should face the top player');
+  if (r.portraitTopTap[0] !== 1 || r.portraitTopTap[1] !== 0) bad.push('a top-half tap should score for the top player');
+  if (r.versusStart.vertical !== true) bad.push('landscape versus should split left from right');
+  if (!(r.knockout[0] === 'You lose' && r.knockout[1] === 'You win!')) bad.push('knockout verdicts: ' + r.knockout);
+  if (bad.length) { console.error(bad.join('\n')); process.exitCode = 1; }
   r.errors = errors;
   console.log(JSON.stringify(r, null, 1));
   await browser.close();

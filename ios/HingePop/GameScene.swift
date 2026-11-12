@@ -286,10 +286,38 @@ final class GameScene: SKScene {
   var insets = UIEdgeInsets.zero {
     didSet { if insets != oldValue { placeWorld() } }
   }
-  private var area: CGSize { CGSize(width: max(1, size.width - insets.left - insets.right), height: max(1, size.height - insets.top - insets.bottom)) }
+  private var safe: CGSize { CGSize(width: max(1, size.width - insets.left - insets.right), height: max(1, size.height - insets.top - insets.bottom)) }
+  /// Where play happens inside the safe area (UIKit coordinates). Solo it's all of it; two players each keep a
+  /// scoreboard band at their own edge, so play sits between them.
+  private var play: CGRect {
+    guard let r = session?.playRect, r.width > 1, r.height > 1 else { return CGRect(origin: .zero, size: safe) }
+    return r
+  }
+  /// The play area's size. Game coordinates run from its top-left corner, y down.
+  private var area: CGSize { play.size }
   private func y(_ gameY: Double) -> CGFloat { area.height - CGFloat(gameY) }
-  private var worldOrigin: CGPoint { CGPoint(x: insets.left, y: insets.bottom) }
+  /// The play area's bottom-left corner in the scene, where `world` sits.
+  private var worldOrigin: CGPoint { CGPoint(x: insets.left + play.minX, y: insets.bottom + safe.height - play.maxY) }
   private func placeWorld() { world.position = worldOrigin }
+  /// Which way something at this world point faces: toward the player whose half it's on (two players only).
+  private func facing(at p: CGPoint) -> CGFloat {
+    guard let game = session?.game, game.versus else { return 0 }
+    let near = game.vertical ? Double(p.x) < game.hinge : Double(y(Double(p.y))) < game.hinge
+    return Seat.radians(near ? 0 : 1, vertical: game.vertical)
+  }
+  private func facing(player: Int) -> CGFloat {
+    guard let game = session?.game, game.versus else { return 0 }
+    return Seat.radians(player, vertical: game.vertical)
+  }
+  /// The middle of a player's half, in world space.
+  private func halfMiddle(_ player: Int, _ game: Game) -> CGPoint {
+    let lineAt = game.vertical ? CGFloat(game.hinge) : y(game.hinge)
+    let edge: CGFloat = game.vertical ? (player == 0 ? 0 : area.width) : (player == 0 ? area.height : 0)
+    let mid = (lineAt + edge) / 2
+    return game.vertical ? CGPoint(x: mid, y: area.height / 2) : CGPoint(x: area.width / 2, y: mid)
+  }
+  /// "Up" as a player turned by `angle` reads it (toward the hinge from their edge), in world space.
+  private func up(_ angle: CGFloat) -> CGVector { CGVector(dx: -sin(angle), dy: cos(angle)) }
 
   // MARK: Frame
 
@@ -474,9 +502,11 @@ final class GameScene: SKScene {
     let windup = game.bubbles.contains { $0.bossWindup > 0 } ? 0.6 : 0
     skyHeat.floatValue = Float(max(session.heat, windup))
     skyEnergy.floatValue = Float(min(1.6, energy + bloom + hingeGlow() * 0.25 + feverNow * 0.7))
-    skyHinge.floatValue = game.vertical ? 0.5 : Float(game.hinge / max(1, game.h))
+    // Where the hinge sits on screen, 0...1 from the top (or the left).
+    let screenLine = game.vertical ? (CGFloat(game.hinge) + worldOrigin.x) / max(1, size.width) : 1 - (y(game.hinge) + worldOrigin.y) / max(1, size.height)
+    skyHinge.floatValue = game.vertical ? 0.5 : Float(screenLine)
     calmAxis.floatValue = game.vertical ? 1 : 0
-    calmLine.floatValue = game.vertical ? Float(game.hinge / max(1, game.w)) : skyHinge.floatValue
+    calmLine.floatValue = Float(screenLine)
     for i in ripples.indices where ripples[i].z < 1 {
       ripples[i].z = min(1, ripples[i].z + Float(dt) / 0.95)
       skyRipples[i].vectorFloat3Value = ripples[i]
@@ -531,7 +561,7 @@ final class GameScene: SKScene {
     let s = Secrets.spot(arena, width: Double(size.width), height: Double(size.height))
     guard hypot(Double(p.x) - s.x, Double(p.y) - s.y) <= s.r else { return false }
     spotTaps = spotTaps.filter { clock - $0 < 2 } + [clock]
-    let at = CGPoint(x: CGFloat(s.x) - insets.left, y: size.height - CGFloat(s.y) - insets.bottom)
+    let at = CGPoint(x: CGFloat(s.x) - worldOrigin.x, y: size.height - CGFloat(s.y) - worldOrigin.y)
     sparks(at: at, r: 24, count: 8)
     guard spotTaps.count >= 3 else { return true }
     spotTaps.removeAll()
@@ -583,7 +613,7 @@ final class GameScene: SKScene {
   /// A pop shakes the sky: a ring of light runs out through the curtains from where it happened.
   private func ripple(_ p: CGPoint) {
     guard !reduceMotion, size.width > 1 else { return }
-    ripples[nextRipple] = .init(Float((p.x + insets.left) / size.width), Float(1 - (p.y + insets.bottom) / size.height), 0)
+    ripples[nextRipple] = .init(Float((p.x + worldOrigin.x) / size.width), Float(1 - (p.y + worldOrigin.y) / size.height), 0)
     skyRipples[nextRipple].vectorFloat3Value = ripples[nextRipple]
     nextRipple = (nextRipple + 1) % ripples.count
   }
@@ -611,16 +641,16 @@ final class GameScene: SKScene {
     ribbonGlow.floatValue = Float((0.85 + pulse * 0.7 + meter * 0.12 + glow * 0.4) * cooling + snapFlare * 1.6 + twists.hingeBoost)
     let width = (84 + CGFloat(pulse) * 60 + CGFloat(glow) * 34 + CGFloat(snapFlare) * 150) * CGFloat(max(1, min(1.6, game.scale)))
     // The light runs edge to edge, past the safe area. Only play stops there.
-    let length = game.vertical ? area.height - CGFloat(game.top) + insets.bottom : size.width
+    let length = game.vertical ? area.height - CGFloat(game.top) + worldOrigin.y : size.width
     ribbon.size = CGSize(width: width, height: length)
     ribbonAmp.floatValue = reduceMotion ? 0 : Float((1.5 + pulse * 6 + meter * 0.7) / Double(width))
     ribbonCore.floatValue = Float(width / (1.4 + CGFloat(pulse) * 0.8))
     if game.vertical {
       ribbon.zRotation = 0
-      ribbon.position = CGPoint(x: at, y: length / 2 - insets.bottom)
+      ribbon.position = CGPoint(x: at, y: length / 2 - worldOrigin.y)
     } else {
       ribbon.zRotation = .pi / 2
-      ribbon.position = CGPoint(x: length / 2 - insets.left, y: at)
+      ribbon.position = CGPoint(x: length / 2 - worldOrigin.x, y: at)
     }
   }
 
@@ -681,6 +711,9 @@ final class GameScene: SKScene {
         node.flash = 0
         node.birth = .zero
         node.birthT = 1
+        // Born facing its owner. Only a crossing turns it after that.
+        let f = facing(player: game.playerIndex(of: b))
+        node.face = f; node.faceFrom = f; node.faceTo = f; node.flipT = 1
         world.addChild(node)
         bubbleNodes[b.id] = node
         if b.grace > 0 && !reduceMotion {
@@ -729,12 +762,44 @@ final class GameScene: SKScene {
         node.sprite.colorBlendFactor = 0
         if !node.hasActions() { node.setScale(1) }
       }
-      // Squash along the direction of the hit, keeping the face upright.
+      // Two players: the face turns toward whoever's half it's on. Crossing the hinge spins it round to face
+      // the other player; with Reduce Motion it just turns.
+      var flipDip: CGFloat = 0
+      if game.versus {
+        let want = facing(player: game.playerIndex(of: b))
+        if abs(atan2(sin(want - node.faceTo), cos(want - node.faceTo))) > 0.01 {
+          node.faceFrom = node.face
+          // Spin the way it's travelling, so it reads as tumbling over the line.
+          var to = want
+          while to - node.faceFrom > .pi + 0.01 { to -= 2 * .pi }
+          while node.faceFrom - to > .pi + 0.01 { to += 2 * .pi }
+          if abs(abs(to - node.faceFrom) - .pi) < 0.01 { to = node.faceFrom + (b.vx + b.vy >= 0 ? -1 : 1) * .pi }
+          node.faceTo = to
+          node.flipT = reduceMotion ? 1 : 0
+          #if DEBUG
+          if b.size < 3 { freeze("flip", after: Debug.string("-freezeAfter").flatMap(Double.init) ?? 0.12) }
+          #endif
+        }
+        if node.flipT < 1 {
+          var flipTime = 0.3
+          #if DEBUG
+          // `-flipTime s` slows the turn so a capture can catch one halfway.
+          flipTime = Debug.string("-flipTime").flatMap(Double.init) ?? flipTime
+          #endif
+          node.flipT = min(1, node.flipT + visualDt / flipTime)
+          let t = node.flipT, e = t < 0.5 ? 4 * t * t * t : 1 - pow(-2 * t + 2, 3) / 2
+          node.face = node.faceFrom + (node.faceTo - node.faceFrom) * CGFloat(e)
+          flipDip = CGFloat(sin(t * .pi)) * 0.22
+        } else {
+          node.face = node.faceTo
+        }
+      }
+      // Squash along the direction of the hit, keeping the face upright (or turned to its player).
       let q = reduceMotion ? 0 : CGFloat(b.sq) * 0.16
       node.squash.zRotation = -CGFloat(b.sqA)
-      node.squash.xScale = 1 - q
-      node.squash.yScale = 1 + q
-      node.sprite.zRotation = CGFloat(b.sqA)
+      node.squash.xScale = (1 - q) * (1 - flipDip)
+      node.squash.yScale = (1 + q) * (1 - flipDip * 0.4)
+      node.sprite.zRotation = CGFloat(b.sqA) + node.face
       // A hit flashes the bubble white for a moment (bosses, armour).
       if node.flash > 0 {
         node.flash = max(0, node.flash - visualDt * 7)
@@ -819,6 +884,7 @@ final class GameScene: SKScene {
         }
       }
       node.position = CGPoint(x: p.x, y: y(p.y) + CGFloat(reduceMotion ? 0 : sin(clock * 4 + Double(p.id)) * 4))
+      node.zRotation = facing(at: CGPoint(x: p.x, y: y(p.y)))
       // It blinks in its last two seconds, in shape as well as colour terms: the fade is the warning.
       node.alpha = p.life < 2 ? (sin(clock * 12) > 0 ? 1 : 0.35) : 1
     }
@@ -1068,9 +1134,12 @@ final class GameScene: SKScene {
     node.zPosition = 9
     node.alpha = 1
     node.setScale(1)
+    // Two players: the points read the right way up for whoever won them, and rise away from the hinge.
+    let turn = facing(at: p)
+    node.zRotation = turn
     world.addChild(node)
     if session?.versus == true || reduceMotion {
-      node.run(reduceMotion ? Self.scoreStill : Self.scoreRise) { [weak self, weak node] in
+      node.run(reduceMotion ? Self.scoreStill : Self.scoreRise(up(turn))) { [weak self, weak node] in
         guard let node else { return }
         node.removeFromParent()
         self?.spareScores.append(node)
@@ -1080,7 +1149,15 @@ final class GameScene: SKScene {
     node.setScale(0.5)
     flights.append(Flight(node: node, start: p))
   }
-  private static let scoreRise = SKAction.group([.moveBy(x: 0, y: 34, duration: 0.8), .sequence([.wait(forDuration: 0.4), .fadeOut(withDuration: 0.4)])])
+  private static var rises: [Int: SKAction] = [:]
+  /// Floats a score 34 points "up" for its reader (one cached action per direction).
+  private static func scoreRise(_ up: CGVector) -> SKAction {
+    let key = Int((atan2(up.dy, up.dx) * 100).rounded())
+    if let a = rises[key] { return a }
+    let a = SKAction.group([.moveBy(x: up.dx * 34, y: up.dy * 34, duration: 0.8), .sequence([.wait(forDuration: 0.4), .fadeOut(withDuration: 0.4)])])
+    rises[key] = a
+    return a
+  }
   private static let scoreStill = SKAction.sequence([.wait(forDuration: 0.4), .fadeOut(withDuration: 0.4)])
 
   /// Where the HUD's score sits, in world coordinates.
@@ -1236,14 +1313,14 @@ final class GameScene: SKScene {
 
   /// Snap the Hinge: a whip crack. The line kinks from where it was pulled, red, green and blue copies tear
   /// off it, the screen flashes and jolts away from the line, and time catches for a beat.
-  private func snapFX(along: Double, flung: Int, clap: Bool) {
+  private func snapFX(along: Double, flung: Int, clap: Bool, player: Int = 0) {
     guard let game = session?.game else { return }
-    let length = game.vertical ? area.height - CGFloat(game.top) + insets.bottom : size.width
+    let length = game.vertical ? area.height - CGFloat(game.top) + worldOrigin.y : size.width
     let lineAt = game.vertical ? CGFloat(game.hinge) : y(game.hinge)
     feel.chroma(vertical: game.vertical, at: lineAt, length: max(length, game.vertical ? size.height : size.width), strength: clap ? 1.4 : 1)
     if !clap {
       snapAge = 0
-      snapAt = game.vertical ? Float((y(along) + insets.bottom) / max(1, length)) : Float(1 - (CGFloat(along) + insets.left) / max(1, length))
+      snapAt = game.vertical ? Float((y(along) + worldOrigin.y) / max(1, length)) : Float(1 - (CGFloat(along) + worldOrigin.x) / max(1, length))
     } else {
       snapAge = 0; snapAt = 0.5
     }
@@ -1253,8 +1330,15 @@ final class GameScene: SKScene {
     feel.shove(game.vertical ? CGVector(dx: push * (Bool.random() ? 1 : -1), dy: 0) : CGVector(dx: 0, dy: push * (Bool.random() ? 1 : -1)))
     feel.hitStop(clap ? 0.08 : 0.05, force: true)
     if flung >= 2 || clap {
-      let at = game.vertical ? CGPoint(x: lineAt + 70, y: area.height * 0.62) : CGPoint(x: game.vertical ? 0 : CGFloat(along), y: lineAt + 64)
-      feel.callout(clap ? .clap : .snap, at: at, color: UIColor(red: 0.55, green: 0.95, blue: 1, alpha: 1), size: clap ? 1 : 0.85)
+      if game.versus {
+        // The snapper's word, on their own half and facing them.
+        let turn = facing(player: player), lift = up(turn)
+        let base = game.vertical ? CGPoint(x: lineAt, y: y(along)) : CGPoint(x: CGFloat(along), y: lineAt)
+        feel.callout(.snap, at: CGPoint(x: base.x + lift.dx * 64, y: base.y + lift.dy * 64), color: UIColor(red: 0.55, green: 0.95, blue: 1, alpha: 1), size: 0.85, facing: turn)
+      } else {
+        let at = game.vertical ? CGPoint(x: lineAt + 70, y: area.height * 0.62) : CGPoint(x: game.vertical ? 0 : CGFloat(along), y: lineAt + 64)
+        feel.callout(clap ? .clap : .snap, at: at, color: UIColor(red: 0.55, green: 0.95, blue: 1, alpha: 1), size: clap ? 1 : 0.85)
+      }
     }
     Haptics.shared.play(clap ? .clap : .snap)
     #if DEBUG
@@ -1270,7 +1354,9 @@ final class GameScene: SKScene {
       let tier = ComboTier.tier(game.players[i].combo)
       if tier > comboTiers[i] {
         let step = ComboTier.steps[tier - 1]
-        feel.callout(step.word, at: CGPoint(x: p.x, y: p.y + 70), color: step.color, size: 0.8 + CGFloat(tier) * 0.06)
+        // Two players: the word faces the player who earned it, above the pop as they see it.
+        let turn = facing(player: i), lift = up(turn)
+        feel.callout(step.word, at: CGPoint(x: p.x + lift.dx * 70, y: p.y + lift.dy * 70), color: step.color, size: 0.8 + CGFloat(tier) * 0.06, facing: turn)
         feel.flash(0.05 + Double(tier) * 0.015, step.color)
         bloom = max(bloom, 0.3 + Double(tier) * 0.1)
         Haptics.shared.play(tier == ComboTier.steps.count ? .comboTop : .combo)
@@ -1287,7 +1373,7 @@ final class GameScene: SKScene {
   /// The red half of the screen that belongs to one player in versus; nil means the whole screen.
   private func half(_ player: Int) -> vector_float4? {
     guard let game = session?.game, game.versus, size.width > 1 else { return nil }
-    let line = game.vertical ? Float((CGFloat(game.hinge) + insets.left) / size.width) : Float((CGFloat(game.hinge) + insets.top) / size.height)
+    let line = game.vertical ? Float((CGFloat(game.hinge) + worldOrigin.x) / size.width) : Float(1 - (y(game.hinge) + worldOrigin.y) / size.height)
     return vector_float4(game.vertical ? 1 : 0, line, player == 0 ? -1 : 1, 1)
   }
 
@@ -1311,11 +1397,15 @@ final class GameScene: SKScene {
   }
 
   /// Fever starts: a rainbow flash, the sky lights up and the edges start cycling colour (see `feverDrive`).
-  func feverBegan() {
+  func feverBegan(player: Int = 0) {
     feverNow = max(feverNow, 1)
     let gold = UIColor(red: 1, green: 0.82, blue: 0.3, alpha: 1)
     feel.flash(0.55, gold)
-    feel.callout(.fever, at: CGPoint(x: area.width / 2, y: area.height * 0.6), color: gold, size: 1.25)
+    if let game = session?.game, game.versus {
+      feel.callout(.fever, at: halfMiddle(player, game), color: gold, size: 1.1, facing: facing(player: player))
+    } else {
+      feel.callout(.fever, at: CGPoint(x: area.width / 2, y: area.height * 0.6), color: gold, size: 1.25)
+    }
     feel.shake(0.4)
     bloom = 1.6
     ripple(CGPoint(x: area.width / 2, y: area.height / 2))
@@ -1444,7 +1534,7 @@ final class GameScene: SKScene {
       feel.vignette(0.4, mask: half(player))
       sound.blip(90, 0.25, .square, gain: 0.18); sound.thump(60)
       haptic.play(.bossSlam)
-    case let .hingeSnap(along, _, flung):
+    case let .hingeSnap(along, snapper, flung):
       snapFlare = 1
       pulse = 1.6
       if let game = session?.game {
@@ -1455,7 +1545,7 @@ final class GameScene: SKScene {
         }
         ripple(game.vertical ? CGPoint(x: CGFloat(game.hinge), y: y(along)) : CGPoint(x: CGFloat(along), y: y(game.hinge)))
       }
-      snapFX(along: along, flung: flung, clap: false)
+      snapFX(along: along, flung: flung, clap: false, player: snapper)
     case .snapReady:
       sound.blip(880, 0.08, .sine, gain: 0.08)
     case let .rushStart(side):
@@ -1553,8 +1643,14 @@ final class GameScene: SKScene {
       feel.shake(0.95)
       feel.hitStop(0.12, force: true)
       pulse = 1.6
-      if session?.versus != true, let game = session?.game, game.players[0].shields > 0 {
-        feel.callout(.shieldDown, at: CGPoint(x: area.width / 2, y: area.height * 0.62), color: UIColor(red: 1, green: 0.38, blue: 0.42, alpha: 1), size: 0.9)
+      if let game = session?.game, game.players.indices.contains(player), game.players[player].shields > 0 {
+        let red = UIColor(red: 1, green: 0.38, blue: 0.42, alpha: 1)
+        if game.versus {
+          // In the middle of the loser's half, facing them.
+          feel.callout(.shieldDown, at: halfMiddle(player, game), color: red, size: 0.9, facing: facing(player: player))
+        } else {
+          feel.callout(.shieldDown, at: CGPoint(x: area.width / 2, y: area.height * 0.62), color: red, size: 0.9)
+        }
       }
       sound.blip(80, 0.4, .square, gain: 0.2); sound.thump(48, gain: 0.3)
       haptic.play(.shieldLost)
@@ -1577,7 +1673,7 @@ final class GameScene: SKScene {
       finale()
     // The rules' pressure events: overtime, fever, champions, surges, and a last-phase boss shedding.
     case let .overtime(step): overtimeStep(step)
-    case .feverStart: feverBegan()
+    case let .feverStart(player): feverBegan(player: player)
     case .feverEnd: feverEnded()
     case let .championCrack(x, gy, r, points, armorLeft):
       let p = CGPoint(x: x, y: y(gy))
@@ -1620,7 +1716,14 @@ final class GameScene: SKScene {
       feel.hitStop(0.06, force: true)
       feel.punch(0.07, at: lastPopPoint)
       feel.flash(0.45)
-      if clock - bossDownAt > 1.5 {
+      if session.versus {
+        // Each player gets their own verdict, facing them.
+        let gold = UIColor(red: 1, green: 0.86, blue: 0.4, alpha: 1)
+        for i in game.players.indices {
+          let won = game.winner == i
+          feel.callout(game.winner == nil ? .draw : won ? .youWin : .soClose, at: halfMiddle(i, game), color: won || game.winner == nil ? gold : UIColor(red: 0.75, green: 0.8, blue: 1, alpha: 1), size: 0.95, facing: facing(player: i))
+        }
+      } else if clock - bossDownAt > 1.5 {
         feel.callout(game.cleanBonus ? .flawless : .clear, at: CGPoint(x: area.width / 2, y: area.height * 0.58),
                      color: game.cleanBonus ? UIColor(red: 0.6, green: 1, blue: 0.85, alpha: 1) : UIColor(red: 1, green: 0.86, blue: 0.4, alpha: 1), size: 1.2)
       }
@@ -1698,7 +1801,7 @@ final class GameScene: SKScene {
 
   private func gamePoint(_ touch: UITouch, in view: UIView) -> CGPoint {
     let p = touch.location(in: view)
-    return CGPoint(x: p.x - insets.left, y: p.y - insets.top)
+    return CGPoint(x: p.x - insets.left - play.minX, y: p.y - insets.top - play.minY)
   }
 
   override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) {
@@ -1785,6 +1888,12 @@ final class BubbleNode: SKNode {
   /// A split piece starts at its parent's centre and springs out by this much as `birthT` runs 0...1.
   var birth = CGVector.zero
   var birthT = 1.0
+  /// Two players: the way the face turns, toward whoever's half it's on. A crossing spins it round to face the
+  /// other player (`flipT` runs 0...1 from `faceFrom` to `faceTo`).
+  var face: CGFloat = 0
+  var faceFrom: CGFloat = 0
+  var faceTo: CGFloat = 0
+  var flipT = 1.0
   override init() {
     super.init()
     addChild(squash)
