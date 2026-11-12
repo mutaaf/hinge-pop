@@ -259,7 +259,7 @@ struct GuideView: View {
                 FactRow(art: .glyph(.shieldOn), text: "Touch both pages by the fold at once to clap it.")
               }
               Fold(title: "Two players", id: "two", open: $open) {
-                FactRow(art: .glyph(.shieldOn), text: "One side each. Touches stay on your side.")
+                FactRow(art: .glyph(.shieldOn), text: "Lay it flat, face to face. The half nearest you is yours.")
                 FactRow(art: .bubble(.fast), text: "What you miss lands on your rival.")
                 FactRow(art: .glyph(.starOn), text: "Last shield standing wins. Otherwise, top score.")
               }

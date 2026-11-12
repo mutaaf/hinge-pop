@@ -266,20 +266,104 @@ test('the carried score starts the next level', () => {
   assert.equal(createSim({ w: 390, h: 760, top: 70, level: 3, score: 1234 }).players[0].score, 1234);
 });
 
-test('two players: the hinge is always vertical and the sides are mirrored', () => {
+test('two players: the hinge splits the long axis and the halves are mirrored', () => {
   for (const [w, h] of [[844, 390], [390, 844]]) {
     const s = createSim({ w, h, top: 65, versus: true });
-    assert.equal(s.vertical, true);
-    const left = s.bubbles.filter((b) => b.side < 0), right = s.bubbles.filter((b) => b.side > 0);
-    assert.equal(left.length, CFG.versusPerSide);
-    assert.equal(right.length, CFG.versusPerSide);
-    left.forEach((b, i) => {
-      assert.ok(Math.abs(b.x - (w - right[i].x)) < 1e-6);
-      assert.ok(Math.abs(b.y - right[i].y) < 1e-6);
-      assert.ok(Math.abs(b.vx + right[i].vx) < 1e-6);
-      assert.ok(Math.abs(b.vy - right[i].vy) < 1e-6);
+    assert.equal(s.vertical, w > h, 'players face each other across the long axis');
+    const near = s.bubbles.filter((b) => b.side < 0), far = s.bubbles.filter((b) => b.side > 0);
+    assert.equal(near.length, CFG.versusPerSide);
+    assert.equal(far.length, CFG.versusPerSide);
+    const line = s.line();
+    near.forEach((b, i) => {
+      const o = far[i];
+      if (s.vertical) {
+        assert.ok(Math.abs((line - b.x) - (o.x - line)) < 1e-6);
+        assert.ok(Math.abs(b.y - o.y) < 1e-6);
+        assert.ok(Math.abs(b.vx + o.vx) < 1e-6);
+        assert.ok(Math.abs(b.vy - o.vy) < 1e-6);
+      } else {
+        assert.ok(Math.abs((line - b.y) - (o.y - line)) < 1e-6);
+        assert.ok(Math.abs(b.x - o.x) < 1e-6);
+        assert.ok(Math.abs(b.vy + o.vy) < 1e-6);
+        assert.ok(Math.abs(b.vx - o.vx) < 1e-6);
+      }
     });
   }
+});
+
+// Face to face on a phone in portrait: the hinge runs across the middle and each player owns a half.
+const faceOff = () => { const s = createSim({ w: 390, h: 788, top: 56, versus: true }); s.ready = 0; return s; };
+
+test('face to face: a portrait phone splits top from bottom, with equal halves', () => {
+  const s = faceOff();
+  assert.equal(s.vertical, false);
+  assert.equal(s.line(), 56 + (788 - 56) / 2);
+  assert.ok(s.bubbles.every((b) => (b.side < 0) === (b.y < s.line())));
+  // A wide play area with both scoreboards cut off the ends keeps its halves equal too.
+  const w = createSim({ w: 788, h: 390, left: 56, versus: true });
+  assert.equal(w.vertical, true);
+  assert.equal(w.line(), 56 + (788 - 56) / 2);
+  assert.ok(w.bubbles.every((b) => b.x > 56));
+});
+
+test('face to face: a tap credits the half the bubble is in, and a touch stays in its half', () => {
+  const s = faceOff();
+  const bottom = s.bubbles.find((b) => b.side > 0), top = s.bubbles.find((b) => b.side < 0);
+  bottom.y = s.line() + 4; bottom.vx = bottom.vy = 0;
+  assert.notEqual(s.hit(bottom.x, s.line() - 4), bottom, 'a finger in the top half cannot take a bottom bubble');
+  assert.equal(s.hit(bottom.x, s.line() + 8), bottom);
+  s.tap(bottom);
+  assert.deepEqual(Array.from(s.players, (p) => p.taps), [0, 1]);
+  s.tap(top);
+  assert.deepEqual(Array.from(s.players, (p) => p.taps), [1, 1]);
+  // A swipe that starts in the top half only cuts top bubbles.
+  const t = faceOff();
+  const a = t.bubbles.find((b) => b.side < 0), z = t.bubbles.find((b) => b.side > 0);
+  a.x = z.x = 195; a.y = t.line() - 30; z.y = t.line() + 30; a.grace = z.grace = 0;
+  t.slice(195, t.line() - 80, 195, t.line() + 80, new Set());
+  assert.ok(!t.bubbles.includes(a));
+  assert.ok(t.bubbles.includes(z));
+});
+
+test('face to face: a crossing costs the crosser and lands in the rival half', () => {
+  const s = faceOff();
+  const bottomBefore = s.bubbles.filter((b) => b.side > 0).length;
+  sendAcross(s, s.bubbles.find((b) => b.side < 0));
+  assert.deepEqual(Array.from(s.players, (p) => p.shields), [CFG.shields - 1, CFG.shields]);
+  assert.deepEqual(Array.from(s.players, (p) => p.crossings), [1, 0]);
+  const landed = s.bubbles.filter((b) => b.side > 0);
+  assert.equal(landed.length, bottomBefore + 2);
+  assert.ok(landed.every((b) => b.y > s.line()));
+  // And the other way.
+  const u = faceOff();
+  const medium = u.bubbles.find((b) => b.side > 0);
+  medium.g = 1; medium.r = CFG.radii[1];
+  sendAcross(u, medium);
+  assert.deepEqual(Array.from(u.players, (p) => p.meter), [0, u.crossingCost(1)]);
+});
+
+test('face to face: a snap only flings your own half', () => {
+  const s = faceOff();
+  for (const b of s.bubbles) { b.vx = 0; b.vy = 0; }
+  const mine = s.bubbles.find((b) => b.side > 0), theirs = s.bubbles.find((b) => b.side < 0);
+  mine.y = s.line() + 40; theirs.y = s.line() - 40;
+  assert.ok(s.onHinge(195, s.line()));
+  assert.ok(s.snap(195, 1));
+  assert.ok(mine.vy > 0, 'the bottom bubble is flung away from the line, downward');
+  assert.equal(theirs.vy, 0, 'the top half is untouched');
+  assert.equal(s.players[1].snaps, 1);
+  assert.equal(s.players[0].snaps, 0);
+  assert.equal(s.snap(195, 1), false, 'it recharges per player');
+  assert.ok(s.snap(195, 0));
+});
+
+test('face to face: a free hinge pop credits the half it came from', () => {
+  const s = faceOff();
+  const b = s.bubbles.find((x) => x.side < 0);
+  makeSmallest(b);
+  sendAcross(s, b);
+  assert.deepEqual(Array.from(s.players, (p) => p.zaps), [1, 0]);
+  assert.deepEqual(Array.from(s.players, (p) => p.meter), [0, 0]);
 });
 
 test('two players: a tap credits the side the bubble is on', () => {

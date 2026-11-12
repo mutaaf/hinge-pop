@@ -5,6 +5,8 @@ enum TourKind { case solo, versus }
 
 enum SpotTarget: Equatable {
   case hinge, arena, bubble, meter, shields, streak, score, hud
+  /// Lit from the HUD's measured frames rather than from game coordinates.
+  var isHUD: Bool { ![.hinge, .arena, .bubble].contains(self) }
 }
 
 struct TourStep {
@@ -30,21 +32,21 @@ enum TourScript {
     if kind == .versus {
       return [
         TourStep(title: "Two players, one hinge",
-                 body: "One side each, with your own shields and score.",
-                 target: .hinge, scene: { _, g in g.put(.basic, size: 0, u: 0.5, v: 0.2, degrees: 35, speed: 0); g.put(.basic, size: 0, u: 0.5, v: 0.8, degrees: 35, speed: 0) }),
+                 body: "Sit face to face. The half nearest you is yours, with your own shields and score.",
+                 target: .hinge, scene: { _, g in g.put(.basic, size: 0, u: 0.5, v: 0.32, degrees: 35, speed: 0); g.put(.basic, size: 0, u: 0.5, v: 0.68, degrees: 35, speed: 0) }),
         TourStep(title: "Stay on your side",
-                 body: "Touches only reach your own side.",
+                 body: "Touches only reach your own half.",
                  target: .arena, todo: "Tap a bubble.", done: "Same moves as solo.", input: true,
                  waits: { $0.players[0].taps + $0.players[1].taps >= 1 },
-                 scene: { _, g in g.put(.basic, size: 0, u: 0.25, v: 0.2, degrees: 35, speed: 0); g.put(.basic, size: 0, u: 0.25, v: 0.8, degrees: 35, speed: 0) }),
+                 scene: { _, g in g.put(.basic, size: 0, u: 0.25, v: 0.32, degrees: 35, speed: 0); g.put(.basic, size: 0, u: 0.75, v: 0.68, degrees: 35, speed: 0) }),
         TourStep(title: "Crossings land on your rival",
-                 body: "Watch this bubble leave the left side.",
-                 target: .hinge, todo: "Watch the bubble.", done: "It cost the left player, and the pieces landed on the right.",
+                 body: "Watch this bubble cross the line.",
+                 target: .hinge, todo: "Watch the bubble.", done: "It cost Player 2, and the pieces landed on Player 1's half. Watch it turn to face its new owner.",
                  waits: { $0.players[0].crossings >= 1 },
                  scene: { _, g in g.put(.basic, size: 0, u: 0.45, v: 0.36, degrees: 60, speed: 0.8) }),
         TourStep(title: "Two ways to win",
-                 body: "Last shield standing wins. If all clear, top score wins.",
-                 target: .hud, last: "Start match"),
+                 body: "Last shield standing wins. If all clear, top score wins. Pause is on the line's end.",
+                 target: .arena, last: "Start match"),
       ]
     }
     return [
@@ -169,6 +171,13 @@ extension Session {
   /// The spotlight's rectangle in the play view's coordinates.
   func spotRect(_ target: SpotTarget, hudFrames: [SpotTarget: CGRect]) -> (rect: CGRect, round: Bool, open: Bool)? {
     guard let g = game else { return nil }
+    // Game coordinates start at the play area's corner (two players keep a scoreboard band at each end).
+    let o = playRect.origin
+    let spot = gameSpot(target, g, hudFrames: hudFrames)
+    return target.isHUD ? spot : spot.map { ($0.rect.offsetBy(dx: o.x, dy: o.y), $0.round, $0.open) }
+  }
+
+  private func gameSpot(_ target: SpotTarget, _ g: Game, hudFrames: [SpotTarget: CGRect]) -> (rect: CGRect, round: Bool, open: Bool)? {
     switch target {
     case .bubble:
       if let b = tourBubble, g.bubbles.contains(where: { $0 === b }) {

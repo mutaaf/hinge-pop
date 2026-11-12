@@ -264,8 +264,8 @@ public struct FoldLayout: Equatable, Sendable {
   /// `fold` is the division region in arena coordinates: x, y, width, height.
   public static func resolve(width: Double, height: Double, top: Double, fold: (x: Double, y: Double, w: Double, h: Double)?, versus: Bool) -> FoldLayout? {
     guard let fold, fold.w > 0, fold.h > 0 else { return nil }
+    // In versus each page is a player's half, whichever way the fold runs.
     let vertical = fold.h >= fold.w
-    if versus && !vertical { return nil }
     let at = vertical ? fold.x + fold.w / 2 : fold.y + fold.h / 2
     let low = vertical ? 0.2 * width : top + 0.2 * (height - top)
     let high = vertical ? 0.8 * width : top + 0.8 * (height - top)

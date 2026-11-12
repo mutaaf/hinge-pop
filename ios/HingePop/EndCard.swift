@@ -328,7 +328,7 @@ struct ResultOverlay: View {
 
   private func heading(_ g: Game) -> String {
     switch session.mode {
-    case .versus: g.winner.map { $0 == 0 ? "Left wins" : "Right wins" } ?? "Draw"
+    case .versus: g.winner.map { "\(Seat.name($0)) wins" } ?? "Draw"
     case .arcade: "Run over"
     default: g.status == .won ? "Daily cleared" : "Overloaded"
     }

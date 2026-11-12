@@ -305,7 +305,9 @@ public final class Game {
     self.tuning = tuning
     w = width; h = height; self.top = top
     isVersus = mode == .versus
-    self.vertical = isVersus || (vertical ?? (width > height))
+    // Players face each other across the long axis, so in versus too the hinge splits the screen's long side:
+    // across the middle of a portrait phone (top and bottom halves), down the middle of a wide screen.
+    self.vertical = vertical ?? (width > height)
     fixedHinge = hinge
     self.hinge = 0
     ready = tuning.readyTime
@@ -1632,7 +1634,7 @@ public final class Game {
   /// The window changed. Turning the device swaps the axes, so each bubble keeps its place relative to the hinge.
   @discardableResult
   public func resize(width: Double, height: Double, top newTop: Double, vertical newVertical: Bool? = nil, hinge newHinge: Double? = nil) -> Bool {
-    let v = isVersus || (newVertical ?? (width > height))
+    let v = newVertical ?? (width > height)
     let turned = v != vertical
     let before = scale
     let oldW = w, oldH = h - top, oldTop = top

@@ -30,6 +30,8 @@ enum Callout: String, CaseIterable {
   case lastOne = "LAST ONE!", fever = "FEVER!", overtime = "OVERTIME!", faster = "FASTER!", shieldDown = "SHIELD DOWN!", surge = "SURGE!"
   case phase2 = "PHASE 2", phase3 = "PHASE 3", phase4 = "PHASE 4", finalPhase = "FINAL PHASE!", boss = "BOSS"
   case comboBreak = "COMBO LOST"
+  /// Two-player verdicts, one for each half.
+  case youWin = "YOU WIN!", soClose = "SO CLOSE!", draw = "DRAW!"
 
   /// Smaller words for notices that shouldn't shout.
   var points: CGFloat {
@@ -422,18 +424,40 @@ final class FeelLayer {
   private static let calloutSoft = SKAction.sequence([.fadeIn(withDuration: 0.1), .wait(forDuration: 0.6), .fadeOut(withDuration: 0.3), .hide()])
   private static let glowAction = SKAction.sequence([.fadeAlpha(to: 0.9, duration: 0.05), .fadeAlpha(to: 0.35, duration: 0.5)])
 
-  /// Slams a word in at a point (clamped so it stays on screen), tinted.
-  func callout(_ word: Callout, at p: CGPoint, color: UIColor, size: CGFloat = 1) {
+  private var drifts: [Int: SKAction] = [:]
+  /// The slam, with its exit drifting "up" for whoever reads it.
+  private func calloutAction(facing: CGFloat) -> SKAction {
+    if facing == 0 { return Self.calloutAction }
+    let key = Int((facing * 100).rounded())
+    if let a = drifts[key] { return a }
+    let a = SKAction.sequence([
+      .group([.scale(to: 0.9, duration: 0.11), .fadeIn(withDuration: 0.05)]),
+      .scale(to: 1.06, duration: 0.07),
+      .scale(to: 1, duration: 0.06),
+      .wait(forDuration: 0.42),
+      .group([.moveBy(x: -sin(facing) * 26, y: cos(facing) * 26, duration: 0.28), .fadeOut(withDuration: 0.28)]),
+      .hide(),
+    ])
+    drifts[key] = a
+    return a
+  }
+
+  /// Slams a word in at a point (clamped so it stays on screen), tinted. `facing` turns it toward one player
+  /// in two-player games (radians; 0 reads from the bottom edge).
+  func callout(_ word: Callout, at p: CGPoint, color: UIColor, size: CGFloat = 1, facing: CGFloat = 0) {
     guard let t = words[word.rawValue] else { return }
     let n = calloutPool[nextCallout], g = calloutGlows[nextCallout]
     nextCallout = (nextCallout + 1) % calloutPool.count
     // Bigger on bigger screens, but never wider than the play area.
-    let k = min(size * max(1, min(1.35, min(area.width, area.height) / 420)), (area.width - 24) / max(1, t.size().width))
+    let sideways = abs(sin(facing)) > 0.5
+    let room = sideways ? area.height : area.width
+    let k = min(size * max(1, min(1.35, min(area.width, area.height) / 420)), (room - 24) / max(1, t.size().width))
     let s = CGSize(width: t.size().width * k, height: t.size().height * k)
     n.texture = t
     n.size = s
     n.color = color
-    let mx = s.width / 2 + 8, my = s.height / 2 + 8
+    let box = sideways ? CGSize(width: s.height, height: s.width) : s
+    let mx = box.width / 2 + 8, my = box.height / 2 + 8
     n.position = CGPoint(x: min(max(mx, p.x), max(mx, area.width - mx)), y: min(max(my, p.y), max(my, area.height - my)))
     n.removeAllActions()
     n.isHidden = false
@@ -441,12 +465,12 @@ final class FeelLayer {
     g.size = CGSize(width: s.width * 1.5, height: s.height * 2.2)
     g.alpha = 0.6
     if reduceMotion {
-      n.setScale(1); n.zRotation = 0; n.alpha = 0
+      n.setScale(1); n.zRotation = facing; n.alpha = 0
       n.run(Self.calloutSoft)
     } else {
       n.setScale(2.3); n.alpha = 0
-      n.zRotation = CGFloat.random(in: -0.07...0.07)
-      n.run(Self.calloutAction)
+      n.zRotation = facing + CGFloat.random(in: -0.07...0.07)
+      n.run(calloutAction(facing: facing))
       g.run(Self.glowAction)
     }
   }

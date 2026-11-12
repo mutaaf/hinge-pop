@@ -31,7 +31,7 @@ const audit = (page) => page.evaluate(() => {
   const parse = (c) => (c.match(/[\d.]+/g) || []).map(Number);
   const bgOf = (el) => { for (let e = el; e; e = e.parentElement) { const c = parse(getComputedStyle(e).backgroundColor); if (c.length === 3 || (c.length === 4 && c[3] === 1)) return c.slice(0, 3); } return [13, 17, 23]; };
   if (document.documentElement.scrollWidth > vw) problems.push('page scrolls sideways');
-  const layer = !document.getElementById('tour').hidden ? '#tour' : !document.getElementById('panel').hidden ? '.sheet' : '#hud';
+  const layer = !document.getElementById('tour').hidden ? '#tour' : !document.getElementById('duel').hidden ? '#duel' : !document.getElementById('panel').hidden ? '.sheet' : '#hud';
 
   const targets = [...document.querySelectorAll(layer + ' button, ' + layer + ' summary, ' + layer + ' .toggle, ' + layer + ' [data-tip]')].filter(visible);
   for (const el of targets) {
@@ -65,14 +65,31 @@ const audit = (page) => page.evaluate(() => {
   if (layer === '#hud') {
     const hud = document.getElementById('hud');
     if (hud.scrollWidth > hud.clientWidth + 1) problems.push('hud overflows');
+    const p = document.getElementById('pause').getBoundingClientRect();
+    const overlap = (a, b) => a.left < b.right - 1 && b.left < a.right - 1 && a.top < b.bottom - 1 && b.top < a.bottom - 1;
     for (const box of document.querySelectorAll('.phud:not([hidden])')) {
-      const ticks = box.querySelector('.ticks').getBoundingClientRect();
-      if (ticks.width < 44) problems.push('meter squeezed: ' + Math.round(ticks.width));
-      const score = box.querySelector('.score');
-      if (score.getBoundingClientRect().right > vw + 1) problems.push('score off screen');
+      // Two-player scoreboards turn to face their player, so measure along the board, not across the screen.
+      const ticks = box.querySelector('.ticks').offsetWidth;
+      if (ticks < 44) problems.push('meter squeezed: ' + Math.round(ticks));
+      const score = box.querySelector('.score').getBoundingClientRect();
+      if (score.right > vw + 1 || score.left < -1 || score.bottom > vh + 1 || score.top < -1) problems.push('score off screen');
+      if (overlap(box.getBoundingClientRect(), p)) problems.push('hud overlaps pause');
     }
-    const a = document.getElementById('p0').getBoundingClientRect(), p = document.getElementById('pause').getBoundingClientRect();
-    if (a.right > p.left + 1) problems.push('hud overlaps pause');
+    if (document.getElementById('hud').classList.contains('versus')) {
+      // Face to face: the two boards sit at opposite edges and never touch.
+      const a = document.getElementById('p0').getBoundingClientRect(), b = document.getElementById('p1').getBoundingClientRect();
+      if (overlap(a, b)) problems.push('scoreboards overlap');
+      const wide = vw > vh;
+      if (wide ? !(a.right <= vw / 2 && b.left >= vw / 2) : !(a.bottom <= vh / 2 && b.top >= vh / 2)) problems.push('scoreboards not at opposite edges');
+    }
+  }
+  if (layer === '#duel') {
+    for (const id of ['d0', 'd1']) {
+      const c = document.querySelector('#' + id + ' .card').getBoundingClientRect();
+      if (c.top < -1 || c.bottom > vh + 1 || c.left < -1 || c.right > vw + 1) problems.push(id + ' result off screen');
+    }
+    const a = document.querySelector('#d0 .card').getBoundingClientRect(), b = document.querySelector('#d1 .card').getBoundingClientRect();
+    if (a.left < b.right - 1 && b.left < a.right - 1 && a.top < b.bottom - 1 && b.top < a.bottom - 1) problems.push('result cards overlap');
   }
   if (layer === '#tour') {
     const card = document.getElementById('tour').getBoundingClientRect();

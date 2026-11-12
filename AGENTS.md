@@ -15,7 +15,7 @@ Arcade game with three parts: a parallax landing site that scrolls into the web 
 
 `npm run test:devices` enforces these at 11 sizes, including iPad split view, so run it for any layout change:
 
-- Touch targets are at least 48px (Android 48dp; Apple's minimum is 44pt). The compact two-player HUD is the one exception, with its pause button still at full size.
+- Touch targets are at least 48px (Android 48dp; Apple's minimum is 44pt). The two-player scoreboards are the one exception, with the shared pause button still at full size.
 - No text under 11px. Text contrast is at least 4.5:1.
 - Safe areas are respected in every orientation. Turning the device keeps the level and pauses it.
 - Tooltips open by tap, never by hover alone. Pinch zoom stays available outside active play.
@@ -25,6 +25,12 @@ Arcade game with three parts: a parallax landing site that scrolls into the web 
 - Crossing cost follows weight: big fills the meter, medium adds half, small adds 1. A big bubble left alone costs all three shields, so no level can be won without touching the screen. Tests enforce this.
 - Busy levels arrive in stages (`arrival*` in the tuning), and only two big bubbles come at once.
 - Bosses (native only) guard briefly after each hit, don't feed the streak, and telegraph a dash that a hit can stagger. Hits per phase rise by chapter, then one more every third realm (four-phase finales take 3/4 as many per phase). In its last phase a boss sheds a small piece toward the line every `bossShedEvery` seconds (`bossShed`).
+- Two players (0.3.2) is a face-off: the device lies flat between two people at opposite ends, so the hinge splits the **long** axis (`vertical = width > height`, the same rule as solo; versus no longer forces a vertical line). Phone portrait: top and bottom halves. Wide screens (landscape, iPad landscape, desktop web): left and right, players at the short ends. On iPhone Duo a real fold wins, whichever way it runs (`FoldLayout.resolve` no longer refuses a horizontal fold in versus): each page is a player.
+  - Indices: `players[0]` owns the near half (top, or left), `players[1]` the far half (bottom, or right). Readouts call `players[1]` "Player 1" and `players[0]` "Player 2" (`Seat.name`); never "left"/"right".
+  - Each player keeps a scoreboard band at their own edge (`Seat.band`), so the arena sits between the bands with `top = 0` and both halves are equal. Native: `Session.playRect` (the scene's `world` and `gamePoint` follow it); web: the page cuts the bands and passes the rest to the SIM (`left` wall).
+  - Facing: everything a player owns turns to read from their seat (`Seat.degrees`/`Seat.radians`: 0 bottom, 180 top, 90 left, -90 right; `SeatTurn` in `FaceOff.swift`). Scoreboards, tips, toasts, the pause and result cards, the tour card, callouts (combo words, SNAP!, SHIELD DOWN!, FEVER!, the YOU WIN!/SO CLOSE! verdicts), score fly-ups and pickups. Bubbles face whoever's half they're on and spin round (0.3 s, pooled, render state only) when they cross; Reduce Motion turns them instantly. Debug: `-flipTime s` slows the spin, `-freezeOn flip` catches one; `-versus -win` ends a match with Player 1 ahead.
+  - One shared pause sits at the hinge's end (off the crease on a fold). The end card is split: a result facing each player and one Rematch on the hinge. Turning the device mid-match pauses it, since the seats move.
+  - `GameTests` cover face-off ownership, crossings, snaps, pickups and a fairness check (the same bot wins 35–65% from either seat in both orientations; measured about 45% for Player 1).
 - Guest stars are `Visitor`s, not bubbles: they never block a clear or touch the meter, and they skip level 1, two-player and the tour. They are original genre nods. Keep them that way: no real characters, logos or names.
 
 - Snap the Hinge is the game's signature: drag off the line and it flings nearby bubbles back, with a recharge. It's also how the game stands apart in the store (a 4.3 rejection said the first version didn't). Lead with it in store copy. The fold angle must stay effects-only, so it never triggers a snap.

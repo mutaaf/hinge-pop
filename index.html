@@ -42,13 +42,16 @@ canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block
   border-bottom: 1px solid var(--line);
   background: var(--ink);
 }
-#hud.versus { grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); gap: 8px; padding-inline: 10px; }
+/* Two players face each other across the phone. Each scoreboard sits at its player's own edge, turned to face
+   them (the script places and rotates it), and one pause button sits at the end of the hinge where both can reach. */
+#hud.versus { inset: 0; display: block; padding: 0; border: 0; background: none; }
 .phud { --player: var(--hinge); display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: var(--hud-gap); min-width: 0; }
-.versus .phud { gap: 8px; }
+#hud.versus .phud { position: absolute; gap: 12px; padding: 4px 14px; background: var(--ink); border-top: 1px solid var(--line); }
+#hud.versus #pause { position: absolute; }
 [data-tip] { pointer-events: auto; cursor: pointer; }
 .shieldbox, .meter, .readout { min-height: var(--target); align-content: center; }
 .readout { display: grid; }
-#p1 { --player: var(--p2); direction: rtl; }
+#p1 { --player: var(--p2); }
 .pips { display: flex; gap: 4px; }
 .shield { width: var(--shield-w); height: var(--shield-h); background: var(--player); clip-path: polygon(0 0, 100% 0, 100% 62%, 50% 100%, 0 62%); transition: background .25s; }
 .shield.gone { background: var(--line); }
@@ -57,13 +60,13 @@ canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block
 .charge i { display: block; height: 100%; width: 0; background: var(--player); transition: width .16s var(--ease); }
 .meter { display: grid; gap: 4px; min-width: 0; max-width: 200px; }
 .meter small { font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.meter .who { display: none; color: var(--player); font-weight: 600; }
 .versus .meter small { display: none; }
+.versus .meter .who { display: block; }
 .tick { flex: 1; height: var(--tick-h); background: var(--line); border-radius: 2px; transition: background .2s; }
 .tick.on { background: var(--tick-color, var(--hinge)); }
 .readout { direction: ltr; text-align: right; font-variant-numeric: tabular-nums; line-height: 1.15; }
-#p1 .readout { text-align: left; }
 .score { display: inline-block; transform-origin: 100% 50%; font-weight: 600; font-size: var(--score); letter-spacing: -.01em; }
-#p1 .score { transform-origin: 0 50%; }
 .combo { font-size: 12px; color: var(--muted); }
 .combo.hot { color: var(--player); }
 #pause {
@@ -74,13 +77,30 @@ canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block
   content: ""; position: absolute; inset: 32%;
   background: linear-gradient(90deg, var(--fg) 0 34%, transparent 34% 66%, var(--fg) 66%);
 }
-#coach {
+.coach {
   position: absolute; left: 50%; top: 28%; z-index: 1; width: fit-content; max-width: min(88%, 480px); transform: translate(-50%, 6px);
   margin: 0; padding: 8px 14px; border-radius: 14px; background: rgba(35, 20, 74, .94); text-align: center; font-size: clamp(14px, 2.2vmin, 19px); line-height: 1.4; color: var(--fg);
   opacity: 0; pointer-events: none; transition: opacity .35s, transform .35s var(--ease);
   text-wrap: balance;
 }
-#coach.show { opacity: 1; transform: translate(-50%, 0); }
+.coach.show { opacity: 1; transform: translate(-50%, 0); }
+/* In two players the coach speaks twice, once in each half, turned to face that player. */
+.coach.seat { transform: translate(-50%, -50%) rotate(var(--rot, 0deg)) translateY(6px); }
+.coach.seat.show { transform: translate(-50%, -50%) rotate(var(--rot, 0deg)); }
+
+/* The two-player result: each half shows its own player's result, facing them. Both halves can rematch. */
+#duel { position: absolute; inset: 0; z-index: 3; background: rgba(20, 10, 46, .55); animation: fade .22s ease-out; }
+#duel .half { position: absolute; display: grid; place-items: center; padding: 10px 16px; }
+#duel .card { width: 100%; max-width: 420px; display: grid; gap: 10px; justify-items: center; text-align: center; padding: 16px; background: var(--ink-raised); border: 1px solid var(--line); border-radius: 18px; }
+#duel .verdict { margin: 0; font: 400 clamp(26px, 8vmin, 40px)/1.05 var(--display); letter-spacing: 0; color: var(--fg); }
+#duel .win .verdict { color: var(--player-color, var(--hinge)); }
+#duel .why { margin: 0; font-size: 14px; color: var(--muted); }
+#duel .tally { --a1: #ff4cdc; --a2: #3ce8ff; --a3: #4cffc0; display: grid; gap: 2px; justify-items: center; width: 100%; margin: 0; padding: 8px 10px; font-variant-numeric: tabular-nums; }
+#duel .tally b { font: 400 clamp(28px, 8vmin, 40px)/1.1 var(--display); color: #fff; text-shadow: 0 2px 10px rgba(0,0,0,.55); }
+#duel .tally small { font-size: 13px; font-weight: 600; color: #fff; padding: 2px 10px; border-radius: 999px; background: rgba(0,0,0,.55); }
+#duel .actions { width: 100%; }
+#duel .actions .primary { order: 0; flex: 2 1 120px; min-height: var(--target); }
+#d0 { --player-color: var(--hinge); } #d1 { --player-color: var(--p2); }
 
 #panel {
   position: fixed; inset: 0; z-index: 3; overflow-y: auto; display: flex; flex-direction: column; align-items: center;
@@ -119,8 +139,8 @@ h1 { margin: 0; font: 400 clamp(28px, 9vw, 36px)/1.05 var(--display); letter-spa
 /* Bright aurora behind what matters. Three drifting curtains, painted once and moved, so it costs almost nothing. */
 .spots { display: grid; gap: 8px; padding-bottom: 10px; }
 @media (min-width: 620px) { .spots { grid-template-columns: repeat(4, 1fr); } .spot { flex-direction: column; align-items: stretch; } .spot .say { text-align: center; } .spot .pic { justify-content: center; width: auto; } }
-.spot, .sheet.result #finalScore { position: relative; overflow: hidden; isolation: isolate; border-radius: 16px; border: 1px solid rgba(255,255,255,.26); background: #120a2c; }
-.spot::before, .sheet.result #finalScore::before { content: ""; position: absolute; inset: -50% -30%; z-index: -1; background:
+.spot, .sheet.result #finalScore, #duel .tally { position: relative; overflow: hidden; isolation: isolate; border-radius: 16px; border: 1px solid rgba(255,255,255,.26); background: #120a2c; }
+.spot::before, .sheet.result #finalScore::before, #duel .tally::before { content: ""; position: absolute; inset: -50% -30%; z-index: -1; background:
   radial-gradient(38% 42% at 24% 50%, var(--a1, #3ce8ff) 0, transparent 72%),
   radial-gradient(34% 46% at 58% 42%, var(--a2, #6a6cff) 0, transparent 72%),
   radial-gradient(36% 40% at 84% 60%, var(--a3, #4cffc0) 0, transparent 72%);
@@ -176,15 +196,9 @@ details[open] > summary::after { content: "\2212"; }
 .toggle input:checked::before { transform: translateX(18px); background: var(--ink); }
 :focus-visible { outline: 2px solid var(--fg); outline-offset: 2px; }
 
-/* Two players on a narrow screen: shields and score share a row, with the meter underneath. */
-@media (max-width: 599px) {
-  .versus .phud { grid-template-columns: auto minmax(0, 1fr); gap: 2px 8px; }
-  .versus .shieldbox, .versus .readout { min-height: 36px; }
-  .versus .meter { grid-column: 1 / -1; grid-row: 2; min-height: 24px; max-width: none; }
-  .versus .readout { justify-self: end; }
-  #p1.phud .readout { justify-self: end; }
-  :root { --shield-w: 13px; --shield-h: 17px; }
-  .versus .score { font-size: 17px; }
+/* Two players on a phone: each scoreboard is one compact row along its own edge. */
+@media (max-width: 599px), (max-height: 599px) {
+  .versus .score { font-size: 19px; }
 }
 
 #spot {
@@ -243,7 +257,7 @@ details[open] > summary::after { content: "\2212"; }
   .stats dd { font-size: 15px; }
   .stats dt { letter-spacing: 0; }
   .actions .primary { min-height: var(--target); }
-  #coach { top: 24%; }
+  .coach:not(.seat) { top: 24%; }
   #hud { padding-block: 4px; }
   #tour { left: auto; right: max(10px, env(safe-area-inset-right, 0px)); top: 8px; bottom: 8px; width: 44%; max-height: none; border: 1px solid var(--line); border-radius: 16px; padding: 10px 14px; gap: 5px; }
   #tour h2 { font-size: 16px; margin: 0; }
@@ -256,8 +270,7 @@ details[open] > summary::after { content: "\2212"; }
 @media (min-width: 600px) and (min-height: 600px) {
   :root { --shield-w: 18px; --shield-h: 23px; --score: 32px; --tick-h: 10px; --pause: 52px; --hud-gap: 18px; }
   #hud { padding: 14px 22px; }
-  #hud.versus { padding-inline: 18px; gap: 16px; }
-  .versus .phud { gap: 14px; }
+  #hud.versus .phud { gap: 16px; padding-inline: 20px; }
   .meter { max-width: 280px; }
   .meter small { font-size: 11px; }
   .combo { font-size: 13px; }
@@ -294,8 +307,9 @@ details[open] > summary::after { content: "\2212"; }
 }
 @media (prefers-reduced-motion: reduce) {
   #panel, .sheet { animation: none; }
-  #coach, .charge i, .toggle input::before { transition: none; }
-  .spot::before, .sheet.result #finalScore::before { animation: none; }
+  .coach, .charge i, .toggle input::before { transition: none; }
+  #duel { animation: none; }
+  .spot::before, .sheet.result #finalScore::before, #duel .tally::before { animation: none; }
 }
 </style>
 
@@ -304,24 +318,31 @@ details[open] > summary::after { content: "\2212"; }
   <canvas id="game" aria-label="Game arena. Tap bubbles to split them."></canvas>
   <div id="hud">
     <div class="phud" id="p0">
-      <div class="shieldbox" data-tip="shields" role="button" tabindex="0" aria-label="Left player shields. Show details.">
+      <div class="shieldbox" data-tip="shields" role="button" tabindex="0" aria-label="Shields. Show details.">
         <div class="pips shields"></div>
         <div class="charge"><i></i></div>
       </div>
-      <div class="meter" data-tip="meter" role="button" tabindex="0" aria-label="Overload meter. Show details."><small id="levelLabel">Level 1 · Overload</small><div class="pips ticks"></div></div>
+      <div class="meter" data-tip="meter" role="button" tabindex="0" aria-label="Overload meter. Show details."><small id="levelLabel">Level 1 · Overload</small><small class="who">Player 2</small><div class="pips ticks"></div></div>
       <div class="readout" data-tip="score" role="button" tabindex="0" aria-label="Score and combo. Show details."><div class="score">0</div><div class="combo">x1</div></div>
     </div>
     <button id="pause" type="button" aria-label="Pause"></button>
     <div class="phud" id="p1" hidden>
-      <div class="shieldbox" data-tip="shields" role="button" tabindex="0" aria-label="Right player shields. Show details.">
+      <div class="shieldbox" data-tip="shields" role="button" tabindex="0" aria-label="Player 1 shields. Show details.">
         <div class="pips shields"></div>
         <div class="charge"><i></i></div>
       </div>
-      <div class="meter" data-tip="meter" role="button" tabindex="0" aria-label="Right player overload meter. Show details."><div class="pips ticks"></div></div>
-      <div class="readout" data-tip="score" role="button" tabindex="0" aria-label="Score and combo. Show details."><div class="score">0</div><div class="combo">x1</div></div>
+      <div class="meter" data-tip="meter" role="button" tabindex="0" aria-label="Player 1 overload meter. Show details."><small class="who">Player 1</small><div class="pips ticks"></div></div>
+      <div class="readout" data-tip="score" role="button" tabindex="0" aria-label="Player 1 score and combo. Show details."><div class="score">0</div><div class="combo">x1</div></div>
     </div>
   </div>
-  <p id="coach" role="status" aria-live="polite"></p>
+  <p id="coach" class="coach" role="status" aria-live="polite"></p>
+  <p id="coach2" class="coach" aria-hidden="true" hidden></p>
+  <div id="duel" role="dialog" aria-label="Match result" hidden>
+    <section class="half" id="d0"><div class="card"><h2 class="verdict"></h2><p class="why"></p><p class="tally"><b></b><small></small></p>
+      <div class="actions"><button type="button" class="secondary" id="duelMenu2">Menu</button><button type="button" class="primary" id="rematch2">Rematch</button></div></div></section>
+    <section class="half" id="d1"><div class="card"><h2 class="verdict"></h2><p class="why"></p><p class="tally"><b></b><small></small></p>
+      <div class="actions"><button type="button" class="secondary" id="duelMenu">Menu</button><button type="button" class="primary" id="rematch">Rematch</button></div></div></section>
+  </div>
   <div id="spot" hidden></div>
   <section id="tour" role="dialog" aria-labelledby="tourTitle" hidden>
     <div class="tour-top"><span id="tourCount"></span><button type="button" id="tourSkip">Skip tour</button></div>
@@ -373,7 +394,7 @@ details[open] > summary::after { content: "\2212"; }
           </details>
           <details class="fold" name="learn"><summary>Guest stars</summary><div class="guests" id="guestList"></div></details>
           <details class="fold" name="learn"><summary>Two players</summary>
-            <p class="fact">One side each. What you miss lands on your rival. Last shield standing wins.</p>
+            <p class="fact">Lay the phone flat between you and sit at each end. One half each. What you miss lands on your rival. Last shield standing wins.</p>
           </details>
           <div class="tour-links">
             <button type="button" id="tourSolo">Replay the tour</button>
@@ -481,9 +502,11 @@ function createSim(opts) {
   const conf = versus ? { sizes: Array(CFG.versusPerSide).fill(0), speed: CFG.versusSpeed } : levelConfig(level);
   const newPlayer = (score) => ({ score, combo: 1, overcharge: 0, cameos: 0, snaps: 0, snapLeft: 0, comboT: 0, bestCombo: 1, meter: 0, shields: CFG.shields, streak: 0, recharges: 0, taps: 0, flicks: 0, crossings: 0, zaps: 0, chained: 0 });
   const s = {
-    w: opts.w, h: opts.h, top: opts.top || 0,
+    // The arena runs from (left, top) to (w, h). Two players face each other across the long axis, each with a
+    // scoreboard at their own edge, so versus can trim the left (and pass a smaller w and h) as well as the top.
+    w: opts.w, h: opts.h, top: opts.top || 0, left: opts.left || 0,
     versus, level, speedMul: conf.speed,
-    vertical: versus || opts.w > opts.h,
+    vertical: opts.vertical ?? (opts.w - (opts.left || 0)) > (opts.h - (versus ? opts.top || 0 : 0)),
     flick: opts.flick !== false, grace: opts.grace !== false,
     players: versus ? [newPlayer(0), newPlayer(0)] : [newPlayer(opts.score || 0)],
     bubbles: [], visitors: [], arrivals: [], events: [],
@@ -498,8 +521,8 @@ function createSim(opts) {
   const unit = () => { seed = (seed + 0x6D2B79F5) >>> 0; let t = seed; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
   let cameoClock = CFG.cameoFirst + unit() * 4;
 
-  const scale = () => Math.max(0.85, Math.min(2.4, Math.min(s.w, s.h - s.top) / 400));
-  const line = () => (s.vertical ? s.w / 2 : s.top + (s.h - s.top) / 2);
+  const scale = () => Math.max(0.85, Math.min(2.4, Math.min(s.w - s.left, s.h - s.top) / 400));
+  const line = () => (s.vertical ? s.left + (s.w - s.left) / 2 : s.top + (s.h - s.top) / 2);
   const across = (b) => (s.vertical ? b.x : b.y);
   const sideOf = (b) => (across(b) < line() ? -1 : 1);
   const ownerIndex = (b) => (versus && b.side > 0 ? 1 : 0);
@@ -536,8 +559,8 @@ function createSim(opts) {
         const a = (deg * Math.PI) / 180;
         const toward = v < 0.5 ? 1 : -1;
         const along = Math.cos(a), acrossDir = Math.abs(Math.sin(a)) * toward;
-        if (s.vertical) add(g, v * s.w, s.top + u * (s.h - s.top), Math.atan2(along, acrossDir), 0);
-        else add(g, u * s.w, s.top + v * (s.h - s.top), Math.atan2(acrossDir, along), 0);
+        if (s.vertical) add(g, s.left + v * (s.w - s.left), s.top + u * (s.h - s.top), Math.atan2(along, acrossDir), 0);
+        else add(g, s.left + u * (s.w - s.left), s.top + v * (s.h - s.top), Math.atan2(acrossDir, along), 0);
       }
     });
   }
@@ -551,8 +574,8 @@ function createSim(opts) {
     const near = unit() < 0.5, u = 0.15 + unit() * 0.7, v = near ? 0.12 : 0.88;
     const a = ((25 + unit() * 130) * Math.PI) / 180, toward = near ? 1 : -1;
     const along = Math.cos(a), acrossDir = Math.abs(Math.sin(a)) * toward;
-    if (s.vertical) add(g, v * s.w, s.top + u * (s.h - s.top), Math.atan2(along, acrossDir), CFG.graceHinge);
-    else add(g, u * s.w, s.top + v * (s.h - s.top), Math.atan2(acrossDir, along), CFG.graceHinge);
+    if (s.vertical) add(g, s.left + v * (s.w - s.left), s.top + u * (s.h - s.top), Math.atan2(along, acrossDir), CFG.graceHinge);
+    else add(g, s.left + u * (s.w - s.left), s.top + v * (s.h - s.top), Math.atan2(acrossDir, along), CFG.graceHinge);
   }
 
   // Heavier bubbles hit harder. A big one fills the meter by itself, and each generation of its pieces costs
@@ -593,7 +616,7 @@ function createSim(opts) {
         p.comboT = CFG.comboWindow * 2;
     }
   }
-  const onHinge = (x, y) => y >= s.top && Math.abs((s.vertical ? x : y) - line()) <= CFG.snapTouch * Math.max(1, scale());
+  const onHinge = (x, y) => y >= s.top && x >= s.left && Math.abs((s.vertical ? x : y) - line()) <= CFG.snapTouch * Math.max(1, scale());
   // The line cracks like a whip and flings what's near it back, lighter bubbles hardest. Tiny ones are left
   // alone, since the line pops those for free. In two players it only moves your own side.
   function snap(along, owner) {
@@ -925,7 +948,7 @@ function createSim(opts) {
         if (s.vertical) b.vx += pull; else b.vy += pull;
       }
       b.x += b.vx * dt; b.y += b.vy * dt;
-      if (b.x < b.r) { impact(b, 0, Math.abs(b.vx)); b.x = b.r; b.vx = Math.abs(b.vx) * m.bounce; }
+      if (b.x < s.left + b.r) { impact(b, 0, Math.abs(b.vx)); b.x = s.left + b.r; b.vx = Math.abs(b.vx) * m.bounce; }
       if (b.x > s.w - b.r) { impact(b, 0, Math.abs(b.vx)); b.x = s.w - b.r; b.vx = -Math.abs(b.vx) * m.bounce; }
       if (b.y < s.top + b.r) { impact(b, Math.PI / 2, Math.abs(b.vy)); b.y = s.top + b.r; b.vy = Math.abs(b.vy) * m.bounce; }
       if (b.y > s.h - b.r) { impact(b, Math.PI / 2, Math.abs(b.vy)); b.y = s.h - b.r; b.vy = -Math.abs(b.vy) * m.bounce; }
@@ -955,9 +978,9 @@ function createSim(opts) {
     }
   }
 
-  // In versus, a touch only reaches bubbles on that player's own side.
+  // In versus, a touch only reaches bubbles on that player's own side, whichever way the hinge runs.
   function hit(x, y) {
-    const touchSide = x < line() ? -1 : 1;
+    const touchSide = (s.vertical ? x : y) < line() ? -1 : 1;
     let best = null, bestGap = Infinity;
     for (const b of s.bubbles) {
       if (versus && b.side !== touchSide) continue;
@@ -969,16 +992,17 @@ function createSim(opts) {
   }
 
   // Turning the device swaps the axes, so each bubble keeps its place relative to the hinge.
-  function resize(w, h, top) {
-    const vertical = versus || w > h;
+  function resize(w, h, top, left, forceVertical) {
+    left = left || 0;
+    const vertical = forceVertical ?? (w - left) > (h - (versus ? top : 0));
     const turned = vertical !== s.vertical;
     const before = scale();
-    const oldW = s.w, oldH = s.h - s.top, oldTop = s.top;
-    s.w = w; s.h = h; s.top = top; s.vertical = vertical;
+    const oldW = s.w - s.left, oldH = s.h - s.top, oldTop = s.top, oldLeft = s.left;
+    s.w = w; s.h = h; s.top = top; s.left = left; s.vertical = vertical;
     const ratio = scale() / before;
     for (const b of s.bubbles) {
-      const u = b.x / oldW, v = (b.y - oldTop) / oldH;
-      b.x = (turned ? v : u) * w;
+      const u = (b.x - oldLeft) / oldW, v = (b.y - oldTop) / oldH;
+      b.x = left + (turned ? v : u) * (w - left);
       b.y = top + (turned ? u : v) * (h - top);
       if (turned) { const vx = b.vx; b.vx = b.vy; b.vy = vx; }
       b.vx *= ratio; b.vy *= ratio;
@@ -1099,19 +1123,88 @@ function createSim(opts) {
     return hud.getBoundingClientRect().bottom - r.top;
   }
 
+  // ---- Two players face each other across the long axis, with the phone flat between them. players[0] owns the
+  // near half (the top, or the left on a wide screen) and players[1] the far half (the bottom, or the right). Each
+  // player's scoreboard sits at their own edge, and everything that's theirs turns to face them.
+  const seat = { on: false, vertical: false, band: 56 };
+  const NAMES = ['Player 2', 'Player 1'];
+  const seatDeg = (i) => (seat.vertical ? (i === 0 ? 90 : -90) : (i === 0 ? 180 : 0));
+  const seatRad = (i) => (seatDeg(i) * Math.PI) / 180;
+  const ownerAt = (x, y) => ((sim.vertical ? x : y) < sim.line() ? 0 : 1);
+  const faceAt = (x, y) => (sim && sim.versus ? seatRad(ownerAt(x, y)) : 0);
+  // The middle of a player's half, clear of their scoreboard, in stage coordinates.
+  function halfCenter(i) {
+    const B = seat.band;
+    if (seat.vertical) return { x: i === 0 ? (B + W / 2) / 2 : (W / 2 + W - B) / 2, y: H / 2 };
+    return { x: W / 2, y: i === 0 ? (B + H / 2) / 2 : (H / 2 + H - B) / 2 };
+  }
+  // Lays a box `len` long and `thick` deep centred on (cx, cy), turned to face player i.
+  function placeFacing(el, i, cx, cy, len, thick) {
+    el.style.width = len + 'px'; el.style.height = thick + 'px';
+    el.style.left = cx - len / 2 + 'px'; el.style.top = cy - thick / 2 + 'px';
+    el.style.transform = 'rotate(' + seatDeg(i) + 'deg)';
+  }
+  // The arena the rules see: in two players both scoreboard bands are cut off, so the halves stay equal.
+  function arena(versus) {
+    const top = measure();
+    seat.on = versus;
+    if (!versus) return { w: W, h: H, top, left: 0 };
+    seat.band = Math.min(W, H) >= 600 ? 64 : 56;
+    seat.vertical = W > H;
+    layoutSeats();
+    const B = seat.band;
+    return seat.vertical ? { w: W - B, h: H, top: 0, left: B, vertical: true } : { w: W, h: H - B, top: B, left: 0, vertical: false };
+  }
+  function layoutSeats() {
+    const B = seat.band, v = seat.vertical, len = v ? H : W;
+    placeFacing($('p0'), 0, v ? B / 2 : W / 2, v ? H / 2 : B / 2, len, B);
+    placeFacing($('p1'), 1, v ? W - B / 2 : W / 2, v ? H / 2 : H - B / 2, len, B);
+    // One pause button for both, at the end of the hinge.
+    const P = $('pause').offsetWidth || 48;
+    $('pause').style.left = (v ? W / 2 - P / 2 : W - P - 6) + 'px';
+    $('pause').style.top = (v ? 6 : H / 2 - P / 2) + 'px';
+    for (const [id, i] of [['coach', 1], ['coach2', 0]]) {
+      const c = halfCenter(i), el = $(id);
+      el.style.left = c.x + 'px'; el.style.top = c.y + 'px';
+      el.style.setProperty('--rot', seatDeg(i) + 'deg');
+      el.style.maxWidth = Math.min(480, len * 0.86) + 'px';
+    }
+    if (!$('duel').hidden) layoutDuel();
+  }
+  function clearSeats() {
+    for (const id of ['p0', 'p1', 'pause', 'coach', 'coach2']) {
+      const st = $(id).style;
+      for (const k of ['width', 'height', 'left', 'top', 'transform', 'maxWidth']) st[k] = '';
+    }
+  }
+  function layoutDuel() {
+    const v = seat.vertical;
+    for (const i of [0, 1]) {
+      const cx = v ? (i ? W * 0.75 : W * 0.25) : W / 2, cy = v ? H / 2 : (i ? H * 0.75 : H * 0.25);
+      placeFacing($('d' + i), i, cx, cy, v ? H : W, v ? W / 2 : H / 2);
+    }
+  }
+
   function setHudMode(versus) {
     hud.classList.toggle('versus', versus);
     $('p1').hidden = !versus;
+    $('coach2').hidden = !versus;
+    for (const id of ['coach', 'coach2']) $(id).classList.toggle('seat', versus);
+    if (!versus) clearSeats();
+    const who = versus ? NAMES[0] + ' ' : '';
+    $('p0').querySelector('.shieldbox').setAttribute('aria-label', (versus ? who + 'shields' : 'Shields') + '. Show details.');
+    $('p0').querySelector('.meter').setAttribute('aria-label', who + (versus ? 'overload meter' : 'Overload meter') + '. Show details.');
+    $('p0').querySelector('.readout').setAttribute('aria-label', who + (versus ? 'score and combo' : 'Score and combo') + '. Show details.');
     $('levelLabel').textContent = 'Level ' + level + ' · Overload';
     hudKey = '';
   }
 
   function newSim(o) {
     setHudMode(!!o.versus);
-    const top = measure();
+    const rect = arena(!!o.versus);
     active.clear(); fx = []; shake = 0; hingePulse = 0; endTimer = 0;
     shown[0] = shown[1] = rolled[0] = rolled[1] = 0;
-    sim = createSim(Object.assign({ w: W, h: H, top, flick: $('optFlick').checked, grace: $('optGrace').checked }, o));
+    sim = createSim(Object.assign({ w: rect.w, h: rect.h, top: rect.top, left: rect.left, vertical: rect.vertical, flick: $('optFlick').checked, grace: $('optGrace').checked }, o));
     shown[0] = rolled[0] = sim.players[0].score;
     applyArena();
     sendGeometry();
@@ -1120,11 +1213,11 @@ function createSim(opts) {
   let coachTimer = 0;
   function coach(text, ms) {
     clearTimeout(coachTimer);
-    const el = $('coach');
-    if (!text) { el.classList.remove('show'); return; }
-    el.textContent = text;
-    el.classList.add('show');
-    coachTimer = setTimeout(() => el.classList.remove('show'), ms || 2600);
+    // In two players the same words show in both halves, each copy facing its own player.
+    const els = [$('coach'), $('coach2')];
+    if (!text) { els.forEach((el) => el.classList.remove('show')); return; }
+    for (const el of els) { el.textContent = text; el.classList.add('show'); }
+    coachTimer = setTimeout(() => els.forEach((el) => el.classList.remove('show')), ms || 2600);
   }
   // Each lesson shows once, then stays out of the way on later visits.
   function teach(key, text) {
@@ -1147,7 +1240,7 @@ function createSim(opts) {
 
   function introduce() {
     if (sim.versus) {
-      coach(W < 600 && H > W ? 'Left and right, one side each. Turn the phone sideways for more room.' : 'Left and right, one side each. Tap your own bubbles.', 2800);
+      coach('Face each other. One half each: tap your own bubbles.', 2800);
     } else if (!(level === 1 && teach('tap', 'Tap the bubble to split it.'))) {
       coach('Level ' + level, 1200);
     }
@@ -1159,6 +1252,7 @@ function createSim(opts) {
     newSim(o);
     mode = 'play';
     $('panel').hidden = true;
+    $('duel').hidden = true;
     holdWake();
     introduce();
   }
@@ -1228,6 +1322,7 @@ function createSim(opts) {
       box.appendChild(btn);
     }
     $('panel').hidden = false;
+    $('duel').hidden = true;
     $('panel').scrollTop = 0;
     coach('');
     closeTip();
@@ -1267,6 +1362,28 @@ function createSim(opts) {
     });
   }
 
+  // Two players: each half shows its own player's result, facing them. Either half can call the rematch.
+  function showDuel() {
+    const out = sim.players.some((p) => p.shields <= 0);
+    for (const i of [0, 1]) {
+      const me = sim.players[i], them = sim.players[1 - i], half = $('d' + i);
+      const verdict = sim.winner === null ? 'Draw' : sim.winner === i ? 'You win!' : 'You lose';
+      half.classList.toggle('win', sim.winner === i);
+      half.querySelector('.verdict').textContent = verdict;
+      half.querySelector('.why').textContent = out ? (me.shields <= 0 ? 'Your last shield went.' : 'Their last shield went.') : sim.winner === null ? 'Same score. All clear.' : 'All clear. Top score wins.';
+      tally(half.querySelector('.tally b'), me.score);
+      half.querySelector('.tally small').textContent = NAMES[i] + ' · rival ' + them.score.toLocaleString();
+      half.setAttribute('aria-label', NAMES[i] + ': ' + verdict);
+    }
+    $('duel').hidden = false;
+    layoutDuel();
+    coach('');
+    closeTip();
+    releaseWake();
+  }
+  for (const id of ['rematch', 'rematch2']) $(id).addEventListener('click', () => playVersus());
+  for (const id of ['duelMenu', 'duelMenu2']) $(id).addEventListener('click', () => menu());
+
   function describeLevel(n) {
     const c = levelConfig(n), count = c.sizes.length;
     return count + (count === 1 ? ' bubble' : ' bubbles') + ' at ' + Math.round(c.speed * 100) + '% speed';
@@ -1274,20 +1391,7 @@ function createSim(opts) {
 
   function finish() {
     mode = 'ended';
-    if (sim.versus) {
-      const [a, b] = sim.players;
-      const heading = sim.winner === null ? 'Draw' : sim.winner === 0 ? 'Left wins' : 'Right wins';
-      const out = a.shields <= 0 || b.shields <= 0;
-      showPanel({
-        heading,
-        sub: out ? 'Last shield gone.' : sim.winner === null ? 'Same score.' : 'All clear. Top score wins.',
-        total: sim.winner === null ? a.score : sim.players[sim.winner].score,
-        twoColumn: true,
-        stats: [['Left score', a.score.toLocaleString()], ['Right score', b.score.toLocaleString()], ['Left crossings', a.crossings], ['Right crossings', b.crossings], ['Left shields', a.shields], ['Right shields', b.shields]],
-        actions: [{ id: 'menu', label: 'Menu', run: menu }, { id: 'play', label: 'Rematch', primary: true, run: playVersus }],
-      });
-      return;
-    }
+    if (sim.versus) { showDuel(); return; }
     const p = sim.players[0], won = sim.status === 'won';
     const stored = readStore();
     let best = stored.best || 0;
@@ -1327,12 +1431,6 @@ function createSim(opts) {
     Recharged: ['Recharged', 'Shields won back.'],
     Shields: ['Shields', 'Shields left at the end.'],
     Left: ['Bubbles left', 'Bubbles still in play at the end.'],
-    'Left score': ['Left score', "The left player's points."],
-    'Right score': ['Right score', "The right player's points."],
-    'Left crossings': ['Left crossings', 'What the left player let through.'],
-    'Right crossings': ['Right crossings', 'What the right player let through.'],
-    'Left shields': ['Left shields', 'Shields left at the end.'],
-    'Right shields': ['Right shields', 'Shields left at the end.'],
   };
   const TIPS = {
     shields: (el) => {
@@ -1367,11 +1465,22 @@ function createSim(opts) {
     $('tipLive').hidden = !made[1];
     $('tipBody').textContent = made[2];
     const tip = $('tip');
+    // A two-player scoreboard's tip opens in the middle of that player's half, facing them.
+    const owner = sim && sim.versus && el.closest('.phud') ? (el.closest('#p1') ? 1 : 0) : -1;
+    tip.style.transform = '';
+    tip.style.width = owner >= 0 ? Math.min(340, (seat.vertical ? H : W) - 32) + 'px' : '';
     tip.hidden = false;
     const r = el.getBoundingClientRect(), t = tip.getBoundingClientRect();
-    const below = r.bottom + 8 + t.height <= innerHeight - 8;
-    tip.style.top = Math.max(8, below ? r.bottom + 8 : r.top - t.height - 8) + 'px';
-    tip.style.left = Math.max(16, Math.min(innerWidth - t.width - 16, r.left + r.width / 2 - t.width / 2)) + 'px';
+    if (owner >= 0) {
+      const c = halfCenter(owner), st = stage.getBoundingClientRect();
+      tip.style.left = st.left + c.x - t.width / 2 + 'px';
+      tip.style.top = st.top + c.y - t.height / 2 + 'px';
+      tip.style.transform = 'rotate(' + seatDeg(owner) + 'deg)';
+    } else {
+      const below = r.bottom + 8 + t.height <= innerHeight - 8;
+      tip.style.top = Math.max(8, below ? r.bottom + 8 : r.top - t.height - 8) + 'px';
+      tip.style.left = Math.max(16, Math.min(innerWidth - t.width - 16, r.left + r.width / 2 - t.width / 2)) + 'px';
+    }
     held = mode === 'play';
   }
   let swallowClick = 0;
@@ -1402,11 +1511,11 @@ function createSim(opts) {
   const tour = { kind: 'solo', i: 0, run: false, input: false, done: false, b: null, entered: 0, freezeAt: 0 };
   // u runs along the hinge and v across it, as fractions of the arena. v below 0.5 is the near side.
   function put(g, u, v, deg, speed) {
-    const span = sim.h - sim.top, a = (deg * Math.PI) / 180;
+    const span = sim.h - sim.top, wide = sim.w - sim.left, a = (deg * Math.PI) / 180;
     const along = Math.cos(a), acrossDir = Math.abs(Math.sin(a)) * (v < 0.5 ? 1 : -1);
     const b = sim.vertical
-      ? sim.add(g, v * sim.w, sim.top + u * span, Math.atan2(along, acrossDir), 0)
-      : sim.add(g, u * sim.w, sim.top + v * span, Math.atan2(acrossDir, along), 0);
+      ? sim.add(g, sim.left + v * wide, sim.top + u * span, Math.atan2(along, acrossDir), 0)
+      : sim.add(g, sim.left + u * wide, sim.top + v * span, Math.atan2(acrossDir, along), 0);
     b.vx *= speed; b.vy *= speed;
     return b;
   }
@@ -1469,22 +1578,22 @@ function createSim(opts) {
       body: 'Catch any guest stars who drop by. Tap anything up top for details.',
       scene: () => {} },
   ];
-  const left = () => sim.players[0], right = () => sim.players[1];
+  const near = () => sim.players[0], far = () => sim.players[1];
   const TWO_TOUR = [
-    { title: 'Two players, one hinge', target: 'hinge',
-      body: 'One side each, with your own shields and score.',
+    { title: 'Two players, face to face', target: 'hinge',
+      body: 'Lay the phone flat and sit at each end. One half each, with your own shields and score.',
       scene: () => { put(0, 0.5, 0.2, 35, 0); put(0, 0.5, 0.8, 35, 0); } },
-    { title: 'Stay on your side', target: 'arena', input: true, waits: () => left().taps + right().taps >= 1,
-      body: 'Touches only reach your own side.',
+    { title: 'Stay in your half', target: 'arena', input: true, waits: () => near().taps + far().taps >= 1,
+      body: 'Touches only reach your own half.',
       todo: 'Tap a bubble.',
       done: 'Same moves as solo.',
       scene: () => { put(0, 0.25, 0.2, 35, 0); put(0, 0.25, 0.8, 35, 0); } },
-    { title: 'Crossings land on your rival', target: 'hinge', waits: () => left().crossings >= 1,
-      body: 'Watch this bubble leave the left side.',
+    { title: 'Crossings land on your rival', target: 'hinge', waits: () => near().crossings >= 1,
+      body: 'Watch this bubble cross the line.',
       todo: 'Watch the bubble.',
-      done: 'It cost the left player, and the pieces landed on the right.',
+      done: "It cost " + NAMES[0] + ", and the pieces landed in " + NAMES[1] + "'s half.",
       scene: () => { put(0, 0.45, 0.36, 60, 0.8); } },
-    { title: 'Two ways to win', target: '#hud', last: 'Start match',
+    { title: 'Two ways to win', target: 'hinge', last: 'Start match',
       body: 'Last shield standing wins. If all clear, top score wins.',
       scene: () => {} },
   ];
@@ -1495,6 +1604,7 @@ function createSim(opts) {
     tour.kind = kind;
     mode = 'tour';
     $('panel').hidden = true;
+    $('duel').hidden = true;
     coach('');
     initAudio();
     writeStore();
@@ -1580,9 +1690,9 @@ function createSim(opts) {
     } else if (target === 'hinge') {
       const pos = sim.line(), band = 44;
       if (sim.vertical) { x = stage_.left + pos - band / 2; y = stage_.top + sim.top; w = band; h = sim.h - sim.top; }
-      else { x = stage_.left; y = stage_.top + pos - band / 2; w = sim.w; h = band; }
+      else { x = stage_.left + sim.left; y = stage_.top + pos - band / 2; w = sim.w - sim.left; h = band; }
     } else if (target === 'arena' || target === 'bubble') {
-      x = stage_.left; y = stage_.top + sim.top; w = sim.w; h = sim.h - sim.top; open = true;
+      x = stage_.left + sim.left; y = stage_.top + sim.top; w = sim.w - sim.left; h = sim.h - sim.top; open = true;
     } else {
       const r = document.querySelector(target).getBoundingClientRect(), pad = 6;
       x = r.left - pad; y = r.top - pad; w = r.width + pad * 2; h = r.height + pad * 2;
@@ -1641,7 +1751,7 @@ function createSim(opts) {
       }
       if (e.type === 'split' || e.type === 'pop') {
         fx.push({ kind: 'ring', x: e.x, y: e.y, r: e.r, t: 0, life: 0.35, color: BUBBLE[e.g] });
-        fx.push({ kind: 'text', x: e.x, y: e.y, t: 0, life: 0.85, text: '+' + e.pts.toLocaleString(), pts: e.pts, color: BUBBLE[e.g] });
+        fx.push({ kind: 'text', x: e.x, y: e.y, t: 0, life: 0.85, text: '+' + e.pts.toLocaleString(), pts: e.pts, color: BUBBLE[e.g], rot: faceAt(e.x, e.y) });
         blip(e.type === 'pop' ? 880 : 420 + e.g * 150, 0.09, 'triangle', 0.14);
         if (e.g === 2) teach('small', 'The smallest bubbles pop on the hinge for free. Tap them for more points, or let the hinge take them.');
         if (sim.players.some((p) => p.combo >= 3)) teach('combo', 'Combo building. Tap again within 1.6 seconds to keep it. A crossing resets it.');
@@ -1661,12 +1771,12 @@ function createSim(opts) {
         teach('shield', 'A shield is gone. Tap ' + CFG.rechargeStreak + ' times in a row with no crossing to win it back.');
       } else if (e.type === 'zap') {
         fx.push({ kind: 'ring', x: e.x, y: e.y, r: e.r, t: 0, life: 0.4, color: C.hinge });
-        fx.push({ kind: 'text', x: e.x, y: e.y, t: 0, life: 0.85, text: '+' + e.pts.toLocaleString(), pts: e.pts, color: C.hinge });
+        fx.push({ kind: 'text', x: e.x, y: e.y, t: 0, life: 0.85, text: '+' + e.pts.toLocaleString(), pts: e.pts, color: C.hinge, rot: faceAt(e.x, e.y) });
         blip(1200, 0.1, 'sine', 0.13);
       } else if (e.type === 'recharge' || e.type === 'cool') {
         const pos = sim.line();
         const text = e.type === 'recharge' ? 'SHIELD RESTORED' : 'METER CLEARED';
-        if (sim.versus) fx.push({ kind: 'text', x: e.owner === 0 ? W * 0.25 : W * 0.75, y: (sim.top + H) / 2, t: 0, life: 1.1, text });
+        if (sim.versus) { const c = halfCenter(e.owner); fx.push({ kind: 'text', x: c.x, y: c.y, t: 0, life: 1.1, text, rot: seatRad(e.owner) }); }
         else fx.push({ kind: 'text', x: sim.vertical ? pos : W / 2, y: sim.vertical ? (sim.top + H) / 2 : pos - 16, t: 0, life: 1.1, text });
         blip(520, 0.12, 'triangle', 0.14);
         blip(990, 0.26, 'triangle', 0.12);
@@ -1686,10 +1796,10 @@ function createSim(opts) {
 
   function drawHinge(now) {
     const pos = sim.line(), meter = Math.max(...sim.players.map((p) => p.meter)), col = meterColor(meter);
-    const start = sim.vertical ? sim.top : 0, end = sim.vertical ? H : W;
+    const start = sim.vertical ? sim.top : sim.left, end = sim.vertical ? sim.h : sim.w;
     ctx.fillStyle = 'rgba(0,0,0,.26)';
-    if (sim.vertical) ctx.fillRect(pos - 9, sim.top, 18, H - sim.top);
-    else ctx.fillRect(0, pos - 9, W, 18);
+    if (sim.vertical) ctx.fillRect(pos - 9, start, 18, end - start);
+    else ctx.fillRect(start, pos - 9, end - start, 18);
     snapFlare = Math.max(0, snapFlare - 1 / 30);
     const cooling = sim.players.every((p) => p.snapLeft > 0) ? 0.55 : 1;
     const steps = 40, amp = reduced ? 0 : 1 + hingePulse * 5 + meter * 0.45;
@@ -1805,6 +1915,20 @@ function createSim(opts) {
     }
   }
 
+  // Which way each bubble faces, kept beside the rules. A change of half starts a quick spin (an instant swap
+  // with reduced motion) from wherever it's pointing now; new pieces start out facing the right way.
+  const turns = new WeakMap(), FLIP_MS = 260;
+  function facing(b, x, y, now) {
+    const want = faceAt(x, y);
+    let f = turns.get(b);
+    if (!f) { f = { from: want, to: want, t0: -1e9 }; turns.set(b, f); }
+    const k = reduced ? 1 : Math.min(1, (now - f.t0) / FLIP_MS);
+    const ease = 1 - (1 - k) * (1 - k) * (1 - k);
+    let angle = f.from + (f.to - f.from) * ease;
+    if (want !== f.to) { f.from = angle; f.to = want; f.t0 = now; angle = f.from; return { angle, pop: 1 }; }
+    return { angle, pop: k < 1 ? 1 + 0.18 * Math.sin(Math.PI * k) : 1 };
+  }
+
   function draw(now, dt) {
     ctx.clearRect(0, 0, W, H);
     paintSky(now, dt);
@@ -1813,10 +1937,11 @@ function createSim(opts) {
     // A damped wobble instead of random jitter, so a hit reads as a shove and not as dropped frames.
     if (shake > 0 && !reduced) ctx.translate(Math.sin(now * 0.047) * 6 * shake, Math.cos(now * 0.059) * 6 * shake);
     if (sim.versus) {
+      const pos = sim.line(), aw = sim.w - sim.left, ah = sim.h - sim.top;
       ctx.fillStyle = 'rgba(79,216,255,.05)';
-      ctx.fillRect(0, sim.top, W / 2, H - sim.top);
+      if (sim.vertical) ctx.fillRect(sim.left, sim.top, pos - sim.left, ah); else ctx.fillRect(sim.left, sim.top, aw, pos - sim.top);
       ctx.fillStyle = 'rgba(255,178,122,.05)';
-      ctx.fillRect(W / 2, sim.top, W / 2, H - sim.top);
+      if (sim.vertical) ctx.fillRect(pos, sim.top, sim.w - pos, ah); else ctx.fillRect(sim.left, pos, aw, sim.h - pos);
     }
     drawHinge(now);
 
@@ -1827,27 +1952,31 @@ function createSim(opts) {
       const r = b.r * (0.55 + 0.45 * (1 - (1 - grow) * (1 - grow)));
       const q = reduced ? 0 : b.sq * 0.16;
       ctx.globalAlpha = b.grace > 0 ? 0.72 : 1;
+      const bx = b.px + (b.x - b.px) * alpha, by = b.py + (b.y - b.py) * alpha;
+      // In two players a bubble faces whoever's half it's in, and spins round as it crosses into the other one.
+      const turn = facing(b, bx, by, now);
+      ctx.save();
+      ctx.translate(bx, by);
+      if (q) { ctx.rotate(b.sqA); ctx.scale(1 - q, 1 + q); ctx.rotate(-b.sqA); }
+      if (turn.angle) ctx.rotate(turn.angle);
+      if (turn.pop !== 1) ctx.scale(turn.pop, turn.pop);
       if (bubbleArt) {
         const scale = Math.min(devicePixelRatio || 1, 2.5);
         const size = (b.r * 2) / SPRITE_BODY, sprite = bakedBubble(size * scale), d = ((size * r) / b.r);
-        ctx.save();
-        ctx.translate(b.px + (b.x - b.px) * alpha, b.py + (b.y - b.py) * alpha);
-        if (q) { ctx.rotate(b.sqA); ctx.scale(1 - q, 1 + q); ctx.rotate(-b.sqA); }
         ctx.drawImage(sprite, -d / 2, -d / 2, d, d);
-        ctx.restore();
-        ctx.globalAlpha = 1;
-        continue;
+      } else {
+        ctx.beginPath();
+        ctx.arc(0, 0, r, 0, Math.PI * 2);
+        ctx.fillStyle = BUBBLE[b.g];
+        ctx.fill();
+        const shine = ctx.createRadialGradient(-r * 0.36, -r * 0.4, r * 0.05, 0, 0, r);
+        shine.addColorStop(0, 'rgba(255,255,255,.62)');
+        shine.addColorStop(0.55, 'rgba(255,255,255,0)');
+        shine.addColorStop(1, 'rgba(13,17,23,.16)');
+        ctx.fillStyle = shine;
+        ctx.fill();
       }
-      ctx.beginPath();
-      ctx.ellipse(b.x, b.y, r * (1 - q), r * (1 + q), b.sqA, 0, Math.PI * 2);
-      ctx.fillStyle = BUBBLE[b.g];
-      ctx.fill();
-      const shine = ctx.createRadialGradient(b.x - r * 0.36, b.y - r * 0.4, r * 0.05, b.x, b.y, r);
-      shine.addColorStop(0, 'rgba(255,255,255,.62)');
-      shine.addColorStop(0.55, 'rgba(255,255,255,0)');
-      shine.addColorStop(1, 'rgba(13,17,23,.16)');
-      ctx.fillStyle = shine;
-      ctx.fill();
+      ctx.restore();
       ctx.globalAlpha = 1;
     }
 
@@ -1881,7 +2010,9 @@ function createSim(opts) {
         const grow = f.pts ? 1 + Math.min(1.1, f.pts / 2500) : 1;
         ctx.fillStyle = f.color || C.fg; ctx.font = (f.pts ? '600 ' : '500 ') + Math.round(unit * grow) + 'px ' + css.getPropertyValue('--body');
         ctx.textAlign = 'center';
-        ctx.fillText(f.text, f.x, f.y - p * 30);
+        // Words rise toward the top of whoever they belong to.
+        if (f.rot) { ctx.save(); ctx.translate(f.x, f.y); ctx.rotate(f.rot); ctx.fillText(f.text, 0, -p * 30); ctx.restore(); }
+        else ctx.fillText(f.text, f.x, f.y - p * 30);
       }
     }
     ctx.globalAlpha = 1;
@@ -1921,10 +2052,10 @@ function createSim(opts) {
   }
 
   function onResize() {
-    const top = measure();
-    if (!sim) return;
+    if (!sim) { measure(); return; }
+    const rect = arena(sim.versus);
     closeTip();
-    const turned = sim.resize(W, H, top);
+    const turned = sim.resize(rect.w, rect.h, rect.top, rect.left, rect.vertical);
     applyArena();
     sendGeometry();
     if (!looping) drawOnce();
