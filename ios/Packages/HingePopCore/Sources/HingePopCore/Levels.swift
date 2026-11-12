@@ -43,7 +43,9 @@ public enum Arena: String, CaseIterable, Sendable, Codable {
 public struct Spawn: Equatable, Sendable {
   public var kind: ActorKind
   public var size: Int
-  public init(_ kind: ActorKind, size: Int = 0) { self.kind = kind; self.size = size }
+  /// A crowned champion: it takes an extra hit (`Tuning.championArmor`) and moves a little faster.
+  public var champion = false
+  public init(_ kind: ActorKind, size: Int = 0, champion: Bool = false) { self.kind = kind; self.size = size; self.champion = champion }
 }
 
 public struct LevelSpec: Equatable, Sendable {
@@ -67,6 +69,8 @@ public struct LevelSpec: Equatable, Sendable {
   public var intensity = 1.0
   /// Wells: how many gravity wells the arena has (when it has the `wells` twist).
   public var wells = 2
+  /// Surge: how many small bubbles rush in as the level's last push, announced by `surgeWarning` (0 for none).
+  public var surge = 0
   public func has(_ t: Twist) -> Bool { twists.contains(t) }
   public var isBoss: Bool { bossPhases > 0 }
 }
@@ -81,6 +85,45 @@ public struct Chapter: Sendable, Equatable {
   public var variant = 0
   public var twists: [Twist] = []
   public var boss: BossStyle = .crown
+}
+
+/// Realm 1's pressure: the hand-built chapters, tuned to the same per-world bands as the rest (see AGENTS.md).
+enum HomePressure {
+  /// World 1, level by level: the first two are the tutorial, then it bites from level 3.
+  static let firstPaces: [Double] = [0.5, 0.55, 0.9, 0.9, 0.9, 0.84, 0.86, 0.9, 0.9, 0.92]
+  static let firstSurges = [0, 0, 5, 5, 5, 4, 4, 5, 5]
+  static let pace = 0.72, paceChapter = 0.02, paceStep = 0.01
+  /// Each chapter's own nudge: gates make Overload Protocol forgiving, frozen crowds make Frost Fair heavy.
+  static let chapterPace = [0, 0.02, 0, 0.09, 0, -0.06, -0.03, 0.02]
+  /// Surge from a chapter's third level (from the sixth in the first), champions from its seventh.
+  /// Magma Run, the realm's last world, starts with a bigger surge and no crowns: its fast bubbles are enough.
+  static func surge(chapter: Int, step k: Int) -> Int {
+    chapter == 0 ? firstSurges[min(8, k - 1)] : k < 3 ? (chapter == 7 || chapter == 1 ? 4 : 2) : 2 + (k - 3) / 2 + (chapter == 7 && k < 7 ? 3 : 0)
+  }
+  static func champions(chapter: Int, step k: Int) -> Int { chapter == 0 || chapter == 7 || k < 7 ? 0 : 1 }
+}
+
+/// The pressure curve in one place: how hard each part of a world pushes. `hp-balance` measures it.
+struct Pressure {
+  var pace: Double, paceTier: Double, paceStep: Double, paceFinale: Double, paceCap: Double, bossPaceCap: Double
+  var base: Double, baseTier: Double, finale: Double
+  /// Work added at each of a world's first nine levels: gentle opener, a spike at 5, the hardest at 9.
+  var ramp: [Double]
+  var bossShortMeterTier: Double
+
+  /// Champions arrive in a world's back half, more of them later in the game.
+  func champions(_ k: Int, _ tier: Double, _ finale: Bool) -> Int {
+    k < 6 ? 0 : (k >= 9 ? 2 : 1) - (k == 9 && (finale || tier >= 0.5) ? 1 : 0)
+  }
+  /// The level a world's meter shortens to three from.
+  func shortMeterFrom(_ tier: Double, _ finale: Bool) -> Int { 11 }
+  /// Surge: how many small bubbles rush in as the last push.
+  func surge(_ k: Int, _ tier: Double, _ finale: Bool) -> Int {
+    k < 3 ? 0 : 2 + (k - 3) / 2 + (tier >= 0.6 && k < 9 ? 1 : 0) + (finale && k < 7 ? 2 : 0)
+  }
+
+  static let world = Pressure(pace: 0.78, paceTier: 0.02, paceStep: 0.012, paceFinale: 0.07, paceCap: 0.96, bossPaceCap: 0.9,
+                              base: 40, baseTier: 2, finale: 15, ramp: [3, 4, 6, 6, 10, 6, 6, 6, 6], bossShortMeterTier: 2)
 }
 
 public enum Campaign {
@@ -102,7 +145,7 @@ public enum Campaign {
   public static func work(of spawns: [Spawn]) -> Int {
     spawns.reduce(0) { total, s in
       if s.kind == .boss { return total + 16 }
-      return total + work[s.size] + (s.kind == .armored ? 1 : 0)
+      return total + work[s.size] + (s.kind == .armored ? 1 : 0) + (s.champion ? 1 : 0)
     }
   }
 
@@ -119,13 +162,18 @@ public enum Campaign {
   }
 
   /// The first chapter, by hand: one big, then one big and one small, then one big and one medium, and on up.
-  private static let firstChapter: [[Int]] = [[0], [0, 2], [0, 1], [0, 1, 2], [0, 0], [0, 0, 2], [0, 0, 1], [0, 0, 1, 2], [0, 0, 1, 1, 2]]
+  /// The first two are the tutorial; from the third there's always more than one thing to watch.
+  private static let firstChapter: [[Int]] = [[0], [0, 2], [0, 1, 2], [0, 1, 1, 2], [0, 0, 2], [0, 0, 2, 2], [0, 0, 1, 2], [0, 0, 1, 1], [0, 0, 1, 1, 2, 2]]
 
   /// The budget climbs slowly inside a chapter, and eases back at each new one so its new bubble gets room.
   private static func budget(chapter: Int, step k: Int) -> Int { min(chapter >= 5 ? 84 : 76, 24 + chapter * 7 + (k - 1) * 3 - (chapter >= 5 ? 10 : 0)) }
 
-  /// Speed barely moves for a long time. Later levels ask for more swiping before they ask for faster hands.
-  private static func speed(chapter: Int, step k: Int) -> Double { min(1, 0.5 + 0.06 * Double(chapter) + 0.014 * Double(k - 1)) }
+  /// The first two levels are the tutorial and stay slow. From the third the pace starts to bite, and every chapter
+  /// opens a notch faster than the last.
+  private static func speed(chapter: Int, step k: Int) -> Double {
+    if chapter == 0 { return HomePressure.firstPaces[min(9, k - 1)] }
+    return min(0.93, HomePressure.pace + HomePressure.chapterPace[min(7, chapter)] + HomePressure.paceChapter * Double(chapter) + HomePressure.paceStep * Double(k - 1))
+  }
 
   /// Swaps some of a level's bubbles for special kinds. Fast and golden come in small, since they move quickly.
   private static func dressed(_ sizes: [Int], with kinds: [ActorKind]) -> [Spawn] {
@@ -143,16 +191,17 @@ public enum Campaign {
     if n > finalAuthored { return generated(n, chapter: ch) }
     if ch.number > 8 { return worldLevel(n, chapter: ch, step: k) }
     let index = ch.number - 1
-    let pace = index == 7 ? min(0.94, speed(chapter: index, step: k)) : speed(chapter: index, step: k)
+    let pace = index == 7 ? min(0.92, speed(chapter: index, step: k)) : speed(chapter: index, step: k)
     if k == 10 {
       // Every chapter ends on a boss, with more phases and more company as the game goes on.
       var spawns = [Spawn(.boss)]
-      if index >= 1 { spawns.append(Spawn(.fast, size: 2)) }
-      if index >= 3 { spawns.append(Spawn(.armored, size: 1)) }
+      if index <= 2 { spawns.append(Spawn(.basic, size: 1)) }
+      spawns.append(Spawn(.fast, size: 2))
+      if index >= 2 { spawns.append(Spawn(.armored, size: 1)) }
       if index == 5 { spawns.append(Spawn(.frozen, size: 1)) }
       if index == 6 { spawns.append(Spawn(.magnetic, size: 1)) }
       if index >= 7 { spawns.append(Spawn(.fast, size: 2)) }
-      var boss = LevelSpec(number: n, chapter: ch.number, spawns: spawns, speed: pace, meterMax: 4, gates: 0, bossPhases: index >= 7 ? 4 : 3, arena: ch.arena)
+      var boss = LevelSpec(number: n, chapter: ch.number, spawns: spawns, speed: min(0.9, pace), meterMax: 4, gates: 0, bossPhases: index >= 7 ? 4 : 3, arena: ch.arena)
       if index == 6 { boss.current = 50 }
       return boss
     }
@@ -161,20 +210,22 @@ public enum Campaign {
       var kinds: [ActorKind] = []
       if k >= 6 { kinds = Array(repeating: .basic, count: sizes.count - 1) + [.fast] }
       if k >= 8 { kinds[2] = .golden }
-      return LevelSpec(number: n, chapter: 1, spawns: dressed(sizes, with: kinds), speed: pace, meterMax: 4, gates: 0, bossPhases: 0, arena: ch.arena)
+      var first = LevelSpec(number: n, chapter: 1, spawns: dressed(sizes, with: kinds), speed: pace, meterMax: 4, gates: 0, bossPhases: 0, arena: ch.arena)
+      first.surge = HomePressure.surge(chapter: 0, step: k)
+      return first
     }
     // Magma's fast bubbles do the work extra bubbles would, so it brings a few less.
-    let sizes = Campaign.sizes(forWork: index == 7 ? min(58, budget(chapter: index, step: k) - 12) : budget(chapter: index, step: k))
+    // Frost Fair's short meter at its end leaves room for fewer bubbles.
+    let sizes = Campaign.sizes(forWork: index == 7 ? min(54, budget(chapter: index, step: k) - 14) : budget(chapter: index, step: k) - (index == 5 && k == 9 ? 18 : 0))
     var kinds: [ActorKind]
     var meter = 4, gates = 0
     switch index {
     case 1:
       kinds = k <= 2 ? [.armored] : k <= 4 ? [.armored, .basic, .frozen] : [.armored, .frozen, .armored]
-      if k >= 8 { meter = 3 }
     case 2:
       kinds = k <= 2 ? [.magnetic] : k <= 4 ? [.repel] : k <= 7 ? [.magnetic, .repel] : [.magnetic, .repel, .golden]
     case 3:
-      gates = k >= 6 ? 2 : 1
+      gates = k >= 8 ? 2 : 1
       let pool: [ActorKind] = [.armored, .fast, .magnetic, .repel, .frozen, .golden]
       kinds = (0..<min(sizes.count, 2 + k / 3)).map { pool[($0 + k) % pool.count] }
     case 4:
@@ -195,15 +246,15 @@ public enum Campaign {
       let pool: [ActorKind] = [.fast, .golden, .basic, .armored, .fast, .basic]
       kinds = (0..<min(sizes.count, 2 + k / 3)).map { pool[($0 + k) % pool.count] }
     }
-    // Chapters three to five run a shorter meter in their back half. The later worlds set their own.
-    if (2...4).contains(index) && k >= 6 { meter = 3 }
     var spawns = dressed(sizes, with: kinds)
     var phases = 0
     if (index == 4 || index == 7) && k == 5 {
       spawns = [Spawn(.boss), Spawn(.fast, size: 2), Spawn(.fast, size: 2)]
       phases = 3
     }
+    if phases == 0 { crown(&spawns, count: HomePressure.champions(chapter: index, step: k)) }
     var spec = LevelSpec(number: n, chapter: ch.number, spawns: spawns, speed: pace, meterMax: meter, gates: gates, bossPhases: phases, arena: ch.arena)
+    if phases == 0 { spec.surge = HomePressure.surge(chapter: index, step: k) }
     if index == 6 { spec.current = 30 + 4 * Double(k); spec.twists = [.current] }
     return spec
   }
@@ -216,7 +267,7 @@ public enum Campaign {
     case .wind: (0.92, [.frozen, .fast, .armored, .golden])
     case .tide: (0.9, [.armored, .basic, .fast, .golden])
     case .fog: (0.92, [.fast, .golden, .armored, .basic])
-    case .ghost: (1.04, [.armored, .fast, .golden, .basic])
+    case .ghost: (1.1, [.armored, .fast, .golden, .basic])
     case .wells: (0.97, [.golden, .magnetic, .fast, .frozen])
     case .portals: (0.95, [.fast, .golden, .repel, .armored])
     case .bounce: (0.9, [.frozen, .armored, .golden, .fast])
@@ -241,29 +292,31 @@ public enum Campaign {
     let tier = Double(world.realm - 2) / 8                  // 0 in Sugar Rush, 1 in Clockwork Sky
     let finale = slot == 7
     let twists = world.twists
-    let spike = k == 5
+    let p = Pressure.world
     // How hard the twist pushes: gentle while it's new, full from the third level, a notch more at the spike.
-    let intensity = min(1.3, [0.55, 0.75, 0.9, 1, 1.12, 1, 1.03, 1.06, 1.1][min(8, k - 1)] + 0.08 * tier + (finale ? 0.06 : 0))
-    let pace = min(0.92, 0.7 + 0.1 * tier + 0.006 * Double(slot) + 0.01 * Double(k - 1) + (finale ? 0.03 : 0))
+    let intensity = min(1.3, [0.6, 0.8, 0.95, 1, 1.12, 1.02, 1.05, 1.08, 1.14][min(8, k - 1)] + 0.06 * tier + (finale ? 0.06 : 0))
+    // A realm's last world starts fast and climbs less, so its end is a test, not a wall.
+    let pace = min(p.paceCap, p.pace + p.paceTier * tier + 0.004 * Double(slot) + (finale ? p.paceStep / 2 : p.paceStep) * Double(k - 1) + (finale ? p.paceFinale : 0))
     var spec: LevelSpec
     if k == 10 {
       var spawns = [Spawn(.boss), Spawn(.fast, size: 2)]
-      if tier > 0.25 || finale { spawns.append(Spawn(recipe(for: twists[0]).kinds[0] == .golden ? .armored : recipe(for: twists[0]).kinds[0], size: 1)) }
-      if tier > 0.6 { spawns.append(Spawn(.fast, size: 2)) }
-      spec = LevelSpec(number: n, chapter: ch.number, spawns: spawns, speed: min(0.86, pace), meterMax: 4, gates: 0, bossPhases: finale ? 4 : 3, arena: ch.arena)
-      spec.intensity = min(1, intensity)
+      let kind = recipe(for: twists[0]).kinds[0] == .golden ? .armored : recipe(for: twists[0]).kinds[0]
+      // A finale's boss already runs four phases under two twists, so it brings speed, not weight.
+      if !finale { spawns.append(Spawn(kind, size: 1)) }
+      if tier > 0.6 || finale { spawns.append(Spawn(.fast, size: 2)) }
+      spec = LevelSpec(number: n, chapter: ch.number, spawns: spawns, speed: min(p.bossPaceCap - (finale ? 0.06 : 0), pace), meterMax: tier >= p.bossShortMeterTier ? 3 : 4, gates: 0, bossPhases: finale ? 4 : 3, arena: ch.arena)
+      spec.intensity = min(1.05, intensity)
     } else {
-      let load = twists.map { recipe(for: $0).load }.reduce(1, *) * (twists.count > 1 ? 1.08 : 1)
-      let ramp = [-12, -8, 0, 3, 9, 3, 5, 7, 9][k - 1]
-      let raw = 36 + 9 * tier + 0.6 * Double(slot) + (finale ? 20 - 6 * tier : 0) + Double(ramp)
-      let budget = max(14, min(86, Int((raw * load).rounded())))
+      let load = twists.map { recipe(for: $0).load }.reduce(1, *) * (twists.count > 1 ? 1.06 : 1)
+      let raw = p.base + p.baseTier * tier + 0.6 * Double(slot) + (finale ? p.finale + 5 - 6 * tier : 0) + p.ramp[k - 1] * (finale ? 0.6 : 1)
+      let budget = max(14, min(90, Int((raw * load).rounded())))
       let table = twists.contains(.triple) ? tripleWork : work
       var sizes = Campaign.sizes(forWork: budget, table: table)
       // A big bubble left alone costs all three shields, so every level keeps at least one: none can be won by watching.
       if !sizes.contains(0) { sizes[0] = 0 }
       // Teach with plain bubbles, then bring in the twist's own kinds one at a time, then mix.
       let pool = recipe(for: twists[0]).kinds + (twists.count > 1 ? recipe(for: twists[1]).kinds : [])
-      let specials = k <= 1 ? 0 : k <= 3 ? 1 : k <= 6 ? 2 : min(sizes.count, 2 + (k - 5) + Int(tier * 2))
+      let specials = k <= 1 ? 0 : k <= 3 ? 1 : k <= 6 ? 2 : min(sizes.count, 2 + (k - 5) + Int(tier * 1.5))
       let kinds: [ActorKind] = (0..<min(specials, sizes.count)).map { i in
         k <= 4 ? pool[i % 2] : pool[(i + rng.int(pool.count)) % pool.count]
       }
@@ -276,10 +329,12 @@ public enum Campaign {
         if (kind == .fast || kind == .golden) && sizes[at] == 0 { continue }
         spawns[at] = Spawn(kind, size: sizes[at])
       }
+      crown(&spawns, count: p.champions(k, tier, finale))
       spec = LevelSpec(number: n, chapter: ch.number, spawns: spawns, speed: pace, meterMax: 4, gates: 0, bossPhases: 0, arena: ch.arena)
       spec.intensity = intensity
-      if finale && k >= 5 { spec.meterMax = 3 }
-      if k >= 7, !twists.contains(.portals), rng.int(4) == 0 { spec.gates = 1 }
+      if k >= p.shortMeterFrom(tier, finale) { spec.meterMax = 3 }
+      if k >= 7, !twists.contains(.portals), rng.int(5) == 0 { spec.gates = 1 }
+      spec.surge = p.surge(k, tier, finale)
     }
     spec.twists = twists
     spec.boss = world.boss
@@ -287,6 +342,17 @@ public enum Campaign {
     spec.wells = k <= 2 ? 1 : (k >= 7 || finale) && tier >= 0.3 ? 3 : 2
     if twists.contains(.current) { spec.current = 26 + 3 * Double(k) + 10 * tier }
     return spec
+  }
+
+  /// Crowns the first champions on medium bubbles (then smalls), never on a big one: a champion takes an extra hit,
+  /// and a big one is already fifteen.
+  static func crown(_ spawns: inout [Spawn], count: Int) {
+    var left = count
+    for size in [1, 2] {
+      for i in spawns.indices where left > 0 && spawns[i].size == size && spawns[i].kind != .boss && !spawns[i].champion {
+        spawns[i].champion = true; left -= 1
+      }
+    }
   }
 
   /// Procedural levels: the same number always gives the same level.

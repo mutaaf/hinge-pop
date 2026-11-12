@@ -333,11 +333,8 @@ public enum Par {
     return total
   }
 
-  /// Hits per boss phase, the same formula as `Game.bossHitsPerPhase`.
-  static func bossHits(_ spec: LevelSpec, tuning: Tuning) -> Int {
-    let hits = max(1, min(tuning.bossHitsPerPhase + 3, tuning.bossHitsPerPhase - 1 + max(1, spec.chapter)))
-    return spec.boss == .twins ? max(1, hits * 2 / 3) : hits
-  }
+  /// Hits per boss phase: the game's own formula.
+  static func bossHits(_ spec: LevelSpec, tuning: Tuning) -> Int { Game.bossHitsPerPhase(spec, tuning: tuning) }
 
   /// The combo a great run holds on average. Boss hits keep the combo near its top and staggers pay double;
   /// triple splits make many tinies the line takes for free; on the beat pays double.
@@ -347,9 +344,12 @@ public enum Par {
     return spec.has(.pulse) ? 6.9 : 5.75
   }
 
-  /// The score an S needs: every piece tapped at a great run's combo, with the no-crossing bonus.
+  /// How much more a great run scores by catching fevers (a full combo multiplies points for a while).
+  public static let feverShare = 1.45
+
+  /// The score an S needs: every piece tapped at a great run's combo, fevers caught, with the no-crossing bonus.
   public static func score(_ spec: LevelSpec, tuning: Tuning = Tuning()) -> Int {
-    Int((base(spec, tuning: tuning) * multiplier(spec) * tuning.cleanBonus / 100).rounded()) * 100
+    Int((base(spec, tuning: tuning) * multiplier(spec) * feverShare * tuning.cleanBonus / 100).rounded()) * 100
   }
 
   public static func grade(score: Int, par: Int) -> Grade {

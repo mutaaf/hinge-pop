@@ -18,10 +18,13 @@ final class GameTests: XCTestCase {
   // MARK: Levels
 
   func testLevelsRampTheWayTheUserAsked() {
-    // Just a big one, then one big and one small, then one big and one medium.
+    // Just a big one, then one big and one small: the tutorial. From the third there's more to watch, and a surge.
     XCTAssertEqual(Campaign.level(1).spawns.map(\.size), [0])
     XCTAssertEqual(Campaign.level(2).spawns.map(\.size), [0, 2])
-    XCTAssertEqual(Campaign.level(3).spawns.map(\.size), [0, 1])
+    XCTAssertEqual(Campaign.level(3).spawns.map(\.size), [0, 1, 2])
+    XCTAssertEqual(Campaign.level(1).surge + Campaign.level(2).surge, 0, "the tutorial has no surge")
+    for n in 3...9 { XCTAssertGreaterThan(Campaign.level(n).surge, 0, "level \(n) bites") }
+    XCTAssertLessThan(Campaign.level(2).speed, Campaign.level(3).speed)
     XCTAssertEqual(Campaign.level(1).spawns.first?.kind, .basic)
     XCTAssertEqual(Game(mode: .campaign(1), width: 390, height: 760, top: 70).bubbles.count, 1)
     XCTAssertLessThan(Campaign.level(1).speed, Campaign.level(9).speed)

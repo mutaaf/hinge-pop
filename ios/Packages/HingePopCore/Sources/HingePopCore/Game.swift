@@ -49,7 +49,10 @@ public final class Bubble: Identifiable {
   public internal(set) var shrink = 1.0
   /// Shielded boss: the way its shield faces, in radians (arena coordinates, y down).
   public internal(set) var shieldAngle = 0.0
+  /// A crowned champion: its extra hits sit in `armor`, and it cruises a little faster.
+  public internal(set) var champion = false
   var blinked = false
+  var shedClock = 0.0
   init(id: Int, kind: ActorKind, size: Int, x: Double, y: Double, vx: Double, vy: Double, r: Double, grace: Double) {
     self.id = id; self.kind = kind; self.size = size; self.x = x; self.y = y; self.vx = vx; self.vy = vy; self.r = r; self.grace = grace; side = 0; prevX = x; prevY = y
   }
@@ -122,6 +125,9 @@ public struct Player: Sendable {
   public var snapLeft = 0.0
   public var crossfolds = 0
   public var claps = 0
+  /// Fever: seconds left (0 when none), and how many this level.
+  public var fever = 0.0
+  public var fevers = 0
 }
 
 public enum GameEvent: Equatable, Sendable {
@@ -166,6 +172,16 @@ public enum GameEvent: Equatable, Sendable {
   case bossSummon(x: Double, y: Double, r: Double, count: Int)
   case bossSplit(x: Double, y: Double, r: Double)
   case bossShielded(x: Double, y: Double, r: Double)
+  /// Pressure. Overtime: the level ran past par and everything sped up a step (1, 2, ...). Fever: a full combo
+  /// started (or ended) a fever. A champion's crown cracked (`armorLeft` hits to go before it pops like the rest).
+  /// A surge is announced, then lands. A boss in its last phase shed a small piece.
+  case overtime(step: Int)
+  case feverStart(player: Int)
+  case feverEnd(player: Int)
+  case championCrack(x: Double, y: Double, r: Double, points: Int, armorLeft: Int)
+  case surgeWarning(count: Int)
+  case surge(count: Int)
+  case bossShed(x: Double, y: Double, r: Double)
   case shieldLost(player: Int)
   case recharge(player: Int)
   case cooled(player: Int)
@@ -223,7 +239,22 @@ public final class Game {
   /// Bubbles still waiting to come in, and how long since the last one did.
   private var arrivals: [Spawn] = []
   private var arrivalClock = 0.0
-  public var bubblesToCome: Int { arrivals.count }
+  public var bubblesToCome: Int { arrivals.count + (surgeDone ? 0 : spec.surge) }
+  /// Surge: seconds until an announced surge lands (0 when none is on its way).
+  public private(set) var surgeIn = 0.0
+  private var surgeDone = false
+  /// Overtime: seconds into play when it starts (the level's par; beat it for three stars), how many steps
+  /// it has taken, and how much faster everything moves for it (1 before it starts).
+  public private(set) var overtimeAt = Double.infinity
+  public private(set) var overtime = 0
+  public var overtimeSpeed: Double { 1 + tuning.overtimeGain * Double(overtime) }
+  /// Seconds until overtime starts or takes its next step (0 once it has taken them all, or never runs).
+  public var overtimeIn: Double {
+    guard overtimeAt.isFinite, overtime < tuning.overtimeSteps else { return 0 }
+    return max(0, overtimeAt + Double(overtime) * tuning.overtimeEvery - time)
+  }
+  /// Fever for the solo player (see `Player.fever`).
+  public var feverLeft: Double { players[0].fever }
   private var cameoClock = 0.0
   /// Holds guests where they are, for automated touch tests.
   public var visitorsHeld = false
@@ -293,6 +324,7 @@ public final class Game {
     cameoClock = tuning.cameoFirst + cameoRng.unit() * 4
     cameoTurn = spec.number
     spawnLevel()
+    overtimeAt = par()
     for i in 0..<spec.gates {
       let span = alongSpan
       gates.append(Gate(at: span.lowerBound + (span.upperBound - span.lowerBound) * (Double(i) + 0.5) / Double(spec.gates), width: tuning.gateWidth * scale, dir: i % 2 == 0 ? 1 : -1))
@@ -324,11 +356,38 @@ public final class Game {
   private func mass(_ b: Bubble) -> Double {
     b.kind == .boss ? tuning.bossMass : tuning.mass[b.size] * b.kind.massFactor
   }
-  private func cruise(_ b: Bubble) -> Double {
-    guard b.kind == .boss else { return tuning.speeds[b.size] * scale * spec.speed * b.kind.speedFactor * (onRush(b) ? tuning.rushSpeed : 1) * b.spring * surge }
+  /// How fast a bubble wants to move right now (internal so tests can read it).
+  func cruise(_ b: Bubble) -> Double {
+    let pressure = overtimeSpeed * (players[playerIndex(of: b)].fever > 0 ? tuning.feverSlow : 1)
+    guard b.kind == .boss else { return tuning.speeds[b.size] * scale * spec.speed * b.kind.speedFactor * (onRush(b) ? tuning.rushSpeed : 1) * b.spring * surge * pressure * (b.champion ? tuning.championSpeed : 1) }
     let phaseBoost = 1 + tuning.bossPhaseSpeed * Double(b.bossPhase)
     let state = b.bossWindup > 0 ? 0.15 : b.bossDashing ? tuning.bossDashSpeed : 1
-    return tuning.speeds[b.size] * scale * spec.speed * b.kind.speedFactor * phaseBoost * state
+    return tuning.speeds[b.size] * scale * spec.speed * b.kind.speedFactor * phaseBoost * state * pressure
+  }
+
+  /// The level's par: about how long a steady player takes. Overtime starts there. Endless and practice modes have none.
+  private func par() -> Double {
+    switch mode {
+    case .campaign, .daily: break
+    default: return .infinity
+    }
+    let plain = spec.spawns.filter { $0.kind != .boss }
+    let work = Double(Campaign.work(of: plain) + spec.surge * Campaign.work[2])
+    let hits = spec.isBoss ? Double(bossHitsPerPhase * max(1, spec.bossPhases)) : 0
+    return tuning.overtimeBase + tuning.overtimePerWork * work + tuning.overtimePerHit * hits
+  }
+
+  /// Puts a level's bubble in, crowned when it's a champion.
+  @discardableResult
+  private func place(_ s: Spawn, u: Double, v: Double, degrees: Double) -> Bubble {
+    let b = put(s.kind, size: s.size, u: u, v: v, degrees: degrees)
+    if s.champion && s.kind != .boss {
+      b.champion = true
+      b.armor += tuning.championArmor
+      let sp = hypot(b.vx, b.vy), target = cruise(b)
+      if sp > 0 { b.vx *= target / sp; b.vy *= target / sp }
+    }
+    return b
   }
 
   // MARK: Building
@@ -387,7 +446,7 @@ public final class Game {
       let stagger = row % 2 == 0 ? 0.0 : 0.09
       let v = inNear ? 0.2 + stagger : 0.8 - stagger
       let deg = inNear ? (row % 2 == 1 ? 145.0 : 35.0) : (row % 2 == 1 ? 40.0 : 140.0)
-      put(s.kind, size: s.size, u: u, v: v, degrees: deg)
+      place(s, u: u, v: v, degrees: deg)
     }
     // Twin bosses: two smaller ones, one on each side, sharing one health bar and taking turns to wind up.
     if spec.boss == .twins, spec.isBoss, let first = bubbles.first(where: { $0.kind == .boss }) {
@@ -416,12 +475,41 @@ public final class Game {
     arrivalClock = 0
     let s = arrivals.removeFirst()
     let near = rng.int(2) == 0
-    let b = put(s.kind, size: s.size, u: 0.15 + rng.unit() * 0.7, v: near ? 0.12 : 0.88, degrees: 25 + rng.unit() * 130)
+    let b = place(s, u: 0.15 + rng.unit() * 0.7, v: near ? 0.12 : 0.88, degrees: 25 + rng.unit() * 130)
     b.grace = tuning.graceHinge
+  }
+
+  /// Surge: once the last arrival is in and the arena is thinning, the level's last push is announced, then lands.
+  private func stepSurge(_ real: Double) {
+    guard spec.surge > 0, !surgeDone, arrivals.isEmpty else { return }
+    if surgeIn > 0 {
+      surgeIn -= real
+      if surgeIn <= 0 { launchSurge() }
+      return
+    }
+    let onScreen = bubbles.reduce(0) { $0 + ($1.kind == .boss ? 16 : Campaign.work[$1.size]) }
+    guard onScreen <= tuning.arrivalWork else { return }
+    surgeIn = tuning.surgeWarn
+    events.append(.surgeWarning(count: spec.surge))
+  }
+
+  /// Small bubbles rush in from both walls at once. Never a big one, so two bigs stay the most at a time.
+  private func launchSurge() {
+    guard !surgeDone else { return }
+    surgeDone = true
+    surgeIn = 0
+    for i in 0..<spec.surge {
+      let u = (Double(i / 2) + 0.5) / Double((spec.surge + 1) / 2)
+      let near = i % 2 == 0
+      let b = put(.basic, size: 2, u: 0.1 + 0.8 * u, v: near ? 0.06 : 0.94, degrees: near ? 40 + 100 * u : 140 - 100 * u)
+      b.grace = tuning.graceHinge
+    }
+    events.append(.surge(count: spec.surge))
   }
 
   public func clearScene() {
     bubbles.removeAll(); pickups.removeAll(); gates.removeAll(); visitors.removeAll(); events.removeAll(); arrivals.removeAll(); ready = 0
+    surgeDone = true; surgeIn = 0; overtimeAt = .infinity
   }
   public func addPickup(_ kind: PowerUp, x: Double, y: Double) {
     pickups.append(Pickup(id: nextId, kind: kind, x: x, y: y, life: tuning.pickupLife)); nextId += 1
@@ -476,13 +564,31 @@ public final class Game {
     if b.kind == .golden { value *= Double(tuning.goldenMultiplier) }
     if p.overcharge > 0 { value *= 2 }
     if onRush(b) { value *= tuning.rushPoints }
+    if p.fever > 0 { value *= tuning.feverPoints }
     return Int(value.rounded())
   }
 
-  private func bumpCombo(_ p: inout Player) {
-    p.combo = min(tuning.comboMax, p.combo + tuning.comboStep)
-    p.bestCombo = max(p.bestCombo, p.combo)
-    p.comboT = tuning.comboWindow
+  private func bumpCombo(_ owner: Int, by step: Double? = nil) {
+    players[owner].combo = min(tuning.comboMax, players[owner].combo + (step ?? tuning.comboStep))
+    players[owner].bestCombo = max(players[owner].bestCombo, players[owner].combo)
+    players[owner].comboT = max(players[owner].comboT, tuning.comboWindow)
+    checkFever(owner)
+  }
+
+  /// A combo filled to the top starts a fever. Practice never does.
+  private func checkFever(_ owner: Int) {
+    guard mode != .sandbox, players[owner].fever <= 0, players[owner].combo >= tuning.comboMax else { return }
+    players[owner].fever = tuning.feverTime
+    players[owner].fevers += 1
+    events.append(.feverStart(player: owner))
+  }
+
+  /// The fever burns out (or a crossing puts it out). The combo is spent.
+  private func endFever(_ owner: Int) {
+    guard players[owner].fever > 0 else { return }
+    players[owner].fever = 0
+    players[owner].combo = 1; players[owner].comboT = 0
+    events.append(.feverEnd(player: owner))
   }
 
   /// On a fold, a pop on the other page from the last one, inside the combo window, adds a crossfold step.
@@ -491,8 +597,7 @@ public final class Game {
     let page = b.side
     defer { lastPage[owner] = page }
     guard !fresh, lastPage[owner] != 0, page != lastPage[owner] else { return }
-    players[owner].combo = min(tuning.comboMax, players[owner].combo + tuning.crossfoldStep)
-    players[owner].bestCombo = max(players[owner].bestCombo, players[owner].combo)
+    bumpCombo(owner, by: tuning.crossfoldStep)
     players[owner].crossfolds += 1
     events.append(.crossfold(x: b.x, y: b.y, combo: players[owner].combo))
   }
@@ -542,13 +647,15 @@ public final class Game {
       return true
     }
     if b.armor > 0 {
-      b.armor = 0
-      let pts = Int(Double(tuning.armorPoints) * players[owner].combo)
+      b.armor -= 1
+      let pts = Int(Double(tuning.armorPoints) * players[owner].combo * (b.champion ? 2 : 1))
       players[owner].score += pts
-      bumpCombo(&players[owner])
+      bumpCombo(owner)
       impact(b, 0, cruise(b))
       advanceStreak(owner)
-      events.append(.armorCrack(x: b.x, y: b.y, r: b.r, points: pts))
+      events.append(b.champion
+        ? .championCrack(x: b.x, y: b.y, r: b.r, points: pts, armorLeft: b.armor)
+        : .armorCrack(x: b.x, y: b.y, r: b.r, points: pts))
       return true
     }
     revealSecret(b)
@@ -558,8 +665,8 @@ public final class Game {
     if beatHit { pts *= 2 }
     players[owner].score += pts
     let fresh = players[owner].comboT <= 0
-    bumpCombo(&players[owner])
-    if beatHit { bumpCombo(&players[owner]); events.append(.beatPop(x: b.x, y: b.y, points: pts)) }
+    bumpCombo(owner)
+    if beatHit { bumpCombo(owner); events.append(.beatPop(x: b.x, y: b.y, points: pts)) }
     crossfold(b, owner: owner, fresh: fresh)
     advanceStreak(owner)
     remove(b)
@@ -661,11 +768,19 @@ public final class Game {
   }
 
   /// Bosses get tougher chapter by chapter.
-  public var bossHitsPerPhase: Int {
-    let hits = max(1, min(tuning.bossHitsPerPhase + 3, tuning.bossHitsPerPhase - 1 + max(1, spec.chapter)))
+  public var bossHitsPerPhase: Int { Game.bossHitsPerPhase(spec, tuning: tuning) }
+
+  /// The one formula for a boss's hits per phase (grades' par reads it too).
+  public static func bossHitsPerPhase(_ spec: LevelSpec, tuning: Tuning) -> Int {
+    // The first chapters add a hit each; after that every third realm adds one more.
+    let realm = (max(1, spec.chapter) - 1) / 8
+    var hits = max(1, tuning.bossHitsPerPhase - 1 + min(4, max(1, spec.chapter)) + realm / 3)
+    // A four-phase finale is long enough already, so each of its phases is a little shorter.
+    if spec.bossPhases >= 4 { hits = hits * 3 / 4 }
     // Twins share one bar, and you can hit one while the other guards, so their bar is a little shorter.
     return spec.boss == .twins ? max(1, hits * 2 / 3) : hits
   }
+
 
   private func hitBoss(_ b: Bubble, by owner: Int) {
     let staggered = b.bossWindup > 0
@@ -673,7 +788,7 @@ public final class Game {
     let damage = staggered ? 2 : 1
     let pts = Int(Double(tuning.points[1]) * players[owner].combo) * (players[owner].overcharge > 0 ? 2 : 1) * damage
     players[owner].score += pts
-    bumpCombo(&players[owner])
+    bumpCombo(owner)
     b.bossHits += damage
     b.bossGuard = tuning.bossGuard
     impact(b, 0, cruise(b) * 2)
@@ -832,6 +947,7 @@ public final class Game {
   private func cross(_ b: Bubble, to newSide: Int) {
     let owner = playerIndex(of: b)
     players[owner].crossings += 1
+    endFever(owner)
     players[owner].combo = 1; players[owner].comboT = 0
     players[owner].streak = 0
     remove(b)
@@ -872,6 +988,10 @@ public final class Game {
   private func checkEnd() {
     guard status == .playing, bubbles.isEmpty else { return }
     if !arrivals.isEmpty { bringNext(); return }
+    if spec.surge > 0, !surgeDone, mode != .sandbox {
+      if surgeIn <= 0 { events.append(.surgeWarning(count: spec.surge)) }
+      launchSurge(); return
+    }
     switch mode {
     case .sandbox: return
     case .arcade: spawnWave(); return
@@ -910,8 +1030,13 @@ public final class Game {
     if freeze > 0 { freeze = max(0, freeze - real) }
     let dt = freeze > 0 ? real * tuning.freezeScale : real
 
+    stepOvertime()
     for i in players.indices {
-      if players[i].comboT > 0 {
+      if players[i].fever > 0 {
+        // A fever holds the combo, then spends it.
+        players[i].comboT = max(players[i].comboT, tuning.comboWindow)
+        if players[i].fever <= real { endFever(i) } else { players[i].fever -= real }
+      } else if players[i].comboT > 0 {
         players[i].comboT -= real
         if players[i].comboT <= 0 { players[i].combo = 1 }
       }
@@ -926,6 +1051,7 @@ public final class Game {
     stepPickups(real)
     stepVisitors(real)
     stepArrivals(real)
+    stepSurge(real)
     stepGates(dt)
     stepBosses(dt)
     stepTwists(dt, real: real)
@@ -938,6 +1064,16 @@ public final class Game {
       waveClock -= real
       if waveClock <= 0 { spawnWave() }
     }
+  }
+
+  /// Past par, everything speeds up a step every few seconds, and what's still waiting comes in sooner.
+  private func stepOvertime() {
+    guard overtimeAt.isFinite, overtime < tuning.overtimeSteps else { return }
+    guard time >= overtimeAt + Double(overtime) * tuning.overtimeEvery else { return }
+    overtime += 1
+    events.append(.overtime(step: overtime))
+    if !arrivals.isEmpty { bringNext() }
+    for b in bubbles { impact(b, 0, cruise(b) * 0.5) }
   }
 
   /// Every so often the busier page lights up. Its bubbles hurry and score double until it settles.
@@ -974,6 +1110,17 @@ public final class Game {
   private func stepBosses(_ dt: Double) {
     for b in bubbles where b.kind == .boss {
       if b.bossGuard > 0 { b.bossGuard -= dt }
+      // In its last phase it keeps shedding small pieces toward the line, so the end of a fight is the hardest part.
+      if spec.bossPhases > 1, b.bossPhase >= spec.bossPhases - 1, mode != .sandbox {
+        b.shedClock += dt
+        if b.shedClock >= tuning.bossShedEvery * (spec.boss == .twins ? 2 : 1) {
+          b.shedClock = 0
+          let toward = vertical ? (hinge > b.x ? 0.0 : Double.pi) : (hinge > b.y ? Double.pi / 2 : -Double.pi / 2)
+          let a = toward + (twistRng.unit() - 0.5) * 1.2
+          add(.basic, size: 2, x: b.x + cos(a) * b.r, y: b.y + sin(a) * b.r, angle: a, grace: tuning.graceTap)
+          events.append(.bossShed(x: b.x, y: b.y, r: b.r))
+        }
+      }
       if spec.boss == .shielded {
         b.shieldAngle = (b.shieldAngle + tuning.shieldSpin * (1 + 0.25 * Double(b.bossPhase)) * dt).truncatingRemainder(dividingBy: 2 * .pi)
       }
@@ -992,7 +1139,7 @@ public final class Game {
       } else if !b.bossDashing {
         b.bossClock += dt
         // Twins take turns, so each winds up less often.
-        if b.bossClock >= max(3, tuning.bossWindupEvery - tuning.bossWindupEveryPhase * Double(b.bossPhase)) * (spec.boss == .twins ? 1.7 : 1) {
+        if b.bossClock >= max(2.6, tuning.bossWindupEvery - tuning.bossWindupEveryPhase * Double(b.bossPhase)) * (spec.boss == .twins ? 1.7 : 1) {
           b.bossClock = 0
           b.bossWindup = tuning.bossWindupTime
           events.append(.bossWindup(x: b.x, y: b.y, r: b.r))
@@ -1025,7 +1172,7 @@ public final class Game {
     let pts = Int(Double(tuning.cameoPoints) * players[owner].combo)
     players[owner].score += pts
     players[owner].cameos += 1
-    bumpCombo(&players[owner])
+    bumpCombo(owner)
     events.append(.cameoCaught(v.cameo, x: v.x, y: v.y, points: pts, player: owner))
     gift(v, owner: owner)
     checkEnd()
@@ -1048,9 +1195,8 @@ public final class Game {
     case .merlinFizz: focus = tuning.focusTime; focusClock = 0
     case .booBubble: players[owner].overcharge = tuning.overchargeTime
     case .discoDot:
-      players[owner].combo = min(tuning.comboMax, players[owner].combo + 3)
-      players[owner].bestCombo = max(players[owner].bestCombo, players[owner].combo)
-      players[owner].comboT = tuning.comboWindow * 2
+      bumpCombo(owner, by: 3)
+      players[owner].comboT = max(players[owner].comboT, tuning.comboWindow * 2)
     }
   }
 
@@ -1514,11 +1660,12 @@ public final class Game {
 
   // MARK: Results
 
-  /// Three stars for a clean run, two for losing at most one shield, one for any clear.
+  /// The one rule for stars. Three: no shield lost, at most two crossings, and cleared before overtime
+  /// (inside par, `overtimeAt`). Two: at most one shield lost. One: any clear.
   public var stars: Int {
     guard status == .won else { return 0 }
     let p = players[0]
-    if p.shieldsLost == 0 && p.crossings <= 2 { return 3 }
+    if p.shieldsLost == 0 && p.crossings <= 2 && overtime == 0 { return 3 }
     return p.shieldsLost <= 1 ? 2 : 1
   }
 }
