@@ -80,7 +80,6 @@ final class GameScene: SKScene {
   private var creaseTouch: (side: Int, at: Double)?
   private var lastTime: TimeInterval = 0
   private var pulse = 0.0
-  private var shake = 0.0
   private var clock = 0.0
   private var lastBump = 0.0
   private var generation = -1
@@ -89,6 +88,28 @@ final class GameScene: SKScene {
   private struct Stroke { var bubble: Bubble?; var start: CGPoint; var last: CGPoint; var slicing = false; var skip = Set<Int>(); var onLine = false }
   private var active: [ObjectIdentifier: Stroke] = [:]
   private let displayScale: CGFloat
+  /// Game feel: hit-stop, slow motion, camera, screen light, callouts, combo counter, confetti (Juice.swift).
+  private var feel: FeelLayer!
+  /// Where bubbles split this frame, so their pieces can burst out of the middle.
+  private var recentSplits: [(CGPoint, CGFloat)] = []
+  private var lastPopPoint = CGPoint.zero
+  private var comboTiers = [0, 0]
+  private var bossIntroFor: ObjectIdentifier?
+  private var bossDownFor: ObjectIdentifier?
+  private var bossDownAt = -10.0
+  private var lastOneFor: ObjectIdentifier?
+  /// Frame time as the game sees it: zero in a hit-stop, slowed in slow motion.
+  private var visualDt = 1.0 / 60
+  /// Floating points that fly up from a pop and into the score.
+  private struct Flight { let node: ScoreNode; let start: CGPoint; var age = 0.0 }
+  private var flights: [Flight] = []
+  /// Overtime step reached this level (0 = none) and how hot fever is, both from the rules.
+  private var overtime = 0
+  private var feverNow = 0.0
+  /// The snap's ripple running along the line: where it started (0...1 along the ribbon) and its age.
+  private let ribbonSnap = SKUniform(name: "u_sp", vectorFloat2: .init(0.5, 1))
+  private var snapAge = 1.0
+  private var snapAt: Float = 0.5
 
   init(scale: CGFloat) {
     displayScale = scale
@@ -169,13 +190,17 @@ final class GameScene: SKScene {
       float a = band * (0.45 + 0.55 * rays) * u_glow;
       float edge = smoothstep(0.0, 0.015, uv.y) * smoothstep(1.0, 0.985, uv.y);
       float off = sin(uv.y * 24.0 + u_t * 5.0) * sin(uv.y * 9.0 - u_t * 3.0) * u_amp * edge;
+      // A snap sends a kink racing both ways along the line from where it was pulled.
+      float sd = abs(uv.y - u_sp.x) - u_sp.y * 1.4;
+      float sw = exp(-sd * sd * 700.0) * (1.0 - u_sp.y) * (1.0 - u_sp.y);
+      off += sw * 0.16 * sin(sd * 90.0);
       float dc = (uv.x - 0.5 - off) * u_core;
-      float core = exp(-dc * dc);
+      float core = exp(-dc * dc) * (1.0 + sw * 1.5);
       col = col * a + vec3(1.0) * core * 0.95;
       gl_FragColor = vec4(col, min(1.0, a + core));
     }
     """)
-    shader.uniforms = [ribbonTime, ribbonGlow, ribbonColor, ribbonAmp, ribbonCore]
+    shader.uniforms = [ribbonTime, ribbonGlow, ribbonColor, ribbonAmp, ribbonCore, ribbonSnap]
     ribbon.shader = shader
     ribbon.blendMode = .add
     ribbon.zPosition = 1
@@ -214,7 +239,7 @@ final class GameScene: SKScene {
       sparks: { [unowned self] p, r, n, color in self.sparks(at: p, r: r, count: n, color: color) },
       shockwave: { [unowned self] p, r in self.shockwave(at: p, r: r) },
       ripple: { [unowned self] p in self.ripple(p) }))
-    for _ in 0..<8 {
+    for _ in 0..<14 {
       let e = SKEmitterNode()
       e.particleTexture = dot
       e.particleBirthRate = 4000
@@ -235,6 +260,16 @@ final class GameScene: SKScene {
       world.addChild(e)
       emitters.append(e)
     }
+    feel = FeelLayer(scene: self, dot: dot, scale: scale)
+    feel.onHeartbeat = { [unowned self] danger in
+      Haptics.shared.play(.heartbeat)
+      Sound.shared.blip(danger >= 1 ? 62 : 55, 0.14, .sine, gain: 0.12, fall: 0.3)
+    }
+    // Pools filled up front, so the first busy moment of a level never makes a node.
+    for _ in 0..<48 { spareSprites.append(SKSpriteNode()) }
+    for _ in 0..<32 { let n = ScoreNode(); n.reserve(8); spareScores.append(n) }
+    for _ in 0..<24 { sparePuppets.append(BubbleNode()) }
+    feel.counter.reserve(6)
   }
   required init?(coder: NSCoder) { fatalError() }
 
@@ -263,28 +298,48 @@ final class GameScene: SKScene {
     lastTime = currentTime
     #if DEBUG
     perfSample(dt)
+    let workStart = CACurrentMediaTime()
+    lapAt = workStart
+    defer { perfWork(CACurrentMediaTime() - workStart) }
     #endif
     guard let session else { return }
-    session.tick(dt)
+    let rdt = min(0.05, dt)
+    feel.reduceMotion = reduceMotion
+    feel.area = area
+    feel.step(rdt)
+    // Hit-stop and slow motion run the rules slower; everything else keeps real time.
+    session.tick(dt * feel.simScale)
+    #if DEBUG
+    lap(0)
+    #endif
+    visualDt = rdt * feel.simScale
     guard let game = session.game else { return }
     clock += dt
     #if DEBUG
     demoSwipe(game)
     demoSnap(game)
+    demoFX(game)
     #endif
     if session.generation != generation {
       generation = session.generation
       resetFor(game)
     }
+    liveIDs = nil
     for e in session.pendingEvents { effect(e) }
+    #if DEBUG
+    lap(1)
+    #endif
     session.pendingEvents.removeAll(keepingCapacity: true)
     pulse = max(0, pulse - dt * 3)
-    shake = max(0, shake - dt * 3)
     snapFlare = max(0, snapFlare - dt * 2)
-    // A damped wobble instead of random jitter, so a hit reads as a shove and not as dropped frames.
-    let origin = worldOrigin
-    world.position = shake > 0 && !reduceMotion
-      ? CGPoint(x: origin.x + sin(clock * 47) * 6 * shake, y: origin.y + cos(clock * 59) * 6 * shake) : origin
+    snapAge = min(1, snapAge + rdt / 0.42)
+    ribbonSnap.vectorFloat2Value = .init(snapAt, Float(snapAge))
+    // The camera: shake, shoves and zoom punches, all from the feel layer. The backdrop stays put.
+    let (at, zoom) = feel.camera(origin: worldOrigin)
+    world.position = at
+    world.setScale(zoom)
+    // Actions (bursts, fly-ups, spawns) freeze in a hit-stop and slow with slow motion.
+    world.speed = CGFloat(feel.simScale)
     let alpha = session.stepAlpha
     drawSky(game, dt: dt, session: session)
     drawRush(game, dt: dt)
@@ -293,9 +348,23 @@ final class GameScene: SKScene {
     drawGlint(game, alpha: alpha)
     drawHinge(game)
     drawGates(game)
+    #if DEBUG
+    lap(2)
+    #endif
     drawBubbles(game, alpha: alpha)
+    #if DEBUG
+    lap(3)
+    #endif
     drawVisitors(game, alpha: alpha)
     drawPickups(game)
+    #if DEBUG
+    lap(4)
+    #endif
+    drawFeel(game, session: session, dt: rdt)
+    #if DEBUG
+    lap(5)
+    #endif
+    recentSplits.removeAll(keepingCapacity: true)
   }
 
   private func resetFor(_ game: Game) {
@@ -313,6 +382,13 @@ final class GameScene: SKScene {
     motes.removeAll()
     rushNode.isHidden = true
     dashLine.isHidden = true
+    feel.reset()
+    for f in flights { f.node.removeFromParent(); spareScores.append(f.node) }
+    flights.removeAll()
+    comboTiers = [0, 0]
+    overtime = 0; feverNow = 0
+    recentSplits.removeAll()
+    world.setScale(1); world.speed = 1
     twists.reset(game, arena: session?.arena ?? game.spec.arena)
     prewarm(game)
     placeBackdrop()
@@ -341,6 +417,14 @@ final class GameScene: SKScene {
       for k in PowerKind.allCases { _ = Art.power(k, size: power, scale: scale) }
       for k in [FXKind.popBurst, .particleStar] { _ = Art.fx(k, size: 96, scale: scale) }
       _ = Art.fx(.shockwave, size: 128, scale: scale)
+      for i in 0..<Art.confettiVariants { _ = Art.fx(.confetti(i), size: 24, scale: scale) }
+      // The art is cached now, so these textures are cheap to make on the main thread.
+      await MainActor.run { [weak self] in
+        guard let self else { return }
+        let bits = (0..<Art.confettiVariants).map { self.fxTexture(.confetti($0), size: 24) }
+        self.feel.dress(confetti: bits, ring: self.fxTexture(.shockwave, size: 128))
+        _ = self.fxTexture(.popBurst, size: 96)
+      }
     }
   }
 
@@ -389,7 +473,7 @@ final class GameScene: SKScene {
     skyTime.floatValue = Float(skyClock)
     let windup = game.bubbles.contains { $0.bossWindup > 0 } ? 0.6 : 0
     skyHeat.floatValue = Float(max(session.heat, windup))
-    skyEnergy.floatValue = Float(min(1.6, energy + bloom + hingeGlow() * 0.25))
+    skyEnergy.floatValue = Float(min(1.6, energy + bloom + hingeGlow() * 0.25 + feverNow * 0.7))
     skyHinge.floatValue = game.vertical ? 0.5 : Float(game.hinge / max(1, game.h))
     calmAxis.floatValue = game.vertical ? 1 : 0
     calmLine.floatValue = game.vertical ? Float(game.hinge / max(1, game.w)) : skyHinge.floatValue
@@ -575,10 +659,14 @@ final class GameScene: SKScene {
   private func drawBubbles(_ game: Game, alpha: Double) {
     var seen = Set<Int>(minimumCapacity: game.bubbles.count)
     var winding: (Bubble, CGPoint)?
+    var bosses: [BubbleNode] = []
     for b in game.bubbles {
       seen.insert(b.id)
       let kind = artKind(b)
       let draw = CGFloat(b.r * 2) / Art.bodyFraction(kind)
+      // Physics runs in fixed steps. Drawing lands between the last two, so motion stays even at any frame rate.
+      let px = b.prevX + (b.x - b.prevX) * alpha, py = b.prevY + (b.y - b.prevY) * alpha
+      let at = CGPoint(x: px, y: y(py))
       let node: BubbleNode
       if let n = bubbleNodes[b.id] {
         node = n
@@ -586,21 +674,41 @@ final class GameScene: SKScene {
         node = sparePuppets.popLast() ?? BubbleNode()
         node.zPosition = 5
         node.setScale(1)
+        node.alpha = 1
+        node.isHidden = false
+        node.flash = 0
+        node.birth = .zero
+        node.birthT = 1
         world.addChild(node)
         bubbleNodes[b.id] = node
         if b.grace > 0 && !reduceMotion {
-          node.setScale(0.5)
-          node.run(.scale(to: 1, duration: 0.14))
+          // Split pieces: a squeezed beat at the parent's centre, then they spring out to where the rules put them.
+          node.setScale(0.4)
+          node.run(Self.spawnAction)
+          let parent = recentSplits.min { hypot($0.0.x - at.x, $0.0.y - at.y) < hypot($1.0.x - at.x, $1.0.y - at.y) }
+          if let (c, r) = parent, hypot(c.x - at.x, c.y - at.y) < r * 4 {
+            node.birth = CGVector(dx: c.x - at.x, dy: c.y - at.y)
+            node.birthT = 0
+          }
         }
       }
       if node.kind != kind || node.drawSize != draw {
         node.kind = kind; node.drawSize = draw
-        node.sprite.texture = texture(kind, size: draw)
+        let t = texture(kind, size: draw)
+        node.sprite.texture = t
         node.sprite.size = CGSize(width: draw, height: draw)
+        node.glare.texture = t
+        node.glare.size = node.sprite.size
       }
-      // Physics runs in fixed steps. Drawing lands between the last two, so motion stays even at any frame rate.
-      let px = b.prevX + (b.x - b.prevX) * alpha, py = b.prevY + (b.y - b.prevY) * alpha
-      node.position = CGPoint(x: px, y: y(py))
+      if node.birthT < 1 {
+        node.birthT = min(1, node.birthT + visualDt / 0.13)
+        // Hold for the first quarter (the anticipation), then ease out fast.
+        let k = max(0, (node.birthT - 0.25) / 0.75)
+        let left = CGFloat(pow(1 - k, 3))
+        node.position = CGPoint(x: at.x + node.birth.dx * left, y: at.y + node.birth.dy * left)
+      } else {
+        node.position = at
+      }
       // Fog, the dark and ghosts dim a bubble; springs, regrowth and phasing tint it.
       let look = twists.look(b, game: game)
       node.sprite.alpha = (b.grace > 0 ? 0.78 : 1) * look.alpha
@@ -625,7 +733,16 @@ final class GameScene: SKScene {
       node.squash.xScale = 1 - q
       node.squash.yScale = 1 + q
       node.sprite.zRotation = CGFloat(b.sqA)
+      // A hit flashes the bubble white for a moment (bosses, armour).
+      if node.flash > 0 {
+        node.flash = max(0, node.flash - visualDt * 7)
+        node.glare.isHidden = node.flash <= 0
+        node.glare.alpha = CGFloat(min(1, node.flash))
+        node.glare.zRotation = node.sprite.zRotation
+      }
+      if b.kind == .boss { bosses.append(node) }
     }
+    bossIntro(game, nodes: bosses)
     for (id, n) in bubbleNodes where !seen.contains(id) {
       n.removeAllActions()
       n.removeFromParent()
@@ -742,7 +859,7 @@ final class GameScene: SKScene {
     }
   }
 
-  private func sparks(at p: CGPoint, r: CGFloat, count: Int, color: UIColor? = nil) {
+  private func sparks(at p: CGPoint, r: CGFloat, count: Int, color: UIColor? = nil, fast: Bool = false) {
     guard !reduceMotion else { return }
     let palette = (session?.arena ?? .classic).sparkColors
     let e = emitters[nextEmitter]
@@ -750,8 +867,11 @@ final class GameScene: SKScene {
     e.resetSimulation()
     e.position = p
     e.particleColor = color ?? palette[.random(in: 0..<palette.count)]
-    e.particleSpeed = r * 2.6
-    e.particleSpeedRange = r * 2
+    // Fast sparks are small white-hot glitter that outruns the coloured cloud.
+    e.particleSpeed = r * (fast ? 4.4 : 2.6)
+    e.particleSpeedRange = r * (fast ? 2.4 : 2)
+    e.particleScale = fast ? 0.32 : 0.55
+    e.particleLifetime = fast ? 0.38 : 0.6
     e.numParticlesToEmit = min(40, count)
   }
 
@@ -766,6 +886,74 @@ final class GameScene: SKScene {
   private static let waveAction = SKAction.group([.scale(to: 2.6, duration: 0.34), .fadeOut(withDuration: 0.34)])
   private static let trailAction = SKAction.fadeOut(withDuration: 0.3)
   private static let arcAction = SKAction.fadeOut(withDuration: 0.22)
+  /// The popped bubble itself: squashes flat on the hit, then blows out and fades.
+  private static let ghostAction = SKAction.sequence([
+    .scaleX(to: 1.24, y: 0.78, duration: 0.04),
+    .group([.scale(to: 1.55, duration: 0.13), .fadeOut(withDuration: 0.13)]),
+  ])
+  /// A white-hot core at the centre of a pop.
+  private static let coreAction = SKAction.group([.scale(to: 2.2, duration: 0.12), .fadeOut(withDuration: 0.12)])
+  /// Split pieces: squeezed for a beat, then out with an overshoot.
+  private static let spawnAction = SKAction.sequence([
+    .wait(forDuration: 0.03),
+    .scale(to: 1.16, duration: 0.08),
+    .scale(to: 0.96, duration: 0.05),
+    .scale(to: 1, duration: 0.04),
+  ])
+  private static let bossSlamAction = SKAction.sequence([
+    .scale(to: 0.84, duration: 0.17),
+    .scale(to: 1.08, duration: 0.07),
+    .scale(to: 1, duration: 0.08),
+  ])
+  private static let bossHitAction = SKAction.sequence([.scale(to: 0.9, duration: 0.03), .scale(to: 1.04, duration: 0.06), .scale(to: 1, duration: 0.05)])
+
+  /// Every pop is layered: the bubble squashes and blows out, a white core flashes, the burst ring and the
+  /// biome's sparks fly, and bigger bubbles add glitter and a tinted shockwave. All of it scales with size.
+  private func popFX(at p: CGPoint, r: CGFloat, size: Int) {
+    guard !reduceMotion else { return }
+    let palette = (session?.arena ?? .classic).sparkColors
+    ghost(at: p, r: r)
+    let core = sprite(fxTextures["softDot"], size: CGSize(width: r * 1.3, height: r * 1.3), at: p, z: 6.5, add: true)
+    play(core, Self.coreAction)
+    let pop = sprite(fxTexture(.popBurst, size: 96), size: CGSize(width: r * 2.3, height: r * 2.3), at: p, z: 6)
+    pop.zRotation = .random(in: 0...(2 * .pi))
+    play(pop, Self.popAction)
+    let counts = [30, 20, 13, 10]
+    sparks(at: p, r: r, count: counts[max(0, min(3, size))], color: palette[size % palette.count])
+    if size <= 1 { sparks(at: p, r: r, count: size == 0 ? 16 : 9, color: .white, fast: true) }
+    if size <= 2 { shockwave(at: p, r: r * (size == 0 ? 2.1 : size == 1 ? 1.5 : 1.1), tint: palette[(size + 1) % palette.count]) } else { ripple(p) }
+  }
+
+  /// Bubbles that left the game this frame, found by id once per frame.
+  private var liveIDs: Set<Int>?
+  /// The node of a bubble that was just removed near `p`, still on screen until `drawBubbles` recycles it.
+  private func goneNode(near p: CGPoint, r: CGFloat) -> BubbleNode? {
+    guard let game = session?.game else { return nil }
+    if liveIDs == nil { liveIDs = Set(game.bubbles.map(\.id)) }
+    var best: (BubbleNode, CGFloat)?
+    for (id, n) in bubbleNodes where !(liveIDs?.contains(id) ?? true) {
+      let d = hypot(n.position.x - p.x, n.position.y - p.y)
+      if d < r * 1.6, d < (best?.1 ?? .infinity) { best = (n, d) }
+    }
+    return best?.0
+  }
+  /// The live node nearest `p` (a boss or armour that was hit and stays).
+  private func liveNode(near p: CGPoint, r: CGFloat) -> BubbleNode? {
+    var best: (BubbleNode, CGFloat)?
+    for n in bubbleNodes.values {
+      let d = hypot(n.position.x - p.x, n.position.y - p.y)
+      if d < r * 2, d < (best?.1 ?? .infinity) { best = (n, d) }
+    }
+    return best?.0
+  }
+
+  private func ghost(at p: CGPoint, r: CGFloat) {
+    guard let n = goneNode(near: p, r: r), let t = n.sprite.texture else { return }
+    n.isHidden = true
+    let g = sprite(t, size: n.sprite.size, at: n.position, z: 5.5)
+    g.zRotation = n.squash.zRotation
+    play(g, Self.ghostAction)
+  }
 
   /// A swipe leaves a ribbon of aurora light behind the finger. The colour drifts along the stroke.
   private func trail(from a: CGPoint, to b: CGPoint) {
@@ -793,7 +981,24 @@ final class GameScene: SKScene {
   #if DEBUG
   /// `-perf` logs frame times to the ready file after a warm-up, so smoothness is measured rather than guessed.
   private var perfTimes: [Double] = []
+  private var perfWorks: [Double] = []
   private var demoSliceClock = 0.0
+  /// CPU time spent in `update` (rules, effects and drawing setup), which the 60 Hz simulator cap can't hide.
+  private func perfWork(_ seconds: Double) {
+    guard Debug.has("-perf"), clock > 3, perfWorks.count < 900 else { laps = [0, 0, 0, 0, 0, 0]; return }
+    perfWorks.append(seconds * 1000)
+    // Keep the section times of the slowest frame, so a spike can be traced to rules, effects or drawing.
+    if seconds * 1000 >= (perfWorks.max() ?? 0) { slowestLaps = laps }
+    laps = [0, 0, 0, 0, 0, 0]
+  }
+  private var lapAt = 0.0
+  private var laps = [Double](repeating: 0, count: 6)
+  private var slowestLaps = [Double](repeating: 0, count: 6)
+  private func lap(_ i: Int) {
+    let now = CACurrentMediaTime()
+    laps[i] += (now - lapAt) * 1000
+    lapAt = now
+  }
   private func perfSample(_ dt: Double) {
     guard Debug.has("-perf"), clock > 3 else { return }
     perfTimes.append(dt * 1000)
@@ -801,7 +1006,9 @@ final class GameScene: SKScene {
     let sorted = perfTimes.sorted()
     let at = { (q: Double) in sorted[min(sorted.count - 1, Int(Double(sorted.count) * q))] }
     let long = perfTimes.filter { $0 > 25 }.count
-    Debug.ready(String(format: "perf frames=900 p50=%.1f p95=%.1f p99=%.1f max=%.1f over25ms=%d nodes=%d", at(0.5), at(0.95), at(0.99), sorted.last ?? 0, long, world.children.count))
+    let work = perfWorks.sorted()
+    let w = { (q: Double) in work.isEmpty ? 0 : work[min(work.count - 1, Int(Double(work.count) * q))] }
+    Debug.ready(String(format: "perf frames=900 p50=%.1f p95=%.1f p99=%.1f max=%.1f over25ms=%d nodes=%d update_p50=%.2fms update_p95=%.2fms update_max=%.2fms slowest[tick,fx,sky..,bubbles,..,feel]=%@", at(0.5), at(0.95), at(0.99), sorted.last ?? 0, long, world.children.count, w(0.5), w(0.95), work.last ?? 0, slowestLaps.map { String(format: "%.2f", $0) }.joined(separator: ",")))
   }
 
   /// Store captures: real snaps going off often enough for a screenshot to catch one. Nothing is drawn specially.
@@ -839,101 +1046,399 @@ final class GameScene: SKScene {
     return ctx.makeImage()!
   }
 
-  private func shockwave(at p: CGPoint, r: CGFloat) {
+  private func shockwave(at p: CGPoint, r: CGFloat, tint: UIColor? = nil) {
     if reduceMotion { return }
     let n = sprite(fxTexture(.shockwave, size: 128), size: CGSize(width: r * 2, height: r * 2), at: p, z: 4, add: true)
+    if let tint { n.color = tint; n.colorBlendFactor = 0.7 }
     play(n, Self.waveAction)
     ripple(p)
   }
 
   /// Numbers are built from pre-drawn glyphs. Changing a label's text re-renders it, which stutters at this rate.
+  /// In solo play they pop up where the points were won, hang for a beat, then fly into the score.
   private func scoreText(_ value: Int, at p: CGPoint, color: UIColor = .white) {
     let unit = max(15, min(area.width, area.height) / 40)
     let grow = 1 + min(1.2, CGFloat(value) / 2500)
-    let node = spareScores.popLast() ?? ScoreNode()
+    let node = spareScores.popLast() ?? flights.first.map { f in flights.removeFirst(); f.node.removeFromParent(); return f.node } ?? ScoreNode()
+    node.removeAllActions()
     node.show(value, glyphs: glyphs, height: unit * grow, color: color)
     node.position = p
     node.zPosition = 9
     node.alpha = 1
+    node.setScale(1)
     world.addChild(node)
-    node.run(reduceMotion ? Self.scoreStill : Self.scoreRise) { [weak self, weak node] in
-      guard let node else { return }
-      node.removeFromParent()
-      self?.spareScores.append(node)
+    if session?.versus == true || reduceMotion {
+      node.run(reduceMotion ? Self.scoreStill : Self.scoreRise) { [weak self, weak node] in
+        guard let node else { return }
+        node.removeFromParent()
+        self?.spareScores.append(node)
+      }
+      return
     }
+    node.setScale(0.5)
+    flights.append(Flight(node: node, start: p))
   }
   private static let scoreRise = SKAction.group([.moveBy(x: 0, y: 34, duration: 0.8), .sequence([.wait(forDuration: 0.4), .fadeOut(withDuration: 0.4)])])
   private static let scoreStill = SKAction.sequence([.wait(forDuration: 0.4), .fadeOut(withDuration: 0.4)])
 
-  private func confetti() {
-    if reduceMotion { return }
-    for i in 0..<56 {
-      let c = SKSpriteNode(texture: fxTexture(.confetti(i % 6), size: 24), size: CGSize(width: 14, height: 14))
-      c.position = CGPoint(x: .random(in: 0...size.width), y: size.height + 20)
-      c.zPosition = 10
-      let time = Double.random(in: 1.1...2.2)
-      c.run(.sequence([.wait(forDuration: .random(in: 0...0.5)), .group([.moveBy(x: .random(in: -70...70), y: -size.height - 50, duration: time), .rotate(byAngle: .random(in: -9...9), duration: time)]), .removeFromParent()]))
-      world.addChild(c)
+  /// Where the HUD's score sits, in world coordinates.
+  /// Just inside the HUD's bottom edge under the score, so the number slides up under the panel as it lands.
+  private func scoreTarget(_ game: Game) -> CGPoint { CGPoint(x: area.width - 48, y: y(game.top) + 10) }
+
+  private func drawFlights(_ game: Game) {
+    guard !flights.isEmpty else { return }
+    let target = scoreTarget(game)
+    var i = 0
+    while i < flights.count {
+      flights[i].age += visualDt
+      let f = flights[i], n = f.node, t = f.age
+      if t < 0.16 {
+        // Pop in with an overshoot and rise.
+        let k = t / 0.16
+        n.setScale(CGFloat(0.5 + 0.75 * sin(k * .pi * 0.75)))
+        n.position = CGPoint(x: f.start.x, y: f.start.y + CGFloat(1 - pow(1 - k, 3)) * 24)
+      } else if t < 0.5 {
+        n.setScale(1)
+        n.position = CGPoint(x: f.start.x, y: f.start.y + 24 + CGFloat(t - 0.16) * 12)
+      } else if t < 0.86 {
+        // Then accelerate into the score and shrink as it lands.
+        let k = (t - 0.5) / 0.36, e = CGFloat(k * k * k)
+        let from = CGPoint(x: f.start.x, y: f.start.y + 28)
+        n.position = CGPoint(x: from.x + (target.x - from.x) * e, y: from.y + (target.y - from.y) * e + CGFloat(sin(k * .pi)) * 30)
+        n.setScale(1 - 0.55 * e)
+        n.alpha = 1 - 0.3 * e
+      } else {
+        feel.scoreLanded(at: CGPoint(x: target.x, y: target.y))
+        n.removeFromParent()
+        spareScores.append(n)
+        flights.remove(at: i)
+        continue
+      }
+      i += 1
     }
   }
+
+  // MARK: Feel, every frame
+
+  private func drawFeel(_ game: Game, session: Session, dt: Double) {
+    drawFlights(game)
+    let solo = !game.versus && game.mode != .sandbox
+    let p0 = game.players[0]
+    // The last shield: a heartbeat in the vignette (and the hands), faster when one crossing would end it.
+    feel.danger = solo && game.status == .playing && !session.isHeld && p0.shields == 1 ? (p0.meter >= game.meterMax - 1 ? 1 : 0.5) : 0
+    // A boss winding up rims the screen in red; overtime keeps a low amber glow at the edges.
+    let winding = game.bubbles.contains { $0.bossWindup > 0 }
+    if winding { feel.warnColor = UIColor(red: 1, green: 0.22, blue: 0.28, alpha: 1); feel.warnHold = 0.55 }
+    else if overtime > 0 { feel.warnColor = UIColor(red: 1, green: 0.62, blue: 0.2, alpha: 1); feel.warnHold = min(0.5, 0.14 + Double(overtime) * 0.07) }
+    else { feel.warnHold = 0 }
+    // TODO(rules): drive fever from the rules each frame, e.g. `feverDrive(game.feverLeft > 0 ? min(1, game.feverLeft / 0.6) : 0)`.
+    feel.fever = feverNow
+    drawLastOne(game, session: session)
+    let combo: (Double, Double, Double)? = solo && session.overlay != .tour ? (p0.combo, p0.comboT, game.tuning.comboWindow) : nil
+    feel.update(dt: dt, area: area, scene: size, origin: worldOrigin, combo: combo, top: CGFloat(game.top))
+  }
+
+  /// The level's final bubble wears a gold ring, so the finish is a moment you see coming.
+  private func drawLastOne(_ game: Game, session: Session) {
+    let finite: Bool
+    switch game.mode { case .campaign, .daily: finite = true; default: finite = false }
+    guard finite, game.status == .playing, game.bubbles.count == 1, game.bubblesToCome == 0,
+          let b = game.bubbles.first, b.kind != .boss, b.size == 3, let node = bubbleNodes[b.id] else {
+      feel.spotlight.isHidden = true
+      return
+    }
+    if feel.spotlight.parent == nil { world.addChild(feel.spotlight) }
+    feel.spotlight.isHidden = false
+    let beat = reduceMotion ? 0.5 : 0.5 + 0.5 * sin(clock * 9)
+    let d = CGFloat(b.r) * (2.9 + 0.35 * CGFloat(beat))
+    feel.spotlight.size = CGSize(width: d, height: d)
+    feel.spotlight.position = node.position
+    feel.spotlight.alpha = CGFloat(0.55 + 0.35 * beat)
+    if lastOneFor != ObjectIdentifier(game) {
+      lastOneFor = ObjectIdentifier(game)
+      feel.callout(.lastOne, at: CGPoint(x: node.position.x, y: node.position.y + CGFloat(b.r) + 40), color: UIColor(red: 1, green: 0.88, blue: 0.4, alpha: 1), size: 0.8)
+      Haptics.shared.play(.lastOne)
+      #if DEBUG
+      freeze("lastone", after: 0.2)
+      #endif
+      Sound.shared.blip(1320, 0.1, .sine, gain: 0.1)
+    }
+  }
+
+  /// A boss arrives with a slam: it drops in big, lands with a shockwave and shake, and its name crosses the
+  /// screen. Waits until any card is closed, and plays once per level.
+  private func bossIntro(_ game: Game, nodes: [BubbleNode]) {
+    guard let session, !nodes.isEmpty, bossIntroFor != ObjectIdentifier(game), !session.isHeld, session.overlay != .tour else { return }
+    bossIntroFor = ObjectIdentifier(game)
+    feel.banner(game.spec.boss)
+    Haptics.shared.play(.bossIntro)
+    #if DEBUG
+    freeze("boss", after: 0.45)
+    #endif
+    Sound.shared.blip(90, 0.3, .saw, gain: 0.1, fall: -0.6)
+    guard !reduceMotion else { return }
+    for n in nodes {
+      n.removeAllActions()
+      n.setScale(2.3)
+      n.run(Self.bossSlamAction)
+    }
+    feel.after(0.17) { [weak self] in
+      guard let self else { return }
+      for n in nodes where n.parent != nil {
+        self.shockwave(at: n.position, r: n.drawSize * 1.1, tint: UIColor(red: 1, green: 0.4, blue: 0.4, alpha: 1))
+        self.sparks(at: n.position, r: n.drawSize * 0.5, count: 30)
+      }
+      self.feel.shake(0.85)
+      self.feel.flash(0.25, UIColor(red: 1, green: 0.5, blue: 0.5, alpha: 1))
+      self.feel.hitStop(0.07, force: true)
+      self.pulse = 1.4
+      Haptics.shared.play(.bossSlam)
+      Sound.shared.thump(50, gain: 0.28)
+    }
+  }
+
+  /// The finale: time nearly stops, the boss blows apart in rings, and the sky lights up.
+  private func bossDown(at p: CGPoint, r: CGFloat, game: Game) {
+    guard bossDownFor != ObjectIdentifier(game) else { return }
+    bossDownFor = ObjectIdentifier(game)
+    bossDownAt = clock
+    let palette = (session?.arena ?? .classic).sparkColors
+    feel.hitStop(0.13, force: true)
+    feel.slowMo(0.2, for: 1.4)
+    feel.flash(0.85)
+    feel.shake(1)
+    feel.punch(0.07, at: p)
+    bloom = 1.6
+    popFX(at: p, r: r, size: 0)
+    for (i, c) in palette.prefix(3).enumerated() { sparks(at: p, r: r * CGFloat(1 + i), count: 40, color: c) }
+    sparks(at: p, r: r * 1.4, count: 40, color: .white, fast: true)
+    for (k, delay) in [0.0, 0.12, 0.26].enumerated() {
+      feel.after(delay) { [weak self] in
+        self?.shockwave(at: p, r: r * CGFloat(2 + k * 2), tint: palette[k % palette.count])
+      }
+    }
+    feel.callout(.bossDown, at: CGPoint(x: area.width / 2, y: area.height * 0.58), color: UIColor(red: 1, green: 0.84, blue: 0.36, alpha: 1), size: 1.2)
+    Haptics.shared.play(.bossDown)
+    #if DEBUG
+    freeze("bossdown", after: 0.35)
+    #endif
+    let sound = Sound.shared
+    sound.crack(big: true); sound.thump(45, gain: 0.3); sound.sting([0, 4, 7, 12, 16], root: 392, gap: 0.08)
+  }
+
+  /// Snap the Hinge: a whip crack. The line kinks from where it was pulled, red, green and blue copies tear
+  /// off it, the screen flashes and jolts away from the line, and time catches for a beat.
+  private func snapFX(along: Double, flung: Int, clap: Bool) {
+    guard let game = session?.game else { return }
+    let length = game.vertical ? area.height - CGFloat(game.top) + insets.bottom : size.width
+    let lineAt = game.vertical ? CGFloat(game.hinge) : y(game.hinge)
+    feel.chroma(vertical: game.vertical, at: lineAt, length: max(length, game.vertical ? size.height : size.width), strength: clap ? 1.4 : 1)
+    if !clap {
+      snapAge = 0
+      snapAt = game.vertical ? Float((y(along) + insets.bottom) / max(1, length)) : Float(1 - (CGFloat(along) + insets.left) / max(1, length))
+    } else {
+      snapAge = 0; snapAt = 0.5
+    }
+    feel.flash(clap ? 0.5 : 0.32, UIColor(red: 0.75, green: 0.95, blue: 1, alpha: 1))
+    feel.shake(clap ? 0.75 : 0.45)
+    let push: CGFloat = clap ? 14 : 9
+    feel.shove(game.vertical ? CGVector(dx: push * (Bool.random() ? 1 : -1), dy: 0) : CGVector(dx: 0, dy: push * (Bool.random() ? 1 : -1)))
+    feel.hitStop(clap ? 0.08 : 0.05, force: true)
+    if flung >= 2 || clap {
+      let at = game.vertical ? CGPoint(x: lineAt + 70, y: area.height * 0.62) : CGPoint(x: game.vertical ? 0 : CGFloat(along), y: lineAt + 64)
+      feel.callout(clap ? .clap : .snap, at: at, color: UIColor(red: 0.55, green: 0.95, blue: 1, alpha: 1), size: clap ? 1 : 0.85)
+    }
+    Haptics.shared.play(clap ? .clap : .snap)
+    #if DEBUG
+    freeze(clap ? "clap" : "snap", after: 0.09)
+    #endif
+    Sound.shared.crack(big: clap)
+  }
+
+  /// A rising combo: a callout at each threshold, with its own colour, a chime and a tap.
+  private func comboCheck(at p: CGPoint) {
+    guard let game = session?.game else { return }
+    for i in game.players.indices where i < comboTiers.count {
+      let tier = ComboTier.tier(game.players[i].combo)
+      if tier > comboTiers[i] {
+        let step = ComboTier.steps[tier - 1]
+        feel.callout(step.word, at: CGPoint(x: p.x, y: p.y + 70), color: step.color, size: 0.8 + CGFloat(tier) * 0.06)
+        feel.flash(0.05 + Double(tier) * 0.015, step.color)
+        bloom = max(bloom, 0.3 + Double(tier) * 0.1)
+        Haptics.shared.play(tier == ComboTier.steps.count ? .comboTop : .combo)
+        #if DEBUG
+        freeze("combo\(tier)", after: 0.16)
+        freeze("combo", after: 0.16)
+        #endif
+        Sound.shared.sting(tier >= 5 ? [0, 4, 7, 12] : [0, 7, 12], root: 523 * Sound.ladder(game.players[i].combo) / 2)
+      }
+      comboTiers[i] = tier
+    }
+  }
+
+  /// The red half of the screen that belongs to one player in versus; nil means the whole screen.
+  private func half(_ player: Int) -> vector_float4? {
+    guard let game = session?.game, game.versus, size.width > 1 else { return nil }
+    let line = game.vertical ? Float((CGFloat(game.hinge) + insets.left) / size.width) : Float((CGFloat(game.hinge) + insets.top) / size.height)
+    return vector_float4(game.vertical ? 1 : 0, line, player == 0 ? -1 : 1, 1)
+  }
+
+  private var maxCombo: Double { session?.game?.players.map(\.combo).max() ?? 1 }
+
+  // MARK: Hooks for the rules agent's overtime and fever
+
+  /// Overtime: the level dragged on and bubbles just sped up a step. Amber edges, a callout and a two-note horn.
+  func overtimeStep(_ step: Int) {
+    overtime = max(overtime, step)
+    let amber = UIColor(red: 1, green: 0.62, blue: 0.2, alpha: 1)
+    feel.warnPulse(0.75, color: amber)
+    feel.callout(step <= 1 ? .overtime : .faster, at: CGPoint(x: area.width / 2, y: area.height * 0.6), color: amber, size: step <= 1 ? 1 : 0.85)
+    feel.shake(0.25)
+    pulse = max(pulse, 1)
+    Haptics.shared.play(.overtime)
+    #if DEBUG
+    freeze("overtime", after: 0.25)
+    #endif
+    Sound.shared.blip(330 + Double(step) * 40, 0.16, .square, gain: 0.08); Sound.shared.blip(495 + Double(step) * 60, 0.22, .square, gain: 0.08)
+  }
+
+  /// Fever starts: a rainbow flash, the sky lights up and the edges start cycling colour (see `feverDrive`).
+  func feverBegan() {
+    feverNow = max(feverNow, 1)
+    let gold = UIColor(red: 1, green: 0.82, blue: 0.3, alpha: 1)
+    feel.flash(0.55, gold)
+    feel.callout(.fever, at: CGPoint(x: area.width / 2, y: area.height * 0.6), color: gold, size: 1.25)
+    feel.shake(0.4)
+    bloom = 1.6
+    ripple(CGPoint(x: area.width / 2, y: area.height / 2))
+    Haptics.shared.play(.fever)
+    #if DEBUG
+    freeze("fever", after: 1.2)
+    #endif
+    Sound.shared.sting([0, 4, 7, 12, 16, 19], root: 523, gap: 0.05)
+  }
+
+  /// Fever's over: the colour drains away.
+  func feverEnded() {
+    feverNow = 0
+    Sound.shared.blip(660, 0.2, .sine, gain: 0.08, fall: 0.6)
+  }
+
+  /// Per frame while fever runs: 0...1, how hot it is. Brightens the sky and cycles the screen edges.
+  func feverDrive(_ value: Double) { feverNow = max(0, min(1, value)) }
+
+  // MARK: Events
 
   private func effect(_ e: GameEvent) {
     if twists.effect(e, game: session?.game) { return }
     let sound = Sound.shared, haptic = Haptics.shared
     switch e {
     case let .split(x, gy, r, size, points, kind):
-      burst(at: CGPoint(x: x, y: y(gy)), r: CGFloat(r), particles: 4)
-      scoreText(points, at: CGPoint(x: x, y: y(gy)), color: kind == .golden ? UIColor(red: 1, green: 0.85, blue: 0.3, alpha: 1) : .white)
-      sound.blip(420 + Double(size) * 150, 0.09)
-      haptic.tap()
-    case let .pop(x, gy, r, _, points, kind):
-      burst(at: CGPoint(x: x, y: y(gy)), r: CGFloat(r) * 1.3, particles: 8)
-      scoreText(points, at: CGPoint(x: x, y: y(gy)), color: kind == .golden ? UIColor(red: 1, green: 0.85, blue: 0.3, alpha: 1) : .white)
-      sound.blip(880, 0.1)
-      haptic.tap()
+      let p = CGPoint(x: x, y: y(gy))
+      recentSplits.append((p, CGFloat(r)))
+      popFX(at: p, r: CGFloat(r), size: size)
+      scoreText(points, at: p, color: kind == .golden ? UIColor(red: 1, green: 0.85, blue: 0.3, alpha: 1) : .white)
+      sound.pop(size: size, combo: maxCombo)
+      haptic.play(size == 0 ? .bigSplit : .split)
+      // Big splits land with a freeze-frame and a knock; medium ones just a nudge.
+      if size == 0 { feel.hitStop(0.045); feel.shake(0.3) } else if size == 1 { feel.shake(0.12) }
+      #if DEBUG
+      freeze("pop", after: 0.06)
+      #endif
+      lastPopPoint = p
+      comboCheck(at: p)
+    case let .pop(x, gy, r, size, points, kind):
+      let p = CGPoint(x: x, y: y(gy))
+      popFX(at: p, r: CGFloat(r) * 1.2, size: size)
+      scoreText(points, at: p, color: kind == .golden ? UIColor(red: 1, green: 0.85, blue: 0.3, alpha: 1) : .white)
+      sound.pop(size: size, combo: maxCombo)
+      haptic.play(.pop)
+      lastPopPoint = p
+      comboCheck(at: p)
     case let .zap(x, gy, r, points):
-      shockwave(at: CGPoint(x: x, y: y(gy)), r: CGFloat(r) * 1.6)
-      scoreText(points, at: CGPoint(x: x, y: y(gy)), color: UIColor(red: 0.5, green: 0.9, blue: 1, alpha: 1))
+      let p = CGPoint(x: x, y: y(gy))
+      ghost(at: p, r: CGFloat(r))
+      shockwave(at: p, r: CGFloat(r) * 1.6, tint: UIColor(red: 0.5, green: 0.9, blue: 1, alpha: 1))
+      sparks(at: p, r: CGFloat(r), count: 10, color: UIColor(red: 0.5, green: 0.9, blue: 1, alpha: 1), fast: true)
+      scoreText(points, at: p, color: UIColor(red: 0.5, green: 0.9, blue: 1, alpha: 1))
       sound.blip(1200, 0.1, .sine, gain: 0.16)
+      haptic.play(.chain)
+      lastPopPoint = p
     case let .chainPop(x, gy, r, points, count):
       let link = CGPoint(x: x, y: y(gy))
       if let last = lastChain, clock - lastChainClock < 0.05 { arc(from: last, to: link) }
       lastChain = link; lastChainClock = clock
-      burst(at: link, r: CGFloat(r) * 1.3, particles: 4)
+      popFX(at: link, r: CGFloat(r) * 1.3, size: 3)
       scoreText(points, at: link, color: UIColor(red: 0.55, green: 1, blue: 0.75, alpha: 1))
-      sound.blip(880 + Double(min(count, 8)) * 110, 0.08)
-    case let .crossed(x, gy, r, _, _):
-      shockwave(at: CGPoint(x: x, y: y(gy)), r: CGFloat(r))
+      sound.blip((880 * Sound.ladder(1 + Double(min(count, 12)) * 0.5)).rounded(), 0.08)
+      haptic.play(.chain)
+      if count >= 5 { feel.shake(0.2) }
+      lastPopPoint = link
+      comboCheck(at: link)
+    case let .crossed(x, gy, r, _, player):
+      shockwave(at: CGPoint(x: x, y: y(gy)), r: CGFloat(r), tint: UIColor(red: 1, green: 0.4, blue: 0.45, alpha: 1))
       pulse = 1
-      sound.blip(150, 0.17, .saw, gain: 0.16)
-      haptic.hit()
+      feel.shake(0.28)
+      feel.vignette(0.3, mask: half(player))
+      sound.blip(150, 0.17, .saw, gain: 0.16); sound.thump(110, gain: 0.12)
+      haptic.play(.crossing)
     case let .gatePass(x, gy, r):
-      shockwave(at: CGPoint(x: x, y: y(gy)), r: CGFloat(r) * 0.7)
+      shockwave(at: CGPoint(x: x, y: y(gy)), r: CGFloat(r) * 0.7, tint: UIColor(red: 0.3, green: 1, blue: 0.62, alpha: 1))
       sound.blip(760, 0.09, .sine, gain: 0.14)
     case let .armorCrack(x, gy, r, points):
-      burst(at: CGPoint(x: x, y: y(gy)), r: CGFloat(r) * 0.6, particles: 6)
-      scoreText(points, at: CGPoint(x: x, y: y(gy)))
-      sound.blip(280, 0.12, .square, gain: 0.12)
-      haptic.hit()
+      let p = CGPoint(x: x, y: y(gy))
+      burst(at: p, r: CGFloat(r) * 0.6, particles: 6)
+      sparks(at: p, r: CGFloat(r) * 0.7, count: 12, color: UIColor(white: 0.85, alpha: 1), fast: true)
+      liveNode(near: p, r: CGFloat(r))?.flash = 1
+      scoreText(points, at: p)
+      feel.shake(0.18)
+      sound.blip(280, 0.12, .square, gain: 0.12); sound.blip(3000, 0.03, .noise, gain: 0.1, fall: 0)
+      haptic.play(.bigSplit)
+      comboCheck(at: p)
     case let .bossHit(x, gy, r, points, _):
-      burst(at: CGPoint(x: x, y: y(gy)), r: CGFloat(r) * 0.5, particles: 5)
+      let p = CGPoint(x: x, y: y(gy))
+      if let n = liveNode(near: p, r: CGFloat(r)) { n.flash = 1; if !reduceMotion { n.run(Self.bossHitAction) } }
+      burst(at: p, r: CGFloat(r) * 0.5, particles: 5)
+      sparks(at: p, r: CGFloat(r) * 0.6, count: 14, color: .white, fast: true)
       scoreText(points, at: CGPoint(x: x, y: y(gy) + CGFloat(r) * 0.5))
-      sound.blip(240, 0.11, .square, gain: 0.14)
-      haptic.hit()
-    case let .bossPhase(x, gy, r, _):
-      shockwave(at: CGPoint(x: x, y: y(gy)), r: CGFloat(r) * 1.4)
-      shake = 1
-      sound.blip(110, 0.35, .saw, gain: 0.2)
-      haptic.bad()
-    case let .bossSlam(x, gy, r, _):
-      shockwave(at: CGPoint(x: x, y: y(gy)), r: CGFloat(r))
-      pulse = 1.4; shake = 0.6
-      sound.blip(90, 0.25, .square, gain: 0.18)
-      haptic.hit()
-    case let .hingeSnap(along, _, _):
+      feel.hitStop(0.05, force: true)
+      feel.shake(0.32)
+      sound.blip(240, 0.11, .square, gain: 0.14); sound.thump(160, gain: 0.14)
+      haptic.play(.bossHit)
+      #if DEBUG
+      freeze("bosshit", after: 0.07)
+      #endif
+    case let .bossPhase(x, gy, r, phase):
+      let p = CGPoint(x: x, y: y(gy))
+      guard let game = session?.game else { break }
+      if phase >= max(1, game.spec.bossPhases) { bossDown(at: p, r: CGFloat(r), game: game); break }
+      // A new phase: a double shockwave, a flash, a freeze, and the phase called out.
+      shockwave(at: p, r: CGFloat(r) * 2.2, tint: UIColor(red: 1, green: 0.45, blue: 0.4, alpha: 1))
+      feel.after(0.1) { [weak self] in self?.shockwave(at: p, r: CGFloat(r) * 3.4, tint: nil) }
+      sparks(at: p, r: CGFloat(r), count: 36)
+      feel.flash(0.45)
+      feel.shake(0.85)
+      feel.hitStop(0.1, force: true)
+      feel.punch(0.035, at: p)
+      bloom = max(bloom, 0.8)
+      let next = phase + 1, total = max(1, game.spec.bossPhases)
+      let word: Callout = next >= total ? .finalPhase : next == 2 ? .phase2 : next == 3 ? .phase3 : .phase4
+      feel.callout(word, at: CGPoint(x: area.width / 2, y: area.height * 0.6), color: UIColor(red: 1, green: 0.5, blue: 0.45, alpha: 1))
+      sound.blip(110, 0.35, .saw, gain: 0.2); sound.thump(55, gain: 0.26)
+      haptic.play(.bossPhase)
+      #if DEBUG
+      freeze("phase", after: 0.14)
+      #endif
+    case let .bossSlam(x, gy, r, player):
+      shockwave(at: CGPoint(x: x, y: y(gy)), r: CGFloat(r), tint: UIColor(red: 1, green: 0.35, blue: 0.35, alpha: 1))
+      pulse = 1.4
+      feel.shake(0.6)
+      feel.vignette(0.4, mask: half(player))
+      sound.blip(90, 0.25, .square, gain: 0.18); sound.thump(60)
+      haptic.play(.bossSlam)
+    case let .hingeSnap(along, _, flung):
       snapFlare = 1
       pulse = 1.6
-      shake = 0.5
       if let game = session?.game {
         let spots = stride(from: 0.1, through: 0.9, by: 0.2)
         for u in spots {
@@ -942,8 +1447,7 @@ final class GameScene: SKScene {
         }
         ripple(game.vertical ? CGPoint(x: CGFloat(game.hinge), y: y(along)) : CGPoint(x: CGFloat(along), y: y(game.hinge)))
       }
-      sound.blip(190, 0.2, .saw, gain: 0.18); sound.blip(1400, 0.12, .square, gain: 0.08)
-      haptic.good()
+      snapFX(along: along, flung: flung, clap: false)
     case .snapReady:
       sound.blip(880, 0.08, .sine, gain: 0.08)
     case let .rushStart(side):
@@ -953,7 +1457,7 @@ final class GameScene: SKScene {
         ripple(game.vertical ? CGPoint(x: across, y: y((game.top + game.h) / 2)) : CGPoint(x: game.w / 2, y: y(across)))
       }
       sound.blip(520, 0.12, .triangle, gain: 0.12); sound.blip(780, 0.2, .triangle, gain: 0.1)
-      haptic.hit()
+      haptic.play(.power)
     case let .secretBubble(_, x, gy):
       let at = CGPoint(x: x, y: y(gy))
       sparks(at: at, r: 40, count: 26)
@@ -967,13 +1471,13 @@ final class GameScene: SKScene {
       if let game = session?.game {
         let at = game.vertical ? CGPoint(x: CGFloat(game.hinge), y: y(gy)) : CGPoint(x: x, y: y(game.hinge))
         sparks(at: at, r: 30, count: 14)
+        comboCheck(at: at)
       }
       bloom = max(bloom, 0.35)
       sound.blip(600 + min(8, combo) * 60, 0.08, .sine, gain: 0.1)
     case let .creaseClap(flung):
       snapFlare = 1.4
       pulse = 1.8
-      shake = 0.7
       bloom = 0.8
       if let game = session?.game {
         for u in stride(from: 0.06, through: 0.94, by: 0.11) {
@@ -984,19 +1488,30 @@ final class GameScene: SKScene {
         shockwave(at: mid, r: 160)
         ripple(mid)
       }
-      sound.blip(150, 0.25, .saw, gain: 0.2); sound.blip(1200 + Double(min(flung, 6)) * 80, 0.16, .square, gain: 0.08)
-      haptic.good()
+      snapFX(along: 0, flung: flung, clap: true)
+      sound.blip(1200 + Double(min(flung, 6)) * 80, 0.16, .square, gain: 0.08)
     case let .bossWindup(x, gy, r):
-      shockwave(at: CGPoint(x: x, y: y(gy)), r: CGFloat(r))
-      sound.blip(140, 0.5, .saw, gain: 0.14)
-      haptic.hit()
+      shockwave(at: CGPoint(x: x, y: y(gy)), r: CGFloat(r), tint: UIColor(red: 1, green: 0.25, blue: 0.3, alpha: 1))
+      feel.warnPulse(0.9, color: UIColor(red: 1, green: 0.22, blue: 0.28, alpha: 1))
+      sound.blip(140, 0.5, .saw, gain: 0.14, fall: -0.5)
+      haptic.play(.windup)
     case let .bossStagger(x, gy, r, points):
-      burst(at: CGPoint(x: x, y: y(gy)), r: CGFloat(r), particles: 10)
-      shockwave(at: CGPoint(x: x, y: y(gy)), r: CGFloat(r) * 1.3)
+      let p = CGPoint(x: x, y: y(gy))
+      liveNode(near: p, r: CGFloat(r))?.flash = 1.4
+      burst(at: p, r: CGFloat(r), particles: 10)
+      shockwave(at: p, r: CGFloat(r) * 1.6, tint: UIColor(red: 1, green: 0.85, blue: 0.3, alpha: 1))
       scoreText(points, at: CGPoint(x: x, y: y(gy) + CGFloat(r) * 0.5), color: UIColor(red: 1, green: 0.85, blue: 0.3, alpha: 1))
+      feel.callout(.stagger, at: CGPoint(x: p.x, y: p.y + CGFloat(r) + 30), color: UIColor(red: 1, green: 0.85, blue: 0.3, alpha: 1), size: 0.9)
+      feel.flash(0.3, UIColor(red: 1, green: 0.9, blue: 0.6, alpha: 1))
+      feel.hitStop(0.08, force: true)
+      feel.shake(0.55)
+      feel.punch(0.03, at: p)
       bloom = 0.6
-      sound.blip(520, 0.14, .square, gain: 0.16); sound.blip(780, 0.2)
-      haptic.good()
+      sound.blip(520, 0.14, .square, gain: 0.16); sound.blip(780, 0.2); sound.crack()
+      haptic.play(.bossStagger)
+      #if DEBUG
+      freeze("stagger", after: 0.1)
+      #endif
     case .bossBlocked:
       sound.blip(190, 0.04, .sine, gain: 0.07)
     case let .cameoArrived(_, x, gy):
@@ -1008,6 +1523,7 @@ final class GameScene: SKScene {
       shockwave(at: at, r: 60)
       scoreText(points, at: at, color: UIColor(red: 1, green: 0.85, blue: 0.3, alpha: 1))
       bloom = 0.9
+      feel.flash(0.15, UIColor(red: 1, green: 0.85, blue: 0.4, alpha: 1))
       sound.blip(660, 0.1); sound.blip(880, 0.12); sound.blip(1320, 0.22, .sine, gain: 0.15)
       haptic.good()
     case let .cameoDodged(_, x, gy):
@@ -1022,31 +1538,118 @@ final class GameScene: SKScene {
         lastBump = clock
         sound.blip(150 + Double(size) * 90, 0.05, .sine, gain: Float(min(0.12, strength / 2500)))
       }
-    case .shieldLost:
-      shake = 1; pulse = 1.6
-      sound.blip(80, 0.4, .square, gain: 0.2)
-      haptic.bad()
+    case let .shieldLost(player):
+      // The one hit you must not miss: a red pulse from the edges, a freeze, a hard shake and a heavy thud.
+      feel.vignette(1, mask: half(player))
+      feel.flash(0.22, UIColor(red: 1, green: 0.25, blue: 0.3, alpha: 1))
+      feel.shake(0.95)
+      feel.hitStop(0.12, force: true)
+      pulse = 1.6
+      if session?.versus != true, let game = session?.game, game.players[0].shields > 0 {
+        feel.callout(.shieldDown, at: CGPoint(x: area.width / 2, y: area.height * 0.62), color: UIColor(red: 1, green: 0.38, blue: 0.42, alpha: 1), size: 0.9)
+      }
+      sound.blip(80, 0.4, .square, gain: 0.2); sound.thump(48, gain: 0.3)
+      haptic.play(.shieldLost)
+      #if DEBUG
+      freeze("shield", after: 0.12)
+      #endif
     case .recharge, .cooled:
+      feel.flash(0.14, UIColor(red: 0.4, green: 0.9, blue: 1, alpha: 1))
       sound.blip(520, 0.12); sound.blip(990, 0.26, .triangle, gain: 0.16)
-      haptic.good()
+      haptic.play(.power)
     case let .collected(kind, x, gy, _):
       shockwave(at: CGPoint(x: x, y: y(gy)), r: kind == .chainBurst ? 120 : 44)
-      if kind == .chainBurst { shake = 0.7 }
+      if kind == .chainBurst { feel.shake(0.7); feel.hitStop(0.06) }
+      feel.flash(0.12, UIColor(red: 1, green: 0.95, blue: 0.7, alpha: 1))
       sound.blip(660, 0.1); sound.blip(1100, 0.18, .sine, gain: 0.15)
-      haptic.good()
+      haptic.play(.power)
     case .dropped: sound.blip(1320, 0.08, .sine, gain: 0.12)
     case .wave: sound.blip(330, 0.2, .triangle, gain: 0.14)
     case .finished:
-      if session?.game.status == .won || (session?.versus == true) {
-        // Clearing a level lights up the whole sky before the confetti lands.
-        bloom = 1.6
-        ripple(CGPoint(x: area.width / 2, y: area.height / 2))
-        confetti(); sound.blip(660, 0.3)
-      }
-      else { sound.blip(70, 0.6, .saw) }
+      finale()
+    // TODO(rules): wire overtime and fever here once their events land, e.g.
+    //   case let .overtime(step): overtimeStep(step)
+    //   case .feverStart: feverBegan()
+    //   case .feverEnd: feverEnded()
     default: break
     }
   }
+
+  /// The level's over. A win slows time on the last pop, zooms in on it, then fires confetti and lights the sky.
+  private func finale() {
+    guard let session, let game = session.game else { return }
+    if game.status == .won || session.versus {
+      feel.slowMo(0.22, for: 1.1)
+      feel.hitStop(0.06, force: true)
+      feel.punch(0.07, at: lastPopPoint)
+      feel.flash(0.45)
+      if clock - bossDownAt > 1.5 {
+        feel.callout(game.cleanBonus ? .flawless : .clear, at: CGPoint(x: area.width / 2, y: area.height * 0.58),
+                     color: game.cleanBonus ? UIColor(red: 0.6, green: 1, blue: 0.85, alpha: 1) : UIColor(red: 1, green: 0.86, blue: 0.4, alpha: 1), size: 1.2)
+      }
+      Haptics.shared.play(.win)
+      #if DEBUG
+      freeze("win", after: 0.7)
+      #endif
+      Sound.shared.sting([0, 4, 7, 12, 16], root: 523, gap: 0.07)
+      feel.after(0.22) { [weak self] in
+        guard let self else { return }
+        self.bloom = 1.6
+        for p in [CGPoint(x: 0.5, y: 0.5), CGPoint(x: 0.2, y: 0.3), CGPoint(x: 0.8, y: 0.7), CGPoint(x: 0.5, y: 0.15)] {
+          self.ripple(CGPoint(x: self.area.width * p.x, y: self.area.height * p.y))
+        }
+        self.feel.confetti()
+      }
+    } else {
+      feel.vignette(1)
+      feel.flash(0.25, UIColor(red: 1, green: 0.2, blue: 0.3, alpha: 1))
+      feel.slowMo(0.35, for: 0.8)
+      feel.shake(0.6)
+      Haptics.shared.play(.lose)
+      Sound.shared.blip(70, 0.6, .saw)
+    }
+  }
+
+  #if DEBUG
+  /// `-freezeOn tag [-freezeAfter s]`: pauses the scene a moment after that effect fires, so a slow simulator
+  /// can screenshot a moment that lasts a fraction of a second. Writes "frozen" to the ready file.
+  private var frozen = false
+  private func freeze(_ tag: String, after: Double = 0.1) {
+    guard !frozen, Debug.string("-freezeOn") == tag else { return }
+    frozen = true
+    let wait = Debug.string("-freezeAfter").flatMap(Double.init) ?? after
+    feel.after(wait) { [weak self] in
+      self?.isPaused = true
+      Debug.ready("frozen")
+    }
+  }
+  /// `-fx boss|shield|fever|overtime`: plays a moment over and over for captures. `boss` hits the real boss.
+  private var fxClock = 0.0
+  private var fxStep = 0
+  private func demoFX(_ game: Game) {
+    guard let kind = Debug.string("-fx"), game.status == .playing, session?.isHeld == false else { return }
+    fxClock += visualDt
+    switch kind {
+    case "boss":
+      guard fxClock > 0.9, let b = game.bubbles.first(where: { $0.kind == .boss }), b.bossGuard <= 0 else { return }
+      fxClock = 0
+      game.tap(b)
+    case "shield":
+      guard fxClock > 2.6 else { return }
+      fxClock = 0
+      effect(.shieldLost(player: 0))
+    case "fever":
+      if fxClock > 0.8 && feverNow == 0 { feverBegan() }
+      if feverNow > 0 { feverDrive(max(0.001, 1 - (fxClock - 0.8) / 5)) }
+      if fxClock > 6 { feverEnded(); fxClock = 0 }
+    case "overtime":
+      guard fxClock > 3 else { return }
+      fxClock = 0; fxStep += 1
+      overtimeStep(fxStep)
+    default: break
+    }
+  }
+  #endif
 
   // MARK: Touch
 
@@ -1137,12 +1740,21 @@ final class GameScene: SKScene {
 final class BubbleNode: SKNode {
   let squash = SKNode()
   let sprite = SKSpriteNode()
+  /// The same art added on top, shown only while a hit flashes it white.
+  let glare = SKSpriteNode()
   var kind: BubbleKind?
   var drawSize: CGFloat = 0
+  var flash = 0.0
+  /// A split piece starts at its parent's centre and springs out by this much as `birthT` runs 0...1.
+  var birth = CGVector.zero
+  var birthT = 1.0
   override init() {
     super.init()
     addChild(squash)
     squash.addChild(sprite)
+    glare.blendMode = .add
+    glare.isHidden = true
+    squash.addChild(glare)
   }
   required init?(coder: NSCoder) { fatalError() }
 }
@@ -1160,7 +1772,7 @@ final class ScoreGlyphs {
     shadow.shadowBlurRadius = 5
     shadow.shadowOffset = CGSize(width: 0, height: 2)
     let attrs: [NSAttributedString.Key: Any] = [.font: font, .foregroundColor: UIColor.white, .shadow: shadow]
-    for ch in "+,0123456789" {
+    for ch in "+,.x0123456789" {
       let text = NSAttributedString(string: String(ch), attributes: attrs)
       let box = text.size()
       let pad: CGFloat = 8
@@ -1176,8 +1788,27 @@ final class ScoreGlyphs {
 
 final class ScoreNode: SKNode {
   private var parts: [SKSpriteNode] = []
+  /// The glyphs it draws with, kept from the last `show` so the combo counter can just pass text.
+  private static var shared: ScoreGlyphs?
+  /// Makes the glyph sprites ahead of time, so showing a number never makes a node.
+  func reserve(_ n: Int) {
+    while parts.count < n {
+      let s = SKSpriteNode()
+      s.colorBlendFactor = 1
+      s.isHidden = true
+      parts.append(s)
+      addChild(s)
+    }
+  }
   func show(_ value: Int, glyphs: ScoreGlyphs, height: CGFloat, color: UIColor) {
-    let text = "+\(value.formatted(.number.grouping(.automatic).locale(Locale(identifier: "en_US"))))"
+    Self.shared = glyphs
+    showText("+\(value.formatted(.number.grouping(.automatic).locale(Locale(identifier: "en_US"))))", glyphs: glyphs, height: height, color: color)
+  }
+  func showText(_ text: String, height: CGFloat, color: UIColor) {
+    guard let g = Self.shared else { return }
+    showText(text, glyphs: g, height: height, color: color)
+  }
+  func showText(_ text: String, glyphs: ScoreGlyphs, height: CGFloat, color: UIColor) {
     while parts.count < text.count {
       let s = SKSpriteNode()
       s.colorBlendFactor = 1

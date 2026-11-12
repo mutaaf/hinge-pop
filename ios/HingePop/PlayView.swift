@@ -182,6 +182,9 @@ struct PlayerCluster: View {
   private var mirrored: Bool { index == 1 }
   private var compact: Bool { session.versus && hClass == .compact }
   private var hud: PlayerHUD { session.hud.indices.contains(index) ? session.hud[index] : PlayerHUD() }
+  @Environment(\.accessibilityReduceMotion) private var reduceMotion
+  @State private var crackedIndex: Int?
+  @State private var joltAmount: CGFloat = 0
 
   var body: some View {
     Group {
@@ -211,9 +214,10 @@ struct PlayerCluster: View {
       VStack(spacing: 5) {
         HStack(spacing: 2) {
           ForEach(0..<maxShields, id: \.self) { i in
-            ArtImage(item: .glyph(i < hud.shields ? .shieldOn : .shieldOff), size: compact ? 18 : 24)
+            ShieldIcon(on: i < hud.shields, cracked: i == crackedIndex, danger: hud.shields == 1 && i == 0 && !session.versus, size: compact ? 18 : 24)
           }
         }
+        .modifier(Jolt(amount: joltAmount))
         .spotFrame(index == 0 ? .shields : .hud)
         GeometryReader { p in
           ZStack(alignment: .leading) {
@@ -232,6 +236,13 @@ struct PlayerCluster: View {
     }
     .buttonStyle(.plain)
     .accessibilityLabel("\(mirrored ? "Right" : session.versus ? "Left" : "Your") shields: \(hud.shields) of \(maxShields). Show details.")
+    .onChange(of: hud.shields) { old, new in
+      guard new < old else { crackedIndex = nil; return }
+      // The shield that just went cracks, and the row jolts.
+      crackedIndex = new
+      if !reduceMotion { withAnimation(.linear(duration: 0.42)) { joltAmount += 1 } }
+      Task { try? await Task.sleep(for: .seconds(1.6)); if crackedIndex == new { withAnimation(.easeOut(duration: 0.4)) { crackedIndex = nil } } }
+    }
   }
 
   private var meter: some View {
@@ -269,9 +280,7 @@ struct PlayerCluster: View {
     Button { session.openTip(session.tipScore(index)) } label: {
       VStack(alignment: mirrored ? .leading : .trailing, spacing: 0) {
         RollingScore(value: hud.score, big: !compact)
-        Text("x\(hud.combo.formatted())")
-          .font(.game(.caption, .heavy))
-          .foregroundStyle(hud.combo > 1 ? (mirrored ? Theme.p2 : Theme.sun) : Theme.muted)
+        ComboBadge(combo: hud.combo, mirrored: mirrored)
       }
       .environment(\.layoutDirection, .leftToRight)
       .frame(minWidth: 44, minHeight: compact ? 34 : Theme.target)
@@ -280,6 +289,74 @@ struct PlayerCluster: View {
     .buttonStyle(.plain)
     .spotFrame(index == 0 ? .score : .hud)
     .accessibilityLabel("Score \(hud.score), combo \(hud.combo.formatted()). Show details.")
+  }
+}
+
+/// The combo beside the score: it grows, takes on its callout's colour and glows hotter with each tier.
+struct ComboBadge: View {
+  let combo: Double
+  var mirrored = false
+  @Environment(\.accessibilityReduceMotion) private var reduceMotion
+  var body: some View {
+    let tier = ComboTier.tier(combo)
+    let color = combo <= 1 ? Theme.muted : tier == 0 ? (mirrored ? Theme.p2 : Theme.sun) : Color(ComboTier.color(tier))
+    Text("x\(combo.formatted())")
+      .font(.system(size: 12 + CGFloat(min(tier, 6)) * 1.2, weight: .black, design: .rounded))
+      .monospacedDigit()
+      .foregroundStyle(color)
+      .shadow(color: tier > 0 ? color.opacity(0.9) : .clear, radius: CGFloat(tier) * 1.6)
+      .shadow(color: tier >= 4 ? color.opacity(0.6) : .clear, radius: CGFloat(tier) * 3)
+      .scaleEffect(reduceMotion ? 1 : 1 + CGFloat(tier) * 0.02)
+      .animation(.spring(duration: 0.2, bounce: 0.5), value: tier)
+  }
+}
+
+/// One shield in the HUD. Losing it cracks it open in red; down to the last one, it throbs.
+struct ShieldIcon: View {
+  let on: Bool
+  let cracked: Bool
+  let danger: Bool
+  let size: CGFloat
+  @Environment(\.accessibilityReduceMotion) private var reduceMotion
+  @State private var throb = false
+  var body: some View {
+    ArtImage(item: .glyph(on ? .shieldOn : .shieldOff), size: size)
+      .overlay {
+        if cracked {
+          Crack().trim(from: 0, to: cracked ? 1 : 0)
+            .stroke(Theme.red, style: StrokeStyle(lineWidth: max(1.5, size / 11), lineCap: .round, lineJoin: .round))
+            .shadow(color: Theme.red, radius: 3)
+            .transition(.opacity)
+        }
+      }
+      .colorMultiply(danger && throb ? Color(red: 1, green: 0.55, blue: 0.58) : .white)
+      .scaleEffect(danger && throb && !reduceMotion ? 1.14 : 1)
+      .shadow(color: danger ? Theme.red.opacity(throb ? 0.9 : 0.3) : .clear, radius: 5)
+      .animation(danger ? .easeInOut(duration: 0.42).repeatForever(autoreverses: true) : .default, value: throb)
+      .onChange(of: danger, initial: true) { _, d in throb = d }
+  }
+}
+
+/// A jagged crack from the top of the shield down through the middle.
+struct Crack: Shape {
+  func path(in r: CGRect) -> Path {
+    var p = Path()
+    let pts: [(CGFloat, CGFloat)] = [(0.52, 0.08), (0.42, 0.32), (0.6, 0.46), (0.4, 0.66), (0.54, 0.9)]
+    p.move(to: CGPoint(x: r.minX + r.width * pts[0].0, y: r.minY + r.height * pts[0].1))
+    for q in pts.dropFirst() { p.addLine(to: CGPoint(x: r.minX + r.width * q.0, y: r.minY + r.height * q.1)) }
+    p.move(to: CGPoint(x: r.minX + r.width * 0.6, y: r.minY + r.height * 0.46))
+    p.addLine(to: CGPoint(x: r.minX + r.width * 0.78, y: r.minY + r.height * 0.56))
+    return p
+  }
+}
+
+/// A horizontal shake that plays once each time `amount` goes up by one.
+struct Jolt: GeometryEffect {
+  var amount: CGFloat
+  var animatableData: CGFloat { get { amount } set { amount = newValue } }
+  func effectValue(size: CGSize) -> ProjectionTransform {
+    let t = amount - amount.rounded(.down)
+    return ProjectionTransform(CGAffineTransform(translationX: sin(t * .pi * 6) * 6 * (1 - t), y: 0))
   }
 }
 
