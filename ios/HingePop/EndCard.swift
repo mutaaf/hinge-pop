@@ -146,7 +146,10 @@ struct ResultOverlay: View {
       VStack(spacing: 8) {
         HStack(alignment: .center, spacing: 12) {
           VStack(alignment: .leading, spacing: 4) {
-            Text("LEVEL \(n)").font(.game(.caption, .heavy)).tracking(2).foregroundStyle(.white.opacity(0.9))
+            HStack(spacing: 8) {
+              Text("LEVEL \(n)").font(.game(.caption, .heavy)).tracking(2).foregroundStyle(.white.opacity(0.9))
+              if g.difficulty == .overdrive { OverdriveTag(big: true) }
+            }
             Text("Cleared!").font(.game(.title, .black)).foregroundStyle(.white)
             HStack(spacing: 4) {
               ForEach(0..<3, id: \.self) { i in
@@ -217,6 +220,7 @@ struct ResultOverlay: View {
 
   private func winNotes(_ g: Game) -> [String] {
     var parts: [String] = []
+    if session.news.firstOverdrive { parts.append("🔥 Overdrive clear!") }
     if session.news.bestGrade { parts.append("Best grade!") }
     if session.resultWasBest { parts.append("New best!") }
     if g.cleanBonus { parts.append("Clean +25%") }
@@ -261,7 +265,10 @@ struct ResultOverlay: View {
     let cause = session.run.lossCause ?? .big
     AuroraSpot(arena: session.arena) {
       VStack(spacing: 8) {
-        Text("LEVEL \(n) · OVERLOADED").font(.game(.caption, .heavy)).tracking(2).foregroundStyle(.white.opacity(0.9))
+        HStack(spacing: 8) {
+          Text("LEVEL \(n) · OVERLOADED").font(.game(.caption, .heavy)).tracking(2).foregroundStyle(.white.opacity(0.9))
+          if g.difficulty == .overdrive { OverdriveTag(big: true) }
+        }
         HStack(spacing: 6) {
           ForEach(0..<g.tuning.shields, id: \.self) { _ in ArtImage(item: .glyph(.shieldOff), size: 30) }
         }

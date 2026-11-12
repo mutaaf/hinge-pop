@@ -84,6 +84,8 @@ final class Session {
 
   var versus: Bool { mode == .versus }
   var isCampaign: Bool { if case .campaign = mode { true } else { false } }
+  /// The level in play runs on Overdrive.
+  var overdrive: Bool { game?.difficulty == .overdrive }
   var arena: Arena {
     if let chosen = app.progress.arena { return chosen }
     return game?.spec.arena ?? .classic
@@ -138,7 +140,7 @@ final class Session {
 
   func makeGame(_ m: GameMode) -> Game {
     let place = placement(size: size, fold: fold, top: Double(hudHeight))
-    let g = Game(mode: m, width: size.width, height: size.height, top: Double(hudHeight), vertical: place?.vertical, hinge: place?.hinge, score: m == mode && isCampaign ? runScore : 0)
+    let g = Game(mode: m, width: size.width, height: size.height, top: Double(hudHeight), vertical: place?.vertical, hinge: place?.hinge, score: m == mode && isCampaign ? runScore : 0, difficulty: app.progress.difficulty)
     g.flick = app.progress.flick
     g.graceOn = app.progress.hingeGrace
     // Page play follows where the fold is. The fold's angle stays effects-only.
@@ -163,8 +165,10 @@ final class Session {
     startScore = game.players[0].score
     run = RunLog(gustTime: game.tuning.windTime)
     grade = nil; earned = []; news = GameProgress.RunNews()
-    challenges = isCampaign ? Challenges.for(game.spec) : []
-    par = isCampaign ? Par.score(game.spec) : 0
+    // Challenges are the level's own list in both modes (one progression); par follows the level as played,
+    // so an Overdrive run's bigger crowd and tougher boss raise the bar with it.
+    challenges = isCampaign ? Challenges.for(level: levelNumber) : []
+    par = isCampaign ? Par.score(game.spec, tuning: game.tuning) : 0
     overlay = .none; tip = nil; toast = nil; tourRun = false; tourInput = false
     syncHUD()
     introduce()
@@ -375,7 +379,7 @@ final class Session {
         let g = Par.grade(score: run.score, par: par)
         grade = g
         earned = Challenges.evaluate(challenges, run)
-        news = app.progress.record(level: n, stars: game.stars, score: score, grade: g, earned: earned)
+        news = app.progress.record(level: n, stars: game.stars, score: score, grade: g, earned: earned, difficulty: game.difficulty)
         resultWasBest = news.bestScore
         runScore = score
         if n == 42 { reveal(Secrets.named("answer")!) }

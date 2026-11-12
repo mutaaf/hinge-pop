@@ -145,6 +145,8 @@ struct HUDView: View {
 
   var body: some View {
     let foldX = session.verticalFoldX
+    // `game` isn't observed; reading `generation` redraws this when a new one starts.
+    let hot = session.generation >= 0 && session.overdrive
     HStack(spacing: 8) {
       PlayerCluster(session: session, index: 0)
       if session.versus {
@@ -159,7 +161,14 @@ struct HUDView: View {
     .padding(.horizontal, 12)
     .padding(.vertical, 6)
     .background(Theme.night.opacity(0.78))
-    .overlay(alignment: .bottom) { Rectangle().fill(Theme.panelEdge.opacity(0.6)).frame(height: 1) }
+    .background {
+      // Overdrive warms the HUD from below.
+      if hot { LinearGradient(colors: [.clear, Theme.ember.opacity(0.3)], startPoint: .top, endPoint: .bottom) }
+    }
+    .overlay(alignment: .bottom) {
+      Rectangle().fill(hot ? AnyShapeStyle(LinearGradient(colors: [Theme.orange.opacity(0.2), Theme.orange, Theme.orange.opacity(0.2)], startPoint: .leading, endPoint: .trailing)) : AnyShapeStyle(Theme.panelEdge.opacity(0.6)))
+        .frame(height: hot ? 2 : 1)
+    }
     .background(GeometryReader { p in
       Color.clear.onChange(of: p.size.height, initial: true) { _, h in session.hudHeight = h }
     })
@@ -251,7 +260,10 @@ struct PlayerCluster: View {
     return Button { session.openTip(session.tipMeter(index)) } label: {
       VStack(alignment: .leading, spacing: 3) {
         if !session.versus {
-          Text(label).font(.game(.caption2, .heavy)).foregroundStyle(Theme.muted).lineLimit(1).minimumScaleFactor(0.8)
+          HStack(spacing: 4) {
+            Text(label).font(.game(.caption2, .heavy)).foregroundStyle(Theme.muted).lineLimit(1).minimumScaleFactor(0.8)
+            if session.overdrive { OverdriveTag() }
+          }
         }
         HStack(spacing: 3) {
           ForEach(0..<max, id: \.self) { i in

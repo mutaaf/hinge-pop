@@ -137,10 +137,19 @@ struct HomeView: View {
 
   private func buttons(wide: Bool) -> some View {
     VStack(spacing: 10) {
-      Button(app.progress.nextUp > 1 ? "Play level \(app.progress.nextUp)" : "Play") {
+      let hot = app.progress.difficulty == .overdrive
+      Button {
         app.route = .play(.campaign(app.progress.nextUp))
+      } label: {
+        HStack(spacing: 8) {
+          if hot { Image(systemName: "flame.fill").accessibilityHidden(true) }
+          Text(app.progress.nextUp > 1 ? "Play level \(app.progress.nextUp)" : "Play")
+        }
       }
-      .buttonStyle(ChunkyStyle())
+      .buttonStyle(ChunkyStyle(colors: hot ? [Color(red: 1, green: 0.78, blue: 0.3), Theme.ember] : ChunkyStyle().colors))
+      .accessibilityLabel(app.progress.nextUp > 1 ? "Play level \(app.progress.nextUp)\(hot ? ", Overdrive" : "")" : "Play\(hot ? ", Overdrive" : "")")
+      .accessibilityIdentifier("play")
+      DifficultySwitch()
       Button("Journey") { app.route = .map }.buttonStyle(QuietStyle())
       HStack(spacing: 10) {
         Button("Arcade") { app.route = .play(.arcade(seed: UInt64(Date().timeIntervalSince1970))) }.buttonStyle(QuietStyle())
@@ -537,6 +546,7 @@ struct SettingsView: View {
         BackBar(title: "Settings")
         ScrollView {
           VStack(spacing: 12) {
+            GuideBlock(title: "Difficulty") { DifficultySwitch() }
             GuideBlock(title: "Play") { SettingsRows() }
             GuideBlock(title: "Backdrop") {
               Text("Every world has its own. Pick one to use everywhere, or follow the world. New ones open as you travel.").font(.game(.footnote, .medium)).foregroundStyle(Theme.muted).fixedSize(horizontal: false, vertical: true)
@@ -547,7 +557,7 @@ struct SettingsView: View {
             }
             GuideBlock(title: "Trail") { TrailPicker() }
             GuideBlock(title: "Your records") {
-              Text("Stars: \(app.progress.totalStars). Challenges: \(app.progress.mastery) of \(Challenges.total). S grades: \(app.progress.sGrades). Arcade best: \(app.progress.arcadeBest.formatted()). Today's daily best: \((app.progress.dailyBest[app.dailyKey] ?? 0).formatted()).")
+              Text("Stars: \(app.progress.totalStars). Challenges: \(app.progress.mastery) of \(Challenges.total). S grades: \(app.progress.sGrades). Overdrive clears: \(app.progress.overdriveClears). Arcade best: \(app.progress.arcadeBest.formatted()). Today's daily best: \((app.progress.dailyBest[app.dailyKey] ?? 0).formatted()).")
                 .font(.game(.subheadline, .medium)).foregroundStyle(Theme.ink).fixedSize(horizontal: false, vertical: true)
               Text("Everything stays on this device. There is no account, and no ads.").font(.game(.footnote, .medium)).foregroundStyle(Theme.muted).fixedSize(horizontal: false, vertical: true)
             }
