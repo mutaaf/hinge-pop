@@ -506,7 +506,7 @@ struct SettingsRows: View {
       Toggle("Swipe to slice", isOn: $model.progress.flick).toggleStyle(GameToggle(detail: "One swipe hits every bubble it crosses and aims the pieces. A plain tap then fires when you lift your finger. Off: every touch hits the moment you land."))
       Toggle("Hinge grace", isOn: $model.progress.hingeGrace).toggleStyle(GameToggle(detail: "Pieces from a hinge split get pushed clear of the line for 0.6 seconds."))
       Toggle("Sound", isOn: $model.progress.sound).toggleStyle(GameToggle(detail: "Short blips. The ring/silent switch also mutes them."))
-      Toggle("Haptics", isOn: $model.progress.haptics).toggleStyle(GameToggle(detail: "Light taps on pops and a firm one on crossings."))
+      Toggle("Haptics", isOn: $model.progress.haptics).toggleStyle(GameToggle(detail: "Taps on pops, a crack on snaps, a thud for shields and a heartbeat on your last one."))
     }
     .onChange(of: app.progress.sound) { _, _ in app.applySettings() }
     .onChange(of: app.progress.haptics) { _, _ in app.applySettings() }
