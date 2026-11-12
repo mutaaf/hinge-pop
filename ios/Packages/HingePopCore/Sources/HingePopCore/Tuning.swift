@@ -11,12 +11,12 @@ public struct Tuning: Sendable {
   public var bounce: [Double] = [0.7, 0.8, 0.9, 0.98]
   public var recover: [Double] = [0.9, 1.4, 2.2, 3]
   public var meterMax = 4
-  public var rechargeStreak = 10
+  public var rechargeStreak = 12
   public var shields = 3
   public var comboStep = 0.5
   public var comboMax = 10.0
-  public var comboWindow = 1.6
-  public var graceHinge = 0.45
+  public var comboWindow = 1.3
+  public var graceHinge = 0.38
   public var graceTap = 0.2
   public var readyTime = 0.8
   public var cleanBonus = 1.25
@@ -41,15 +41,15 @@ public struct Tuning: Sendable {
   public var fieldForce = 240.0
   public var bossRadius = 1.75
   public var bossMass = 40.0
-  public var bossHitsPerPhase = 9
+  public var bossHitsPerPhase = 12
   public var bossContactCooldown = 0.8
   /// After a hit a boss shrugs off touches for this long, so hammering the screen can't melt it.
   public var bossGuard = 0.32
   public var bossPhaseSpeed = 0.3
   /// Every so often a boss winds up, then dashes at the hinge. A hit during the wind-up staggers it for double damage.
-  public var bossWindupEvery = 5.0
+  public var bossWindupEvery = 4.2
   public var bossWindupEveryPhase = 1.2
-  public var bossWindupTime = 1.1
+  public var bossWindupTime = 0.95
   public var bossDashSpeed = 3.0
   public var bossDashCharge = 4
   public var bossMinions = 2
@@ -60,9 +60,9 @@ public struct Tuning: Sendable {
   public var cameoPoints = 1000
   public var cameoRadius = 34.0
   /// Busy levels arrive in stages: a new bubble comes when the arena has this little work left, or after the gap.
-  public var arrivalWork = 20
-  public var arrivalOpening = 28
-  public var arrivalGap = 7.0
+  public var arrivalWork = 26
+  public var arrivalOpening = 32
+  public var arrivalGap = 5.0
   /// Snap the Hinge: drag off the line and it cracks like a whip, flinging nearby bubbles away from it.
   public var snapCooldown = 7.0
   public var snapReach = 120.0
@@ -129,6 +129,27 @@ public struct Tuning: Sendable {
   public var shieldSpin = 1.1
   public var splitterShrink = 0.86
   public var blinkEcho = 0.55
+  /// Overtime: a level that drags past its par (`overtimeBase` + `overtimePerWork` per tap of work, plus
+  /// `overtimePerHit` per boss hit) speeds everything up by `overtimeGain` every `overtimeEvery` seconds,
+  /// up to `overtimeSteps` times. Stalling never pays.
+  public var overtimeBase = 6.0
+  public var overtimePerWork = 0.24
+  public var overtimePerHit = 0.7
+  public var overtimeEvery = 4.0
+  public var overtimeGain = 0.12
+  public var overtimeSteps = 6
+  /// Fever: a combo filled to `comboMax` starts a fever for `feverTime` seconds. Pops score `feverPoints`×,
+  /// bubbles slow to `feverSlow` and the combo holds. A crossing ends it.
+  public var feverTime = 5.0
+  public var feverSlow = 0.82
+  public var feverPoints = 2.0
+  /// Champions: crowned bubbles late in a world. Each takes `championArmor` extra hits and moves a little faster.
+  public var championArmor = 1
+  public var championSpeed = 1.12
+  /// A boss in its last phase sheds a small piece toward the line this often.
+  public var bossShedEvery = 6.5
+  /// Surge: a level's last push is announced this long before it lands.
+  public var surgeWarn = 1.5
   public init() {}
 }
 
