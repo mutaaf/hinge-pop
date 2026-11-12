@@ -545,8 +545,9 @@ struct SettingsView: View {
                 ForEach(Arena.allCases, id: \.self) { ArenaChoice(arena: $0) }
               }
             }
+            GuideBlock(title: "Trail") { TrailPicker() }
             GuideBlock(title: "Your records") {
-              Text("Stars: \(app.progress.totalStars). Arcade best: \(app.progress.arcadeBest.formatted()). Today's daily best: \((app.progress.dailyBest[app.dailyKey] ?? 0).formatted()).")
+              Text("Stars: \(app.progress.totalStars). Challenges: \(app.progress.mastery) of \(Challenges.total). S grades: \(app.progress.sGrades). Arcade best: \(app.progress.arcadeBest.formatted()). Today's daily best: \((app.progress.dailyBest[app.dailyKey] ?? 0).formatted()).")
                 .font(.game(.subheadline, .medium)).foregroundStyle(Theme.ink).fixedSize(horizontal: false, vertical: true)
               Text("Everything stays on this device. There is no account, and no ads.").font(.game(.footnote, .medium)).foregroundStyle(Theme.muted).fixedSize(horizontal: false, vertical: true)
             }
@@ -603,5 +604,42 @@ struct ArenaChoice: View {
     .buttonStyle(.plain)
     .disabled(!open)
     .accessibilityLabel("\(arena?.backdropName ?? "Follow the world") backdrop\(open ? "" : ", locked, opens in world \(opensIn?.number ?? 0), \(opensIn?.name ?? "")")\(chosen ? ", selected" : "")")
+  }
+}
+
+/// Swipe trails won with world medals. Cosmetic only: they never change play, and they're never sold.
+struct TrailPicker: View {
+  @Environment(AppModel.self) private var app
+  var body: some View {
+    let won = Trails.won(app.progress)
+    if won.isEmpty {
+      HStack(spacing: 10) {
+        Image(systemName: "medal").font(.system(size: 24, weight: .bold)).foregroundStyle(Theme.sun)
+        Text("Earn all 30 challenges in a world for its medal and a new swipe trail.").font(.game(.footnote, .medium)).foregroundStyle(Theme.muted).fixedSize(horizontal: false, vertical: true)
+      }
+    } else {
+      LazyVGrid(columns: [GridItem(.adaptive(minimum: 90), spacing: 10, alignment: .top)], spacing: 10) {
+        swatch(nil)
+        ForEach(won, id: \.self) { swatch($0) }
+      }
+    }
+  }
+
+  private func swatch(_ arena: Arena?) -> some View {
+    let chosen = Trails.current(app.progress) == arena
+    let colors = arena?.aurora ?? [Theme.violet, Theme.cyan, Theme.sun]
+    return Button { app.progress.trail = arena?.rawValue } label: {
+      VStack(spacing: 4) {
+        Capsule().fill(LinearGradient(colors: colors, startPoint: .leading, endPoint: .trailing))
+          .frame(height: 16).shadow(color: colors[0].opacity(0.8), radius: 6)
+          .padding(.horizontal, 6).frame(height: 36)
+          .overlay(Capsule().stroke(chosen ? Theme.cyan : .clear, lineWidth: 2.5))
+        Text(arena?.backdropName ?? "World").font(.game(.caption, .bold)).foregroundStyle(Theme.ink)
+      }
+      .frame(minHeight: Theme.target)
+      .contentShape(Rectangle())
+    }
+    .buttonStyle(.plain)
+    .accessibilityLabel("\(arena?.backdropName ?? "World") trail\(chosen ? ", selected" : "")")
   }
 }

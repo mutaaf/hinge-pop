@@ -27,7 +27,7 @@ enum ComboTier {
 enum Callout: String, CaseIterable {
   case nice = "NICE!", sweet = "SWEET!", wild = "WILD!", blazing = "BLAZING!", unreal = "UNREAL!", legendary = "LEGENDARY!"
   case snap = "SNAP!", clap = "CLAP!", stagger = "STAGGER!", bossDown = "BOSS DOWN!", clear = "CLEAR!", flawless = "FLAWLESS!"
-  case lastOne = "LAST ONE!", fever = "FEVER!", overtime = "OVERTIME!", faster = "FASTER!", shieldDown = "SHIELD DOWN!"
+  case lastOne = "LAST ONE!", fever = "FEVER!", overtime = "OVERTIME!", faster = "FASTER!", shieldDown = "SHIELD DOWN!", surge = "SURGE!"
   case phase2 = "PHASE 2", phase3 = "PHASE 3", phase4 = "PHASE 4", finalPhase = "FINAL PHASE!", boss = "BOSS"
   case comboBreak = "COMBO LOST"
 
@@ -35,7 +35,7 @@ enum Callout: String, CaseIterable {
   var points: CGFloat {
     switch self {
     case .boss, .comboBreak: 22
-    case .shieldDown, .phase2, .phase3, .phase4, .finalPhase, .faster, .lastOne: 40
+    case .shieldDown, .phase2, .phase3, .phase4, .finalPhase, .faster, .lastOne, .surge: 40
     default: 54
     }
   }

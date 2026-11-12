@@ -566,9 +566,18 @@ struct LevelStop: View {
         }
         .frame(width: size, height: size)
         .shadow(color: open ? c[0].opacity(0.55) : .clear, radius: 10)
+        .overlay(alignment: .topTrailing) {
+          if let grade = p.grade(level), !gated {
+            GradeStamp(grade: grade, size: 26).offset(x: 8, y: -6).allowsHitTesting(false)
+          }
+        }
         if level <= p.unlocked && !gated {
           HStack(spacing: 1) {
             ForEach(0..<3, id: \.self) { i in ArtImage(item: .glyph(i < stars ? .starOn : .starOff), size: 15) }
+            if stars > 0 {
+              Rectangle().fill(.white.opacity(0.25)).frame(width: 1, height: 10).padding(.horizontal, 3)
+              ChallengePips(done: p.challengesDone(level), size: 6)
+            }
           }
           .padding(.horizontal, 5).padding(.vertical, 1)
           .background(Capsule().fill(.black.opacity(0.45)))
@@ -595,7 +604,8 @@ struct LevelStop: View {
     let p = app.progress
     let stars = p.stars[level] ?? 0
     let boss = level % 10 == 0 ? ", \(Journey.bossName(world.boss))" : ""
-    if p.isOpen(level) { return "Level \(level)\(boss), \(world.name), \(stars) of 3 stars\(level == p.nextUp ? ", you are here" : "")" }
+    let mastery = p.grade(level).map { ", grade \($0.letter), \(p.challengeCount(level)) of \(Challenges.perLevel) challenges" } ?? ""
+    if p.isOpen(level) { return "Level \(level)\(boss), \(world.name), \(stars) of 3 stars\(mastery)\(level == p.nextUp ? ", you are here" : "")" }
     if p.isGated(level) {
       let r = Worlds.realms[world.realm - 1]
       return "Level \(level), locked. Win \(p.starsShort(world.realm)) more stars to open \(r.name)."
@@ -652,12 +662,18 @@ struct WorldBanner: View {
       HStack(alignment: .firstTextBaseline) {
         Text("WORLD \(world.number)").font(.game(.caption, .heavy)).tracking(1.2).foregroundStyle(c[0])
         Spacer(minLength: 6)
-        if p.worldComplete(world.number) {
+        if p.hasMedal(world.number) {
+          Label("Medal", systemImage: "medal.fill").font(.game(.caption, .heavy)).foregroundStyle(Theme.sun)
+        } else if p.worldComplete(world.number) {
           Label("Complete", systemImage: "checkmark.seal.fill").font(.game(.caption, .heavy)).foregroundStyle(Theme.sun)
         }
         HStack(spacing: 3) {
           ArtImage(item: .glyph(.starOn), size: 15)
           Text("\(stars)/30").font(.game(.caption, .heavy)).monospacedDigit().foregroundStyle(Theme.ink)
+        }
+        HStack(spacing: 3) {
+          Image(systemName: "rosette").font(.system(size: 12, weight: .black)).foregroundStyle(Theme.sun)
+          Text("\(p.worldChallenges(world.number))/\(Challenges.perWorld)").font(.game(.caption, .heavy)).monospacedDigit().foregroundStyle(Theme.ink)
         }
       }
       Text(world.name).font(.game(.title2, .black)).foregroundStyle(Theme.ink).fixedSize(horizontal: false, vertical: true)
@@ -692,7 +708,7 @@ struct WorldBanner: View {
   private var a11y: String {
     let p = app.progress
     let twists = world.twists.isEmpty ? "" : " Twist: \(world.twists.map(Journey.twistName).joined(separator: " and "))."
-    return "World \(world.number), \(world.name). \(world.teaches)\(twists) \(Journey.bossName(world.boss)). \(p.worldStars(world.number)) of 30 stars."
+    return "World \(world.number), \(world.name). \(world.teaches)\(twists) \(Journey.bossName(world.boss)). \(p.worldStars(world.number)) of 30 stars. \(p.worldChallenges(world.number)) of \(Challenges.perWorld) challenges\(p.hasMedal(world.number) ? ", medal won" : "")."
   }
 }
 
@@ -759,6 +775,7 @@ struct RealmCard: View {
           Text("\(cleared) of 80 levels").font(.game(.subheadline, .heavy)).foregroundStyle(Theme.ink)
           Text("\(stars) of 240 stars").font(.game(.footnote, .semibold)).foregroundStyle(Theme.muted)
           Text("\(realm.worlds.filter { p.worldComplete($0) }.count) of 8 worlds").font(.game(.footnote, .semibold)).foregroundStyle(Theme.muted)
+          Text("\(p.realmChallenges(realm.number)) of \(Challenges.perWorld * 8) challenges").font(.game(.footnote, .semibold)).foregroundStyle(Theme.sun.opacity(0.9))
         }
       }
       if !open {
@@ -824,6 +841,8 @@ struct RealmOverview: View {
   let pick: (Int) -> Void
   var body: some View {
     ScrollView {
+      MasteryBar()
+        .padding(.horizontal, 16).padding(.top, 12)
       LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 12, alignment: .top), count: columns), spacing: 12) {
         ForEach(Worlds.realms, id: \.number) { r in RealmTile(realm: r, compact: compact) { pick(r.number) } }
       }
@@ -867,7 +886,8 @@ struct RealmTile: View {
           } else if here {
             Text("You're here").font(.game(.caption, .heavy)).foregroundStyle(Theme.cyan)
           } else {
-            Text("★ \(stars) of 240").font(.game(.caption, .heavy)).monospacedDigit().foregroundStyle(Theme.ink.opacity(0.9))
+            Text("★ \(stars) of 240 · \(p.realmChallenges(realm.number)) challenges").font(.game(.caption, .heavy)).monospacedDigit().foregroundStyle(Theme.ink.opacity(0.9))
+              .lineLimit(1).minimumScaleFactor(0.8)
           }
         }
         Spacer(minLength: 0)
@@ -890,6 +910,43 @@ struct RealmTile: View {
     .buttonStyle(.plain)
     .accessibilityLabel("Realm \(realm.number), \(realm.name). \(realm.nod). \(stars) of 240 stars.\(open ? "" : " Locked, \(p.starsShort(realm.number)) more stars to open.")\(here ? " You are here." : "")")
     .accessibilityHint("Shows it on the journey")
+  }
+}
+
+/// Mastery at a glance: challenges earned across the campaign, S grades and medals.
+struct MasteryBar: View {
+  @Environment(AppModel.self) private var app
+  var body: some View {
+    let p = app.progress
+    let done = p.mastery, total = Challenges.total
+    HStack(spacing: 12) {
+      ZStack {
+        ProgressRing(fraction: Double(done) / Double(total), colors: [Theme.sun, Theme.orange, Theme.cyan], line: 6)
+        Image(systemName: "rosette").font(.system(size: 20, weight: .black)).foregroundStyle(Theme.sun)
+      }
+      .frame(width: 50, height: 50)
+      VStack(alignment: .leading, spacing: 2) {
+        Text("Mastery").font(.game(.caption, .heavy)).tracking(1.5).foregroundStyle(Theme.sun)
+        Text("\(done) of \(total)").font(.game(.headline, .black)).monospacedDigit().foregroundStyle(Theme.ink)
+      }
+      Spacer(minLength: 4)
+      VStack(alignment: .trailing, spacing: 3) {
+        HStack(spacing: 4) {
+          GradeStamp(grade: .s, size: 22)
+          Text("\(p.sGrades)").font(.game(.subheadline, .heavy)).monospacedDigit().foregroundStyle(Theme.ink)
+        }
+        HStack(spacing: 4) {
+          Image(systemName: "medal.fill").font(.system(size: 15, weight: .bold)).foregroundStyle(Theme.sun)
+          Text("\(p.medals.count)").font(.game(.subheadline, .heavy)).monospacedDigit().foregroundStyle(Theme.ink)
+        }
+      }
+    }
+    .padding(12)
+    .background(RoundedRectangle(cornerRadius: 18, style: .continuous).fill(Theme.panel.opacity(0.92)))
+    .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).stroke(Theme.sun.opacity(0.55), lineWidth: 1.5))
+    .accessibilityElement(children: .ignore)
+    .accessibilityLabel("Mastery: \(done) of \(total) challenges. \(p.sGrades) S grades. \(p.medals.count) medals.")
+    .accessibilityIdentifier("mastery")
   }
 }
 

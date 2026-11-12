@@ -958,7 +958,7 @@ final class GameScene: SKScene {
   /// A swipe leaves a ribbon of aurora light behind the finger. The colour drifts along the stroke.
   private func trail(from a: CGPoint, to b: CGPoint) {
     guard !reduceMotion else { return }
-    let palette = (session?.arena ?? .classic).sparkColors
+    let palette = (session?.trailArena ?? .classic).sparkColors
     let index = Int(clock * 6) % palette.count
     let from = CGPoint(x: a.x, y: area.height - a.y), to = CGPoint(x: b.x, y: area.height - b.y)
     let n = sprite(fxTextures["softDot"], size: .zero, at: .zero, z: 7, add: true)
@@ -1131,7 +1131,13 @@ final class GameScene: SKScene {
     if winding { feel.warnColor = UIColor(red: 1, green: 0.22, blue: 0.28, alpha: 1); feel.warnHold = 0.55 }
     else if overtime > 0 { feel.warnColor = UIColor(red: 1, green: 0.62, blue: 0.2, alpha: 1); feel.warnHold = min(0.5, 0.14 + Double(overtime) * 0.07) }
     else { feel.warnHold = 0 }
-    // TODO(rules): drive fever from the rules each frame, e.g. `feverDrive(game.feverLeft > 0 ? min(1, game.feverLeft / 0.6) : 0)`.
+    // Fever from the rules: full while it runs, fading over its last moment.
+    let feverLeft = game.players.map(\.fever).max() ?? 0
+    var ruled = true
+    #if DEBUG
+    ruled = Debug.string("-fx") != "fever"
+    #endif
+    if ruled { feverDrive(feverLeft > 0 ? min(1, feverLeft / 0.6) : 0) }
     feel.fever = feverNow
     drawLastOne(game, session: session)
     let combo: (Double, Double, Double)? = solo && session.overlay != .tour ? (p0.combo, p0.comboT, game.tuning.comboWindow) : nil
@@ -1567,10 +1573,39 @@ final class GameScene: SKScene {
     case .wave: sound.blip(330, 0.2, .triangle, gain: 0.14)
     case .finished:
       finale()
-    // TODO(rules): wire overtime and fever here once their events land, e.g.
-    //   case let .overtime(step): overtimeStep(step)
-    //   case .feverStart: feverBegan()
-    //   case .feverEnd: feverEnded()
+    // The rules' pressure events: overtime, fever, champions, surges, and a last-phase boss shedding.
+    case let .overtime(step): overtimeStep(step)
+    case .feverStart: feverBegan()
+    case .feverEnd: feverEnded()
+    case let .championCrack(x, gy, r, points, armorLeft):
+      let p = CGPoint(x: x, y: y(gy))
+      let gold = UIColor(red: 1, green: 0.85, blue: 0.3, alpha: 1)
+      liveNode(near: p, r: CGFloat(r))?.flash = 1
+      burst(at: p, r: CGFloat(r) * 0.7, particles: 6)
+      sparks(at: p, r: CGFloat(r) * 0.8, count: 18, color: gold, fast: true)
+      shockwave(at: p, r: CGFloat(r) * 1.4, tint: gold)
+      scoreText(points, at: p, color: gold)
+      feel.shake(armorLeft == 0 ? 0.35 : 0.2)
+      if armorLeft == 0 { feel.hitStop(0.05) }
+      sound.blip(320 + Double(armorLeft) * 60, 0.12, .square, gain: 0.12); sound.blip(3200, 0.03, .noise, gain: 0.1, fall: 0)
+      haptic.play(.bigSplit)
+      comboCheck(at: p)
+    case .surgeWarning:
+      feel.warnPulse(0.9, color: UIColor(red: 1, green: 0.5, blue: 0.3, alpha: 1))
+      feel.callout(.surge, at: CGPoint(x: area.width / 2, y: area.height * 0.62), color: UIColor(red: 1, green: 0.6, blue: 0.35, alpha: 1), size: 0.85)
+      sound.blip(220, 0.4, .saw, gain: 0.1, fall: -0.6)
+      haptic.play(.windup)
+    case .surge:
+      feel.shake(0.4)
+      feel.flash(0.18, UIColor(red: 1, green: 0.6, blue: 0.4, alpha: 1))
+      ripple(CGPoint(x: area.width / 2, y: area.height / 2))
+      sound.thump(70, gain: 0.2)
+      haptic.play(.bossSlam)
+    case let .bossShed(x, gy, r):
+      let p = CGPoint(x: x, y: y(gy))
+      sparks(at: p, r: CGFloat(r) * 0.6, count: 20)
+      shockwave(at: p, r: CGFloat(r) * 0.9, tint: UIColor(red: 1, green: 0.45, blue: 0.4, alpha: 1))
+      sound.blip(300, 0.12, .saw, gain: 0.1)
     default: break
     }
   }
