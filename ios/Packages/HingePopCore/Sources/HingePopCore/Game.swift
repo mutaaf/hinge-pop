@@ -768,7 +768,10 @@ public final class Game {
   }
 
   /// Bosses get tougher chapter by chapter.
-  public var bossHitsPerPhase: Int {
+  public var bossHitsPerPhase: Int { Game.bossHitsPerPhase(spec, tuning: tuning) }
+
+  /// The one formula for a boss's hits per phase (grades' par reads it too).
+  public static func bossHitsPerPhase(_ spec: LevelSpec, tuning: Tuning) -> Int {
     // The first chapters add a hit each; after that every third realm adds one more.
     let realm = (max(1, spec.chapter) - 1) / 8
     var hits = max(1, tuning.bossHitsPerPhase - 1 + min(4, max(1, spec.chapter)) + realm / 3)
@@ -777,6 +780,7 @@ public final class Game {
     // Twins share one bar, and you can hit one while the other guards, so their bar is a little shorter.
     return spec.boss == .twins ? max(1, hits * 2 / 3) : hits
   }
+
 
   private func hitBoss(_ b: Bubble, by owner: Int) {
     let staggered = b.bossWindup > 0

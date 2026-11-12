@@ -45,6 +45,14 @@ final class Session {
   var tourNote = ""
   var meetQueue: [ActorKind] = []
   var resultWasBest = false
+  /// Mastery for the run in play: its level's challenges, what it's done so far, and the verdict at the end.
+  private(set) var challenges: [Challenge] = []
+  private(set) var run = RunLog()
+  private(set) var grade: Grade?
+  private(set) var earned: [Bool] = []
+  private(set) var news = GameProgress.RunNews()
+  /// What the level asked of an S, for the end card.
+  private(set) var par = 0
   var hudHeight: CGFloat = 76
   var levelNumber = 1
 
@@ -52,6 +60,8 @@ final class Session {
   @ObservationIgnored private var size = CGSize.zero
   @ObservationIgnored private var fold: CGRect?
   @ObservationIgnored var runScore = 0
+  /// The score this level started from, so a grade only counts the level's own points.
+  @ObservationIgnored private var startScore = 0
   @ObservationIgnored private var acc = 0.0
   @ObservationIgnored private var endTimer = 0.0
   @ObservationIgnored private var toastTask: Task<Void, Never>?
@@ -78,6 +88,8 @@ final class Session {
     if let chosen = app.progress.arena { return chosen }
     return game?.spec.arena ?? .classic
   }
+  /// The swipe trail's colours: a medal's trail when one is picked (cosmetic only), otherwise the arena's.
+  var trailArena: Arena { Trails.current(app.progress) ?? arena }
   /// Which take on the biome's art this level uses (`LevelSpec.variant`). A biome picked in settings shows
   /// its original take, since the level's variant belongs to the level's own biome.
   var variant: Int {
@@ -148,6 +160,11 @@ final class Session {
     game = makeGame(mode)
     generation += 1
     acc = 0; endTimer = 0
+    startScore = game.players[0].score
+    run = RunLog(gustTime: game.tuning.windTime)
+    grade = nil; earned = []; news = GameProgress.RunNews()
+    challenges = isCampaign ? Challenges.for(game.spec) : []
+    par = isCampaign ? Par.score(game.spec) : 0
     overlay = .none; tip = nil; toast = nil; tourRun = false; tourInput = false
     syncHUD()
     introduce()
@@ -205,7 +222,8 @@ final class Session {
     overlay = meetQueue.first.map { .meet($0) } ?? .none
   }
 
-  func restart() { if isCampaign { /* the level's starting score stays */ } else { runScore = 0 }; startGame() }
+  /// Again, from the score the level began with, even after a win (so retrying for an S never inflates it).
+  func restart() { runScore = isCampaign ? startScore : 0; startGame() }
 
   func nextLevel() {
     guard case .campaign(let n) = mode else { return }
@@ -241,6 +259,7 @@ final class Session {
       #endif
     }
     pendingEvents.append(contentsOf: game.events)
+    if overlay != .tour, !game.events.isEmpty { run.note(game.events, at: game.time) }
     handleTeaching(game.events)
     game.events.removeAll(keepingCapacity: true)
     syncHUD()
@@ -348,12 +367,16 @@ final class Session {
   }
 
   private func finish() {
+    run.close(game, startScore: startScore)
     switch mode {
     case .campaign(let n):
       if game.status == .won {
         let score = game.players[0].score
-        resultWasBest = score > (app.progress.bestScores[n] ?? 0)
-        app.progress.record(level: n, stars: game.stars, score: score)
+        let g = Par.grade(score: run.score, par: par)
+        grade = g
+        earned = Challenges.evaluate(challenges, run)
+        news = app.progress.record(level: n, stars: game.stars, score: score, grade: g, earned: earned)
+        resultWasBest = news.bestScore
         runScore = score
         if n == 42 { reveal(Secrets.named("answer")!) }
         Haptics.shared.good()
@@ -412,13 +435,15 @@ final class Session {
   @ObservationIgnored var debugLeft = 0.0
   @ObservationIgnored var debugTop = 0.0
   private func demoTick(_ dt: Double) {
-    if Debug.has("-win"), game.status == .playing, game.time > 0.6 {
+    let endCard = Debug.string("-endCard")
+    if Debug.has("-win") || endCard == "win", game.status == .playing, game.time > 0.6 {
       var guardCount = 0
       while let b = game.bubbles.first, game.status == .playing, guardCount < 800 { game.tap(b); guardCount += 1 }
     }
-    if Debug.has("-lose"), game.status == .playing, game.time > 0.6 {
+    if Debug.has("-lose") || endCard == "lose", game.status == .playing, game.time > 0.6 {
       game.players[0].shields = 1; game.players[0].meter = game.meterMax - 1
-      if let b = game.bubbles.first(where: { $0.size < 3 }) { if game.vertical { b.x = game.hinge - Double(b.side); b.vx = -Double(b.side) * 400 } else { b.y = game.hinge - Double(b.side); b.vy = -Double(b.side) * 400 }; b.grace = 0 }
+      let pick = endCard == "lose" ? game.bubbles.first(where: { $0.size == 0 && $0.kind != .boss }) : nil
+      if let b = pick ?? game.bubbles.first(where: { $0.size < 3 }) { if game.vertical { b.x = game.hinge - Double(b.side); b.vx = -Double(b.side) * 400 } else { b.y = game.hinge - Double(b.side); b.vy = -Double(b.side) * 400 }; b.grace = 0 }
     }
     if Debug.has("-still") {
       for b in game.bubbles { b.vx = 0; b.vy = 0 }
