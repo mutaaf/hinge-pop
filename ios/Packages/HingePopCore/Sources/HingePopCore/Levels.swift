@@ -89,14 +89,16 @@ public struct Chapter: Sendable, Equatable {
 
 /// Realm 1's pressure: the hand-built chapters, tuned to the same per-world bands as the rest (see AGENTS.md).
 enum HomePressure {
-  static let firstPace = 0.78, firstStep = 0.02
+  /// World 1, level by level: the first two are the tutorial, then it bites from level 3.
+  static let firstPaces: [Double] = [0.5, 0.55, 0.9, 0.9, 0.9, 0.84, 0.86, 0.9, 0.9, 0.92]
+  static let firstSurges = [0, 0, 5, 5, 5, 4, 4, 5, 5]
   static let pace = 0.72, paceChapter = 0.02, paceStep = 0.01
   /// Each chapter's own nudge: gates make Overload Protocol forgiving, frozen crowds make Frost Fair heavy.
-  static let chapterPace = [0, 0, 0, 0.09, 0, -0.06, -0.03, 0.02]
+  static let chapterPace = [0, 0.02, 0, 0.09, 0, -0.06, -0.03, 0.02]
   /// Surge from a chapter's third level (from the sixth in the first), champions from its seventh.
   /// Magma Run, the realm's last world, starts with a bigger surge and no crowns: its fast bubbles are enough.
   static func surge(chapter: Int, step k: Int) -> Int {
-    chapter == 0 ? (k >= 8 ? 4 : k >= 5 ? 3 : k >= 3 ? 2 : 0) : k < 3 ? (chapter == 7 ? 3 : 0) : 2 + (k - 3) / 2 + (chapter == 7 && k < 7 ? 3 : 0)
+    chapter == 0 ? firstSurges[min(8, k - 1)] : k < 3 ? (chapter == 7 || chapter == 1 ? 4 : 2) : 2 + (k - 3) / 2 + (chapter == 7 && k < 7 ? 3 : 0)
   }
   static func champions(chapter: Int, step k: Int) -> Int { chapter == 0 || chapter == 7 || k < 7 ? 0 : 1 }
 }
@@ -161,7 +163,7 @@ public enum Campaign {
 
   /// The first chapter, by hand: one big, then one big and one small, then one big and one medium, and on up.
   /// The first two are the tutorial; from the third there's always more than one thing to watch.
-  private static let firstChapter: [[Int]] = [[0], [0, 2], [0, 1], [0, 1, 1, 2], [0, 0, 2], [0, 0, 1], [0, 0, 1, 2], [0, 0, 1, 1], [0, 0, 1, 1, 2, 2]]
+  private static let firstChapter: [[Int]] = [[0], [0, 2], [0, 1, 2], [0, 1, 1, 2], [0, 0, 2], [0, 0, 2, 2], [0, 0, 1, 2], [0, 0, 1, 1], [0, 0, 1, 1, 2, 2]]
 
   /// The budget climbs slowly inside a chapter, and eases back at each new one so its new bubble gets room.
   private static func budget(chapter: Int, step k: Int) -> Int { min(chapter >= 5 ? 84 : 76, 24 + chapter * 7 + (k - 1) * 3 - (chapter >= 5 ? 10 : 0)) }
@@ -169,7 +171,7 @@ public enum Campaign {
   /// The first two levels are the tutorial and stay slow. From the third the pace starts to bite, and every chapter
   /// opens a notch faster than the last.
   private static func speed(chapter: Int, step k: Int) -> Double {
-    if chapter == 0 { return k <= 2 ? 0.5 + 0.05 * Double(k - 1) : HomePressure.firstPace + HomePressure.firstStep * Double(k - 3) }
+    if chapter == 0 { return HomePressure.firstPaces[min(9, k - 1)] }
     return min(0.93, HomePressure.pace + HomePressure.chapterPace[min(7, chapter)] + HomePressure.paceChapter * Double(chapter) + HomePressure.paceStep * Double(k - 1))
   }
 
@@ -194,7 +196,7 @@ public enum Campaign {
       // Every chapter ends on a boss, with more phases and more company as the game goes on.
       var spawns = [Spawn(.boss)]
       if index <= 2 { spawns.append(Spawn(.basic, size: 1)) }
-      if index >= 1 { spawns.append(Spawn(.fast, size: 2)) }
+      spawns.append(Spawn(.fast, size: 2))
       if index >= 2 { spawns.append(Spawn(.armored, size: 1)) }
       if index == 5 { spawns.append(Spawn(.frozen, size: 1)) }
       if index == 6 { spawns.append(Spawn(.magnetic, size: 1)) }
