@@ -182,6 +182,9 @@ struct PlayerCluster: View {
   private var mirrored: Bool { index == 1 }
   private var compact: Bool { session.versus && hClass == .compact }
   private var hud: PlayerHUD { session.hud.indices.contains(index) ? session.hud[index] : PlayerHUD() }
+  @Environment(\.accessibilityReduceMotion) private var reduceMotion
+  @State private var crackedIndex: Int?
+  @State private var joltAmount: CGFloat = 0
 
   var body: some View {
     Group {
@@ -211,9 +214,10 @@ struct PlayerCluster: View {
       VStack(spacing: 5) {
         HStack(spacing: 2) {
           ForEach(0..<maxShields, id: \.self) { i in
-            ArtImage(item: .glyph(i < hud.shields ? .shieldOn : .shieldOff), size: compact ? 18 : 24)
+            ShieldIcon(on: i < hud.shields, cracked: i == crackedIndex, danger: hud.shields == 1 && i == 0 && !session.versus, size: compact ? 18 : 24)
           }
         }
+        .modifier(Jolt(amount: joltAmount))
         .spotFrame(index == 0 ? .shields : .hud)
         GeometryReader { p in
           ZStack(alignment: .leading) {
@@ -232,6 +236,13 @@ struct PlayerCluster: View {
     }
     .buttonStyle(.plain)
     .accessibilityLabel("\(mirrored ? "Right" : session.versus ? "Left" : "Your") shields: \(hud.shields) of \(maxShields). Show details.")
+    .onChange(of: hud.shields) { old, new in
+      guard new < old else { crackedIndex = nil; return }
+      // The shield that just went cracks, and the row jolts.
+      crackedIndex = new
+      if !reduceMotion { withAnimation(.linear(duration: 0.42)) { joltAmount += 1 } }
+      Task { try? await Task.sleep(for: .seconds(1.6)); if crackedIndex == new { withAnimation(.easeOut(duration: 0.4)) { crackedIndex = nil } } }
+    }
   }
 
   private var meter: some View {
@@ -269,9 +280,7 @@ struct PlayerCluster: View {
     Button { session.openTip(session.tipScore(index)) } label: {
       VStack(alignment: mirrored ? .leading : .trailing, spacing: 0) {
         RollingScore(value: hud.score, big: !compact)
-        Text("x\(hud.combo.formatted())")
-          .font(.game(.caption, .heavy))
-          .foregroundStyle(hud.combo > 1 ? (mirrored ? Theme.p2 : Theme.sun) : Theme.muted)
+        ComboBadge(combo: hud.combo, mirrored: mirrored)
       }
       .environment(\.layoutDirection, .leftToRight)
       .frame(minWidth: 44, minHeight: compact ? 34 : Theme.target)
@@ -280,6 +289,74 @@ struct PlayerCluster: View {
     .buttonStyle(.plain)
     .spotFrame(index == 0 ? .score : .hud)
     .accessibilityLabel("Score \(hud.score), combo \(hud.combo.formatted()). Show details.")
+  }
+}
+
+/// The combo beside the score: it grows, takes on its callout's colour and glows hotter with each tier.
+struct ComboBadge: View {
+  let combo: Double
+  var mirrored = false
+  @Environment(\.accessibilityReduceMotion) private var reduceMotion
+  var body: some View {
+    let tier = ComboTier.tier(combo)
+    let color = combo <= 1 ? Theme.muted : tier == 0 ? (mirrored ? Theme.p2 : Theme.sun) : Color(ComboTier.color(tier))
+    Text("x\(combo.formatted())")
+      .font(.system(size: 12 + CGFloat(min(tier, 6)) * 1.2, weight: .black, design: .rounded))
+      .monospacedDigit()
+      .foregroundStyle(color)
+      .shadow(color: tier > 0 ? color.opacity(0.9) : .clear, radius: CGFloat(tier) * 1.6)
+      .shadow(color: tier >= 4 ? color.opacity(0.6) : .clear, radius: CGFloat(tier) * 3)
+      .scaleEffect(reduceMotion ? 1 : 1 + CGFloat(tier) * 0.02)
+      .animation(.spring(duration: 0.2, bounce: 0.5), value: tier)
+  }
+}
+
+/// One shield in the HUD. Losing it cracks it open in red; down to the last one, it throbs.
+struct ShieldIcon: View {
+  let on: Bool
+  let cracked: Bool
+  let danger: Bool
+  let size: CGFloat
+  @Environment(\.accessibilityReduceMotion) private var reduceMotion
+  @State private var throb = false
+  var body: some View {
+    ArtImage(item: .glyph(on ? .shieldOn : .shieldOff), size: size)
+      .overlay {
+        if cracked {
+          Crack().trim(from: 0, to: cracked ? 1 : 0)
+            .stroke(Theme.red, style: StrokeStyle(lineWidth: max(1.5, size / 11), lineCap: .round, lineJoin: .round))
+            .shadow(color: Theme.red, radius: 3)
+            .transition(.opacity)
+        }
+      }
+      .colorMultiply(danger && throb ? Color(red: 1, green: 0.55, blue: 0.58) : .white)
+      .scaleEffect(danger && throb && !reduceMotion ? 1.14 : 1)
+      .shadow(color: danger ? Theme.red.opacity(throb ? 0.9 : 0.3) : .clear, radius: 5)
+      .animation(danger ? .easeInOut(duration: 0.42).repeatForever(autoreverses: true) : .default, value: throb)
+      .onChange(of: danger, initial: true) { _, d in throb = d }
+  }
+}
+
+/// A jagged crack from the top of the shield down through the middle.
+struct Crack: Shape {
+  func path(in r: CGRect) -> Path {
+    var p = Path()
+    let pts: [(CGFloat, CGFloat)] = [(0.52, 0.08), (0.42, 0.32), (0.6, 0.46), (0.4, 0.66), (0.54, 0.9)]
+    p.move(to: CGPoint(x: r.minX + r.width * pts[0].0, y: r.minY + r.height * pts[0].1))
+    for q in pts.dropFirst() { p.addLine(to: CGPoint(x: r.minX + r.width * q.0, y: r.minY + r.height * q.1)) }
+    p.move(to: CGPoint(x: r.minX + r.width * 0.6, y: r.minY + r.height * 0.46))
+    p.addLine(to: CGPoint(x: r.minX + r.width * 0.78, y: r.minY + r.height * 0.56))
+    return p
+  }
+}
+
+/// A horizontal shake that plays once each time `amount` goes up by one.
+struct Jolt: GeometryEffect {
+  var amount: CGFloat
+  var animatableData: CGFloat { get { amount } set { amount = newValue } }
+  func effectValue(size: CGSize) -> ProjectionTransform {
+    let t = amount - amount.rounded(.down)
+    return ProjectionTransform(CGAffineTransform(translationX: sin(t * .pi * 6) * 6 * (1 - t), y: 0))
   }
 }
 
@@ -477,124 +554,7 @@ struct PauseOverlay: View {
   private var menu: some View { Button("Menu") { app.route = session.isCampaign ? .map : .home }.buttonStyle(QuietStyle()) }
 }
 
-struct ResultOverlay: View {
-  @Environment(AppModel.self) private var app
-  @Environment(\.accessibilityReduceMotion) private var reduceMotion
-  let session: Session
-  @State private var shown = 0
-  @State private var starsIn = 0
-  @State private var details: String? = nil
-
-  var body: some View {
-    let g = session.game!
-    let player = g.versus ? (g.winner.map { g.players[$0] } ?? g.players[0]) : g.players[0]
-    Centered {
-      Sheet(maxWidth: 460) {
-        // The result in one glance: a bright field, the verdict, the stars, the score.
-        AuroraSpot(arena: session.arena) {
-          VStack(spacing: 8) {
-            Text(heading(g)).font(.game(.title, .black)).foregroundStyle(.white).multilineTextAlignment(.center).fixedSize(horizontal: false, vertical: true)
-            if case .campaign = session.mode, g.status == .won {
-              HStack(spacing: 8) {
-                ForEach(0..<3, id: \.self) { i in
-                  if i < starsIn {
-                    AuroraAssemble(item: .glyph(.starOn), size: 44, count: 220)
-                  } else {
-                    ArtImage(item: .glyph(.starOff), size: 44)
-                  }
-                }
-              }
-              .accessibilityElement().accessibilityLabel("\(g.stars) of 3 stars")
-            }
-            Text(shown.formatted())
-              .font(.system(size: 50, weight: .black, design: .rounded))
-              .monospacedDigit()
-              .foregroundStyle(LinearGradient(colors: [.white, Theme.sun], startPoint: .top, endPoint: .bottom))
-              .contentTransition(.numericText(value: Double(shown)))
-              .minimumScaleFactor(0.6).lineLimit(1)
-            if let note = note(g) {
-              Text(note).font(.game(.footnote, .heavy)).foregroundStyle(.white)
-                .padding(.horizontal, 10).padding(.vertical, 4)
-                .background(Capsule().fill(.black.opacity(0.42)))
-            }
-          }
-          .padding(16)
-          .frame(maxWidth: .infinity)
-        }
-        Text(sub(g)).font(.game(.subheadline, .semibold)).foregroundStyle(Theme.muted).frame(maxWidth: .infinity).multilineTextAlignment(.center).fixedSize(horizontal: false, vertical: true)
-        actions(g)
-        Fold(title: "Details", id: "stats", open: $details) { StatGrid(session: session) }
-      }
-    }
-    .task {
-      let target = player.score
-      if reduceMotion { shown = target; starsIn = g.stars; return }
-      for i in 1...24 {
-        try? await Task.sleep(for: .milliseconds(28))
-        let k = Double(i) / 24
-        withAnimation(.linear(duration: 0.03)) { shown = Int(Double(target) * (1 - pow(1 - k, 3))) }
-      }
-      shown = target
-      for s in 0..<g.stars { try? await Task.sleep(for: .milliseconds(220)); starsIn = s + 1; Sound.shared.blip(660 + Double(s) * 220, 0.12) }
-    }
-  }
-
-  private func heading(_ g: Game) -> String {
-    switch session.mode {
-    case .versus: g.winner.map { $0 == 0 ? "Left wins" : "Right wins" } ?? "Draw"
-    case .campaign(let n): g.status == .won ? "Level \(n) cleared" : "Overloaded"
-    case .arcade: "Run over"
-    default: g.status == .won ? "Daily cleared" : "Overloaded"
-    }
-  }
-  private func sub(_ g: Game) -> String {
-    switch session.mode {
-    case .versus: return g.players.contains { $0.shields <= 0 } ? "Last shield gone." : "All clear. Top score wins."
-    case .campaign(let n):
-      if g.status == .won {
-        if !app.progress.isOpen(n + 1), let w = Worlds.world(ofLevel: n + 1), let r = Worlds.realm(w.realm) {
-          return "\(r.name) opens at \(Gates.stars(toOpen: r.number)) stars. Win \(app.progress.starsShort(r.number)) more."
-        }
-        let next = Campaign.level(n + 1)
-        return "Next: \(next.isBoss ? "a boss" : "\(next.spawns.count) \(next.spawns.count == 1 ? "bubble" : "bubbles")"), in \(Campaign.chapter(of: n + 1).title)."
-      }
-      return "Out of shields. One more go?"
-    case .arcade: return "You lasted \(g.waves) \(g.waves == 1 ? "wave" : "waves")."
-    default: return g.status == .won ? "New level tomorrow." : "Out of shields. You can try again today."
-    }
-  }
-  private func note(_ g: Game) -> String? {
-    var parts: [String] = []
-    if g.cleanBonus { parts.append("No-crossing bonus +25%") }
-    if session.resultWasBest { parts.append("New best!") }
-    return parts.isEmpty ? nil : parts.joined(separator: " · ")
-  }
-
-  @ViewBuilder
-  private func actions(_ g: Game) -> some View {
-    switch session.mode {
-    case .campaign(let n) where g.status == .won:
-      if app.progress.pendingCheer != nil {
-        // A world just finished: its moment plays on the way out.
-        Button("Celebrate") { app.route = .map }.buttonStyle(ChunkyStyle())
-      } else if app.progress.isOpen(n + 1) {
-        Button("Level \(n + 1)") { session.nextLevel() }.buttonStyle(ChunkyStyle())
-      } else {
-        Button("Find stars to win") { app.route = .play(.campaign(app.progress.nextUp)) }.buttonStyle(ChunkyStyle())
-      }
-      Button("Journey") { app.route = .map }.buttonStyle(QuietStyle())
-    case .campaign:
-      Button("Try again") { session.restart() }.buttonStyle(ChunkyStyle())
-      Button("Journey") { app.route = .map }.buttonStyle(QuietStyle())
-    case .versus:
-      Button("Rematch") { session.restart() }.buttonStyle(ChunkyStyle())
-      Button("Menu") { app.route = .home }.buttonStyle(QuietStyle())
-    default:
-      Button("Play again") { session.restart() }.buttonStyle(ChunkyStyle())
-      Button("Menu") { app.route = .home }.buttonStyle(QuietStyle())
-    }
-  }
-}
+// The end card (`ResultOverlay`) lives in EndCard.swift.
 
 struct StatGrid: View {
   let session: Session

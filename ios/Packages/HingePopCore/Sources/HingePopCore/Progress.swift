@@ -53,6 +53,82 @@ public struct GameProgress: Codable, Equatable, Sendable {
 
   public var totalStars: Int { stars.values.reduce(0, +) }
 
+  // MARK: Mastery: challenges, grades and medals
+
+  /// Challenges earned, per level: bit i is `Challenges.for(level:)[i]`. Optional so older saves load.
+  private var challengeLog: [Int: Int]? = nil
+  /// The best grade per level (`Grade.rawValue`). Optional so older saves load.
+  private var gradeLog: [Int: Int]? = nil
+  /// The trail tint picked from the ones medals have won (`Trails`). Nil is the standard trail. Cosmetic only.
+  public var trail: String? = nil
+
+  public func challengesDone(_ level: Int) -> [Bool] {
+    let mask = challengeLog?[level] ?? 0
+    return (0..<Challenges.perLevel).map { mask & (1 << $0) != 0 }
+  }
+  public func challengeCount(_ level: Int) -> Int { challengesDone(level).filter { $0 }.count }
+  public func grade(_ level: Int) -> Grade? { gradeLog?[level].flatMap(Grade.init(rawValue:)) }
+
+  public func worldChallenges(_ world: Int) -> Int {
+    guard let w = Worlds.world(world) else { return 0 }
+    return w.levels.reduce(0) { $0 + challengeCount($1) }
+  }
+  public func realmChallenges(_ realm: Int) -> Int {
+    guard let r = Worlds.realm(realm) else { return 0 }
+    return r.worlds.reduce(0) { $0 + worldChallenges($1) }
+  }
+  /// Challenges earned across the campaign, out of `Challenges.total`.
+  public var mastery: Int { challengeLog?.reduce(0) { $0 + ($1.key <= Campaign.finalAuthored ? challengeCount($1.key) : 0) } ?? 0 }
+  public var sGrades: Int { gradeLog?.values.filter { $0 == Grade.s.rawValue }.count ?? 0 }
+
+  /// A world's medal: every one of its 30 challenges done.
+  public func hasMedal(_ world: Int) -> Bool { worldChallenges(world) == Challenges.perWorld }
+  public var medals: [Int] { Worlds.all.map(\.number).filter(hasMedal) }
+
+  /// What a finished run changed, for the end card's callouts.
+  public struct RunNews: Equatable, Sendable {
+    public var bestScore = false
+    public var bestGrade = false
+    /// Which of the level's challenges this run earned for the first time.
+    public var newChallenges: [Bool] = Array(repeating: false, count: Challenges.perLevel)
+    /// A world whose medal this run won.
+    public var medal: Int? = nil
+    public init() {}
+    public var anyNewChallenge: Bool { newChallenges.contains(true) }
+  }
+
+  /// Records a clear: stars, best score, best grade and any challenges earned. Challenges stay earned.
+  @discardableResult
+  public mutating func record(level: Int, stars newStars: Int, score: Int, grade: Grade?, earned: [Bool]) -> RunNews {
+    var news = RunNews()
+    news.bestScore = score > (bestScores[level] ?? 0)
+    let world = Worlds.world(ofLevel: level)?.number
+    let hadMedal = world.map(hasMedal) ?? false
+    record(level: level, stars: newStars, score: score)
+    if let grade {
+      let old = self.grade(level)
+      if old == nil || grade > old! {
+        var log = gradeLog ?? [:]
+        log[level] = grade.rawValue
+        gradeLog = log
+        news.bestGrade = old != nil
+      }
+    }
+    let before = challengesDone(level)
+    var mask = challengeLog?[level] ?? 0
+    for (i, got) in earned.prefix(Challenges.perLevel).enumerated() where got {
+      if !before[i] { news.newChallenges[i] = true }
+      mask |= 1 << i
+    }
+    if mask != 0 {
+      var log = challengeLog ?? [:]
+      log[level] = mask
+      challengeLog = log
+    }
+    if let world, !hadMedal, hasMedal(world) { news.medal = world }
+    return news
+  }
+
   // MARK: Journey gates
 
   /// Every level up to here stays open whatever the gates say: the furthest level reached before realm gates

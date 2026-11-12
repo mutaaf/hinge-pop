@@ -30,7 +30,9 @@ final class AppModel {
     let args = ProcessInfo.processInfo.arguments
     if args.contains("-fresh") { progress = GameProgress() }
     if args.contains("-toured") { progress.seenTour = true; progress.seenVersusTour = true }
-    if args.contains("-demo") {
+    // -endCard win|lose plays a level (-level N, default 12) to its end card by itself, for screenshots.
+    let endCard = Debug.string("-endCard")
+    if args.contains("-demo") || endCard != nil {
       // Screenshots show the game, not the first-time cards.
       for k in ActorKind.allCases { progress.taught.insert("meet-\(k.rawValue)") }
       progress.taught.formUnion(["snapped", "windup", "stagger", "gate", "cross", "small", "shield", "recharge", "combo", "chain", "drop", "slam", "phase", "nearfull", "gatepass", "rush", "crossfold", "clap", "clap-hint", "current"])
@@ -43,6 +45,15 @@ final class AppModel {
       // -starsEach k gives every cleared level k stars (1 shows a realm gate); otherwise a believable mix.
       let each = Debug.int("-starsEach")
       for l in 1..<max(1, n) { progress.stars[l] = each ?? [3, 2, 3, 1, 3, 2, 2, 3][l % 8] }
+      // -mastery adds grades and challenges: a mix, with world 1 fully done for its medal.
+      if args.contains("-mastery") {
+        for l in 1..<max(1, n) {
+          let all = l <= 10
+          progress.record(level: l, stars: progress.stars[l] ?? 1, score: progress.bestScores[l] ?? 0,
+                          grade: all ? .s : Grade(rawValue: [4, 3, 2, 3, 1, 2, 3, 0][l % 8]),
+                          earned: all ? [true, true, true] : [l % 2 == 0, l % 3 == 0, l % 5 == 0])
+        }
+      }
       // Seeded saves skip the complete moments, unless -cheer asks for the latest one.
       progress.settleCheers(keepingLatest: args.contains("-cheer"))
     }
@@ -53,6 +64,14 @@ final class AppModel {
     default: break
     }
     if let n = Debug.int("-level") { route = .play(.campaign(n)) }
+    if endCard != nil {
+      let n = Debug.int("-level") ?? 12
+      progress.seenTour = true
+      progress.unlocked = max(progress.unlocked, n)
+      // A believable history: a C before, and the first challenge already done, so the card shows what's new.
+      if endCard == "win" { progress.record(level: n, stars: 1, score: 1, grade: .c, earned: [true, false, false]) }
+      route = .play(.campaign(n))
+    }
     if args.contains("-versus") { route = .play(.versus) }
     if args.contains("-arcade") { route = .play(.arcade(seed: 7)) }
     if args.contains("-daily") { route = .play(today()) }
