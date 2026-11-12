@@ -38,7 +38,13 @@ func tally(_ events: [GameEvent]) {
     if let key { reasonLock.lock(); reasons[key, default: 0] += 1; reasonLock.unlock() }
   }
 }
+/// `--meta` keeps a `RunLog` of each run, for challenge and grade rates.
+let meta = argv.contains("--meta")
 func play(_ n: Int, kind: String, rate: Double, seed: UInt64, w: Double = 390, h: Double = 760) -> Game {
+  var log = RunLog()
+  return play(n, kind: kind, rate: rate, seed: seed, w: w, h: h, log: &log)
+}
+func play(_ n: Int, kind: String, rate: Double, seed: UInt64, w: Double = 390, h: Double = 760, log: inout RunLog) -> Game {
   var r = SplitMix(seed: seed)
   let g = duo
     ? Game(mode: .campaign(n), width: 1300, height: 900, top: 70, vertical: true, hinge: 650, seed: seed)
@@ -49,6 +55,7 @@ func play(_ n: Int, kind: String, rate: Double, seed: UInt64, w: Double = 390, h
   while g.status == .playing && g.time < 300 {
     g.step(1.0 / 60)
     if why { tally(g.events) }
+    if meta { log.note(g.events, at: g.time) }
     g.events.removeAll(keepingCapacity: true)
     guard kind != "idle", g.status == .playing, g.ready <= 0, g.time >= next else { continue }
     next = g.time + (1 / rate) * (0.7 + r.unit() * 0.6)
@@ -75,6 +82,7 @@ func play(_ n: Int, kind: String, rate: Double, seed: UInt64, w: Double = 390, h
       touch(g, target, &r)
     }
   }
+  log.close(g)
   return g
 }
 
@@ -104,6 +112,35 @@ let levels: [Int] = {
 let bots = option("--bots").map(parseBots) ?? (ranged != nil ? parseBots("idle,h1.5,h2") : allBots)
 let runs = option("--runs").flatMap(Int.init) ?? (ranged != nil ? 16 : 40)
 let quiet = argv.contains("--quiet")
+
+// The meta table: how often bots earn each challenge and each grade. Exits when done.
+if meta {
+  let metaBots = option("--bots").map(parseBots) ?? parseBots("h2,h3,s2")
+  var out = [String](repeating: "", count: levels.count)
+  let mlock = NSLock()
+  DispatchQueue.concurrentPerform(iterations: levels.count) { i in
+    let lv = levels[i], spec = Campaign.level(lv), list = Challenges.for(level: lv), par = Par.score(spec)
+    var line = String(format: "%-4d w%-3d x%.2f par %-7d ", lv, Campaign.work(of: spec.spawns), spec.speed, par)
+    for (kind, rate) in metaBots {
+      var wins = 0, earned = [Int](repeating: 0, count: list.count), grades = [Int](repeating: 0, count: 5), ratio = 0.0, t = 0.0, extra = 0.0, combo = 0.0
+      for s in 1...runs {
+        var log = RunLog()
+        _ = play(lv, kind: kind, rate: rate, seed: UInt64(s), log: &log)
+        guard log.won else { continue }
+        wins += 1; t += log.time; extra += Double(log.springs + log.warps); combo += log.bestCombo
+        ratio += Double(log.score) / Double(par)
+        for (j, ok) in Challenges.evaluate(list, log).enumerated() where ok { earned[j] += 1 }
+        grades[Par.grade(score: log.score, par: par).rawValue] += 1
+      }
+      let pct = { (x: Int) in Int((Double(x) / Double(runs) * 100).rounded()) }
+      line += "| \(label((kind, rate))) w\(pct(wins)) c\(earned.map { String(pct($0)) }.joined(separator: "/")) S\(pct(grades[4]))A\(pct(grades[3]))B\(pct(grades[2])) r\(String(format: "%.2f", wins > 0 ? ratio / Double(wins) : 0)) t\(Int(wins > 0 ? t / Double(wins) : 0)) x\(String(format: "%.1f", combo / Double(max(1, wins)))) sw\(Int(extra / Double(max(1, wins)))) "
+    }
+    line += " " + list.map(\.title).joined(separator: "; ")
+    mlock.lock(); out[i] = line; mlock.unlock()
+  }
+  out.forEach { print($0) }
+  exit(0)
+}
 
 struct Row { var wins: [Int]; var stuck = 0; var time = 0.0 }
 var rows = [Row](repeating: Row(wins: []), count: levels.count)

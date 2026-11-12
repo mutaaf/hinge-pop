@@ -770,7 +770,7 @@ final class GameScene: SKScene {
   /// A swipe leaves a ribbon of aurora light behind the finger. The colour drifts along the stroke.
   private func trail(from a: CGPoint, to b: CGPoint) {
     guard !reduceMotion else { return }
-    let palette = (session?.arena ?? .classic).sparkColors
+    let palette = (session?.trailArena ?? .classic).sparkColors
     let index = Int(clock * 6) % palette.count
     let from = CGPoint(x: a.x, y: area.height - a.y), to = CGPoint(x: b.x, y: area.height - b.y)
     let n = sprite(fxTextures["softDot"], size: .zero, at: .zero, z: 7, add: true)

@@ -116,3 +116,70 @@ final class ProgressTests: XCTestCase {
     XCTAssertFalse(p.arenaOpen(.clockwork))
   }
 }
+
+final class MasteryProgressTests: XCTestCase {
+  func testChallengesAndGradesPersistAndOnlyImprove() throws {
+    var p = GameProgress()
+    var news = p.record(level: 3, stars: 2, score: 1000, grade: .b, earned: [true, false, false])
+    XCTAssertEqual(news.newChallenges, [true, false, false])
+    XCTAssertFalse(news.bestGrade, "a first grade isn't a new best")
+    XCTAssertTrue(news.bestScore)
+    news = p.record(level: 3, stars: 1, score: 500, grade: .c, earned: [true, false, true])
+    XCTAssertEqual(news.newChallenges, [false, false, true], "only the new one is news")
+    XCTAssertFalse(news.bestGrade)
+    XCTAssertFalse(news.bestScore)
+    XCTAssertEqual(p.grade(3), .b, "a worse grade doesn't replace a better one")
+    XCTAssertEqual(p.challengesDone(3), [true, false, true], "earned challenges stay earned")
+    news = p.record(level: 3, stars: 3, score: 2000, grade: .s, earned: [false, false, false])
+    XCTAssertTrue(news.bestGrade)
+    XCTAssertEqual(p.grade(3), .s)
+    XCTAssertEqual(p.stars[3], 3)
+    XCTAssertEqual(p.mastery, 2)
+    XCTAssertEqual(p.sGrades, 1)
+    let back = try JSONDecoder().decode(GameProgress.self, from: JSONEncoder().encode(p))
+    XCTAssertEqual(back, p)
+    XCTAssertEqual(back.challengesDone(3), [true, false, true])
+  }
+
+  func testOldSavesLoadWithoutMastery() throws {
+    // A save from before challenges: none of the mastery keys.
+    var old = GameProgress()
+    for l in 1...30 { old.record(level: l, stars: 2, score: 100) }
+    old.trail = "candy"
+    var json = try JSONSerialization.jsonObject(with: JSONEncoder().encode(old)) as! [String: Any]
+    for k in ["challengeLog", "gradeLog", "trail"] { json.removeValue(forKey: k) }
+    XCTAssertNil(json["challengeLog"])
+    let loaded = try JSONDecoder().decode(GameProgress.self, from: JSONSerialization.data(withJSONObject: json))
+    XCTAssertEqual(loaded.unlocked, 31)
+    XCTAssertEqual(loaded.totalStars, 60)
+    XCTAssertEqual(loaded.mastery, 0)
+    XCTAssertNil(loaded.grade(1))
+    XCTAssertNil(loaded.trail)
+    XCTAssertTrue(loaded.medals.isEmpty)
+  }
+
+  func testAMedalForEveryChallengeInAWorldWinsATrail() {
+    var p = GameProgress()
+    for l in 81...89 { p.record(level: l, stars: 3, score: 1, grade: .a, earned: [true, true, true]) }
+    XCTAssertEqual(p.worldChallenges(9), 27)
+    XCTAssertFalse(p.hasMedal(9))
+    let news = p.record(level: 90, stars: 3, score: 1, grade: .a, earned: [true, true, true])
+    XCTAssertEqual(news.medal, 9)
+    XCTAssertEqual(p.medals, [9])
+    XCTAssertEqual(p.realmChallenges(2), 30)
+    XCTAssertEqual(Trails.won(p), [Worlds.world(9)!.biome])
+    XCTAssertNil(Trails.current(p))
+    p.trail = Worlds.world(9)!.biome.rawValue
+    XCTAssertEqual(Trails.current(p), Worlds.world(9)!.biome)
+    p.trail = Arena.magma.rawValue
+    XCTAssertNil(Trails.current(p), "a trail not won yet doesn't draw")
+    XCTAssertNil(p.record(level: 90, stars: 3, score: 1, grade: .s, earned: [true, true, true]).medal, "a medal is news once")
+  }
+
+  func testStarGatesIgnoreChallenges() {
+    var p = GameProgress()
+    for l in 1...80 { p.record(level: l, stars: 1, score: 1, grade: .s, earned: [true, true, true]) }
+    XCTAssertFalse(p.realmOpen(2), "gates stay star-based")
+    XCTAssertEqual(p.mastery, 240)
+  }
+}
