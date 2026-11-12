@@ -198,6 +198,8 @@ public final class Game {
   public let tuning: Tuning
   public let mode: GameMode
   public let spec: LevelSpec
+  /// Normal or Overdrive. Only the campaign runs hotter; other modes are always `.normal`.
+  public let difficulty: Difficulty
   public private(set) var w: Double
   public private(set) var h: Double
   public private(set) var top: Double
@@ -293,8 +295,13 @@ public final class Game {
 
   public var versus: Bool { isVersus }
 
-  public init(mode: GameMode, width: Double, height: Double, top: Double = 0, vertical: Bool? = nil, hinge: Double? = nil, score: Int = 0, tuning: Tuning = Tuning(), seed: UInt64 = 1) {
+  /// `difficulty` applies to the campaign only. `heat` overrides Overdrive's calibrated pace (calibration tools).
+  public init(mode: GameMode, width: Double, height: Double, top: Double = 0, vertical: Bool? = nil, hinge: Double? = nil, score: Int = 0, tuning: Tuning = Tuning(), seed: UInt64 = 1, difficulty: Difficulty = .normal, heat: Double? = nil) {
     self.mode = mode
+    var hot = false
+    if case .campaign = mode { hot = difficulty == .overdrive }
+    self.difficulty = hot ? .overdrive : .normal
+    let tuning = hot ? Overdrive.tuning(tuning) : tuning
     self.tuning = tuning
     w = width; h = height; self.top = top
     isVersus = mode == .versus
@@ -307,7 +314,7 @@ public final class Game {
       ? [Player(score: 0, shields: tuning.shields), Player(score: 0, shields: tuning.shields)]
       : [Player(score: score, shields: tuning.shields)]
     switch mode {
-    case .campaign(let n): spec = Campaign.level(n); rng = SplitMix(seed: UInt64(max(1, n)) &+ seed &* 977)
+    case .campaign(let n): spec = hot ? Overdrive.spec(Campaign.level(n), heat: heat) : Campaign.level(n); rng = SplitMix(seed: UInt64(max(1, n)) &+ seed &* 977)
     case .arcade(let s): spec = Campaign.arcadeStart; rng = SplitMix(seed: s)
     case .daily(let y, let m, let d): spec = Campaign.daily(year: y, month: m, day: d); rng = SplitMix(seed: UInt64(y * 10_000 + m * 100 + d) &+ 7)
     case .versus: spec = Campaign.versusStart; rng = SplitMix(seed: seed)

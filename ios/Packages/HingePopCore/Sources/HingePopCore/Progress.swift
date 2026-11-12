@@ -25,6 +25,16 @@ public struct GameProgress: Codable, Equatable, Sendable {
   private var cameoLog: [String]? = nil
   /// The last version whose update notes were shown. Optional so older saves still load.
   public var seenNotes: String? = nil
+  /// Normal or Overdrive. Optional so saves from before Overdrive load as Normal.
+  private var difficultyChoice: Difficulty? = nil
+  public var difficulty: Difficulty {
+    get { difficultyChoice ?? .normal }
+    set { difficultyChoice = newValue }
+  }
+  /// Levels cleared on Overdrive (the flame on the journey). Optional so older saves load.
+  private var overdriveLog: Set<Int>? = nil
+  public func clearedOnOverdrive(_ level: Int) -> Bool { overdriveLog?.contains(level) ?? false }
+  public var overdriveClears: Int { overdriveLog?.count ?? 0 }
   /// True once someone has played, so an update can tell them what changed.
   public var playedBefore: Bool { seenTour || unlocked > 1 || arcadeBest > 0 || !stars.isEmpty }
   public init() {}
@@ -93,14 +103,22 @@ public struct GameProgress: Codable, Equatable, Sendable {
     public var newChallenges: [Bool] = Array(repeating: false, count: Challenges.perLevel)
     /// A world whose medal this run won.
     public var medal: Int? = nil
+    /// The first Overdrive clear of this level.
+    public var firstOverdrive = false
     public init() {}
     public var anyNewChallenge: Bool { newChallenges.contains(true) }
   }
 
   /// Records a clear: stars, best score, best grade and any challenges earned. Challenges stay earned.
+  /// Both difficulties share one progression (stars, gates, best score and grade); an Overdrive clear also
+  /// marks the level's flame.
   @discardableResult
-  public mutating func record(level: Int, stars newStars: Int, score: Int, grade: Grade?, earned: [Bool]) -> RunNews {
+  public mutating func record(level: Int, stars newStars: Int, score: Int, grade: Grade?, earned: [Bool], difficulty: Difficulty = .normal) -> RunNews {
     var news = RunNews()
+    if difficulty == .overdrive, !clearedOnOverdrive(level) {
+      overdriveLog = (overdriveLog ?? []).union([level])
+      news.firstOverdrive = true
+    }
     news.bestScore = score > (bestScores[level] ?? 0)
     let world = Worlds.world(ofLevel: level)?.number
     let hadMedal = world.map(hasMedal) ?? false

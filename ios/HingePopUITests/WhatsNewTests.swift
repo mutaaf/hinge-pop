@@ -20,20 +20,20 @@ final class WhatsNewTests: XCTestCase {
     app.buttons.containing(NSPredicate(format: "label CONTAINS %@", text)).firstMatch
   }
 
-  func testGuideCalloutOpensItsSection() {
+  func testSettingsCalloutOpensTheSwitch() {
     openCard()
-    let clap = callout("catch a fever")
-    XCTAssertTrue(clap.waitForExistence(timeout: 5))
+    let flip = callout("Overdrive. Same levels")
+    XCTAssertTrue(flip.waitForExistence(timeout: 5))
     shot("card")
-    clap.tap()
-    XCTAssertTrue(app.staticTexts["How to play"].waitForExistence(timeout: 5), "didn't land on How to play")
+    flip.tap()
+    XCTAssertTrue(app.buttons["difficulty-overdrive"].waitForExistence(timeout: 5), "didn't land on the difficulty switch")
     XCTAssertFalse(app.buttons["Let's pop!"].exists, "the card stayed open")
-    shot("guide-score")
+    shot("settings")
   }
 
   func testMapCalloutOpensTheMap() {
     openCard()
-    let map = callout("3 challenges and an S")
+    let map = callout("earns a flame")
     if !map.isHittable { app.swipeUp() }
     map.tap()
     XCTAssertTrue(app.staticTexts["Journey"].waitForExistence(timeout: 5), "didn't land on the journey")

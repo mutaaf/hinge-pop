@@ -249,6 +249,7 @@ struct JourneyView: View {
       .padding(.horizontal, 12).frame(minHeight: 40)
       .background(Capsule().fill(Theme.panel.opacity(0.9))).overlay(Capsule().stroke(Theme.sun.opacity(0.5)))
       .accessibilityElement().accessibilityLabel("\(app.progress.totalStars) stars")
+      OverdriveFlip()
       if realmsButton {
         Button { withAnimation(.snappy(duration: 0.3)) { showRealms = true } } label: {
           Image(systemName: "square.grid.2x2.fill").font(.title3.weight(.bold)).foregroundStyle(Theme.ink)
@@ -571,6 +572,12 @@ struct LevelStop: View {
             GradeStamp(grade: grade, size: 26).offset(x: 8, y: -6).allowsHitTesting(false)
           }
         }
+        .overlay(alignment: .topLeading) {
+          // Cleared on Overdrive: a flame on the stop.
+          if p.clearedOnOverdrive(level), !gated {
+            FlameMark(size: 17).offset(x: -6, y: -8).allowsHitTesting(false)
+          }
+        }
         if level <= p.unlocked && !gated {
           HStack(spacing: 1) {
             ForEach(0..<3, id: \.self) { i in ArtImage(item: .glyph(i < stars ? .starOn : .starOff), size: 15) }
@@ -604,7 +611,7 @@ struct LevelStop: View {
     let p = app.progress
     let stars = p.stars[level] ?? 0
     let boss = level % 10 == 0 ? ", \(Journey.bossName(world.boss))" : ""
-    let mastery = p.grade(level).map { ", grade \($0.letter), \(p.challengeCount(level)) of \(Challenges.perLevel) challenges" } ?? ""
+    let mastery = (p.grade(level).map { ", grade \($0.letter), \(p.challengeCount(level)) of \(Challenges.perLevel) challenges" } ?? "") + (p.clearedOnOverdrive(level) ? ", cleared on Overdrive" : "")
     if p.isOpen(level) { return "Level \(level)\(boss), \(world.name), \(stars) of 3 stars\(mastery)\(level == p.nextUp ? ", you are here" : "")" }
     if p.isGated(level) {
       let r = Worlds.realms[world.realm - 1]

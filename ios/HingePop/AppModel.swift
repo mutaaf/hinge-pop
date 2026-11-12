@@ -51,12 +51,16 @@ final class AppModel {
           let all = l <= 10
           progress.record(level: l, stars: progress.stars[l] ?? 1, score: progress.bestScores[l] ?? 0,
                           grade: all ? .s : Grade(rawValue: [4, 3, 2, 3, 1, 2, 3, 0][l % 8]),
-                          earned: all ? [true, true, true] : [l % 2 == 0, l % 3 == 0, l % 5 == 0])
+                          earned: all ? [true, true, true] : [l % 2 == 0, l % 3 == 0, l % 5 == 0],
+                          difficulty: l % 3 == 0 ? .overdrive : .normal)
         }
       }
       // Seeded saves skip the complete moments, unless -cheer asks for the latest one.
       progress.settleCheers(keepingLatest: args.contains("-cheer"))
     }
+    // -overdrive starts on Overdrive; -normal on Normal (UI tests pin it either way).
+    if args.contains("-overdrive") { progress.difficulty = .overdrive }
+    if args.contains("-normal") { progress.difficulty = .normal }
     switch Debug.string("-screen") {
     case "map": route = .map
     case "guide": route = .guide

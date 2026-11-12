@@ -13,6 +13,13 @@ import HingePopCore
 //   --bots LIST   e.g. idle,h2,s1.5,e3.5 (h = human, s = slicer, e = expert)
 //   --duo         plays an iPhone Duo held like a book, with page play on
 //   --quiet       skip the per-level rows
+//   --difficulty overdrive   plays Overdrive instead of Normal
+//   --ratio       Normal vs Overdrive: h2 on both, e3.5 on Overdrive, per level and per realm, with the ratio.
+//                 Runs adapt to the win rate (`--runs` is the floor), so rare wins are still counted well.
+//   --calibrate   finds each level's Overdrive heat for the target ratio and prints the table for Difficulty.swift
+//   --grid / --fine  with --calibrate: scan heats (whole range, or ±0.12 around the current one) for levels
+//                 whose win rate doesn't fall smoothly with pace
+//   --seed-base B seeds B+1...B+N (calibration uses its own seeds, so a later sweep is an honest check)
 func timeToHinge(_ g: Game, _ b: Bubble) -> Double {
   let pos = g.vertical ? b.x : b.y, v = g.vertical ? b.vx : b.vy, gap = g.hinge - pos
   return gap * v > 0 ? gap / v : .infinity
@@ -20,6 +27,10 @@ func timeToHinge(_ g: Game, _ b: Bubble) -> Double {
 let argv = CommandLine.arguments
 let duo = argv.contains("--duo")
 func option(_ name: String) -> String? { argv.firstIndex(of: name).flatMap { $0 + 1 < argv.count ? argv[$0 + 1] : nil } }
+let difficulty = option("--difficulty").flatMap(Difficulty.init(rawValue:)) ?? .normal
+let seedBase = option("--seed-base").flatMap(UInt64.init) ?? 0
+/// `--heat H` plays Overdrive at one heat everywhere instead of the calibrated table (for probing).
+let fixedHeat = option("--heat").flatMap(Double.init)
 
 /// `--why` counts what cost the meter: crossings by size, boss slams and dashes.
 let why = argv.contains("--why")
@@ -46,15 +57,15 @@ func tally(_ events: [GameEvent]) {
 }
 /// `--meta` keeps a `RunLog` of each run, for challenge and grade rates.
 let meta = argv.contains("--meta")
-func play(_ n: Int, kind: String, rate: Double, seed: UInt64, w: Double = 390, h: Double = 760) -> Game {
+func play(_ n: Int, kind: String, rate: Double, seed: UInt64, w: Double = 390, h: Double = 760, difficulty: Difficulty = difficulty, heat: Double? = nil) -> Game {
   var log = RunLog()
-  return play(n, kind: kind, rate: rate, seed: seed, w: w, h: h, log: &log)
+  return play(n, kind: kind, rate: rate, seed: seed, w: w, h: h, log: &log, difficulty: difficulty, heat: heat)
 }
-func play(_ n: Int, kind: String, rate: Double, seed: UInt64, w: Double = 390, h: Double = 760, log: inout RunLog) -> Game {
+func play(_ n: Int, kind: String, rate: Double, seed: UInt64, w: Double = 390, h: Double = 760, log: inout RunLog, difficulty: Difficulty = difficulty, heat: Double? = nil) -> Game {
   var r = SplitMix(seed: seed)
   let g = duo
-    ? Game(mode: .campaign(n), width: 1300, height: 900, top: 70, vertical: true, hinge: 650, seed: seed)
-    : Game(mode: .campaign(n), width: w, height: h, top: 70, seed: seed)
+    ? Game(mode: .campaign(n), width: 1300, height: 900, top: 70, vertical: true, hinge: 650, seed: seed, difficulty: difficulty, heat: heat)
+    : Game(mode: .campaign(n), width: w, height: h, top: 70, seed: seed, difficulty: difficulty, heat: heat)
   g.foldPlay = duo
   var next = 0.8 + 0.4 * r.unit()
   let dark = g.spec.has(.blackout)
@@ -114,12 +125,128 @@ let levels: [Int] = {
     let parts = ranged.split(separator: "-").compactMap { Int($0) }
     return parts.count == 2 ? Array(parts[0]...parts[1]) : parts
   }
-  let given = argv.dropFirst().filter { !$0.hasPrefix("-") && Int($0) != nil && !["--runs", "--bots"].contains(argv[argv.firstIndex(of: $0)! - 1]) }.compactMap { Int($0) }
+  let given = argv.dropFirst().filter { !$0.hasPrefix("-") && Int($0) != nil && !["--runs", "--bots", "--seed-base", "--max-runs", "--heat", "--want", "--difficulty"].contains(argv[argv.firstIndex(of: $0)! - 1]) }.compactMap { Int($0) }
   return given.isEmpty ? [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 13, 15, 17, 19, 20, 21, 23, 25, 27, 29, 30, 31, 33, 35, 37, 39, 40, 41, 43, 45, 47, 49, 50, 55, 60, 75, 100, 150] : given
 }()
 let bots = option("--bots").map(parseBots) ?? (ranged != nil ? parseBots("idle,h2,e3.5") : allBots)
 let runs = option("--runs").flatMap(Int.init) ?? (ranged != nil ? 16 : 40)
 let quiet = argv.contains("--quiet")
+
+/// Wins out of `count` runs from seed `from`+1, for one bot at one difficulty (and heat, when calibrating).
+func wins(_ lv: Int, _ bot: (String, Double), from: UInt64, count: Int, _ d: Difficulty, heat: Double? = nil) -> Int {
+  var w = 0
+  for s in 1...max(1, count) where play(lv, kind: bot.0, rate: bot.1, seed: from + UInt64(s), difficulty: d, heat: heat).status == .won { w += 1 }
+  return w
+}
+/// How many runs give about `want` Overdrive wins at a Normal win rate `p` (between `runs` and `--max-runs`).
+let maxRuns = option("--max-runs").flatMap(Int.init) ?? 6000
+func runsFor(_ p: Double, want: Double) -> Int { min(maxRuns, max(runs, Int((want / max(0.004, Overdrive.targetRatio * p)).rounded(.up)))) }
+
+// Calibration: per level, bisect Overdrive's heat until h2 wins `targetRatio`× Normal's, on seeds of its own.
+// Prints the table for `Overdrive.calibration`. Exits when done.
+if argv.contains("--calibrate") {
+  let h2 = ("human", 2.0), base: UInt64 = 1_000_000 + seedBase
+  let want = Double(option("--want").flatMap(Int.init) ?? 120)
+  var heats = [Double](repeating: 0, count: levels.count)
+  var notes = [String](repeating: "", count: levels.count)
+  let clock = Date()
+  DispatchQueue.concurrentPerform(iterations: levels.count) { i in
+    let lv = levels[i]
+    let probe = wins(lv, h2, from: base, count: runs, .normal)
+    let n = runsFor(Double(probe) / Double(runs), want: want)
+    let normal = Double(probe + (n > runs ? wins(lv, h2, from: base + UInt64(runs), count: n - runs, .normal) : 0)) / Double(n)
+    let target = Overdrive.targetRatio * normal
+    let rate = { (h: Double, count: Int) in Double(wins(lv, h2, from: base, count: count, .overdrive, heat: h)) / Double(count) }
+    // --grid: for levels whose win rate doesn't fall smoothly with pace (some bosses), scan heats on every run,
+    // smooth over neighbours, and take the closest to the target.
+    // --fine scans ±0.12 around the level's current heat in hundredths instead.
+    if argv.contains("--grid") || argv.contains("--fine") {
+      let fine = argv.contains("--fine"), now = Overdrive.heat(lv), w = fine ? 2 : 1
+      let grid = fine ? stride(from: max(Overdrive.minHeat, now - 0.12), through: now + 0.12, by: 0.01).map { $0 } : stride(from: Overdrive.minHeat, through: 2.5, by: 0.06).map { $0 }
+      let rates = grid.map { rate($0, n) }
+      let smooth = rates.indices.map { j in rates[max(0, j - w)...min(rates.count - 1, j + w)].reduce(0, +) / Double(min(rates.count - 1, j + w) - max(0, j - w) + 1) }
+      // --raw picks by the rate at the heat itself, for levels whose rate jumps between neighbouring heats.
+      let pick = argv.contains("--raw") ? rates : smooth
+      let best = pick.indices.min { abs(pick[$0] - target) < abs(pick[$1] - target) }!
+      heats[i] = grid[best]
+      notes[i] = String(format: "%d n%.3f target %.3f heat %.3f (smoothed %.3f, raw %.3f) runs %d", lv, normal, target, grid[best], smooth[best], rates[best], n)
+      return
+    }
+    // Coarse: bracket and bisect on a sixth of the runs.
+    let m = max(runs, n / 6)
+    var lo = Overdrive.minHeat, hi = 0.5
+    let floorRate = rate(lo, n)
+    if floorRate <= target { heats[i] = lo; notes[i] = String(format: "%d n%.3f od%.3f (floor) runs %d", lv, normal, floorRate, n); return }
+    while rate(hi, m) > target && hi < 2.5 { lo = hi; hi = min(2.55, hi * 1.6) }
+    for _ in 0..<6 { let mid = (lo + hi) / 2; if rate(mid, m) > target { lo = mid } else { hi = mid } }
+    // Fine: two full-run points either side, then interpolate in logit space and refine once.
+    func logit(_ p: Double) -> Double { let q = min(0.995, max(0.002, p)); return log(q / (1 - q)) }
+    let guess = (lo + hi) / 2
+    var a = (h: max(Overdrive.minHeat, guess - 0.06), r: 0.0), b = (h: min(2.55, guess + 0.06), r: 0.0)
+    a.r = rate(a.h, n); b.r = rate(b.h, n)
+    func cross(_ a: (h: Double, r: Double), _ b: (h: Double, r: Double)) -> Double {
+      let la = logit(a.r), lb = logit(b.r), lt = logit(target)
+      guard abs(la - lb) > 1e-6 else { return (a.h + b.h) / 2 }
+      return a.h + (lt - la) * (b.h - a.h) / (lb - la)
+    }
+    var h = min(2.55, max(Overdrive.minHeat, cross(a, b)))
+    let c = (h: h, r: rate(h, n))
+    // Keep the point that brackets best with the new one and interpolate again.
+    let other = (c.r > target) == (a.r > target) ? b : a
+    h = min(2.55, max(Overdrive.minHeat, cross(c, other)))
+    heats[i] = h
+    notes[i] = String(format: "%d n%.3f target %.3f heat %.3f (a %.2f:%.3f b %.2f:%.3f c %.2f:%.3f) runs %d", lv, normal, target, h, a.h, a.r, b.h, b.r, c.h, c.r, n)
+  }
+  if !quiet { notes.forEach { print($0) } }
+  print("// calibrated \(levels.first!)-\(levels.last!) in \(Int(Date().timeIntervalSince(clock)))s")
+  print(heats.map { String(min(255, max(0, Int(($0 * Overdrive.heatScale).rounded())))) }.joined(separator: ","))
+  if argv.contains("--grid") || argv.contains("--fine") { print(zip(levels, heats).map { "\($0)=\(min(255, Int(($1 * Overdrive.heatScale).rounded())))" }.joined(separator: " ")) }
+  exit(0)
+}
+
+// Ratio mode: Normal and Overdrive side by side. Exits when done.
+if argv.contains("--ratio") {
+  let h2 = ("human", 2.0), pro = ("expert", 3.5), want = Double(option("--want").flatMap(Int.init) ?? 150)
+  struct R { var normal = 0.0, od = 0.0, pro = 0.0, proNormal = 0.0, idle = 0, runs = 0 }
+  var out = [R](repeating: R(), count: levels.count)
+  let rlock = NSLock()
+  DispatchQueue.concurrentPerform(iterations: levels.count) { i in
+    let lv = levels[i]
+    let probe = wins(lv, h2, from: seedBase, count: runs, .normal)
+    let n = runsFor(Double(probe) / Double(runs), want: want)
+    var r = R()
+    r.runs = n
+    r.normal = Double(probe + (n > runs ? wins(lv, h2, from: seedBase + UInt64(runs), count: n - runs, .normal) : 0)) / Double(n)
+    r.od = Double(wins(lv, h2, from: seedBase, count: n, .overdrive, heat: fixedHeat)) / Double(n)
+    r.pro = Double(wins(lv, pro, from: seedBase, count: runs, .overdrive, heat: fixedHeat)) / Double(runs)
+    r.proNormal = Double(wins(lv, pro, from: seedBase, count: runs, .normal)) / Double(runs)
+    r.idle = wins(lv, ("idle", 0), from: seedBase, count: 4, .overdrive)
+    rlock.lock(); out[i] = r; rlock.unlock()
+  }
+  let ratio = { (r: R) in r.normal > 0 ? r.od / r.normal : 0 }
+  if !quiet {
+    print("lv   normal-h2  overdrive-h2  ratio  e3.5-od  e3.5-n  runs")
+    for (i, lv) in levels.enumerated() {
+      let r = out[i]
+      print(String(format: "%-4d %6.1f      %6.1f       %.2f   %5.1f    %5.1f  %d", lv, r.normal * 100, r.od * 100, ratio(r), r.pro * 100, r.proNormal * 100, r.runs))
+    }
+  }
+  print("\nper realm          normal-h2  overdrive-h2  ratio  ratio-range  e3.5-od  e3.5-od-min")
+  for realm in Worlds.realms {
+    let idx = levels.indices.filter { Worlds.world(ofLevel: levels[$0])?.realm == realm.number }
+    guard !idx.isEmpty else { continue }
+    let rs = idx.map { out[$0] }
+    let avg = { (f: (R) -> Double) in rs.map(f).reduce(0, +) / Double(rs.count) }
+    let ratios = rs.map(ratio)
+    print(String(format: "%2d %@  %6.1f      %6.1f       %.2f   %.2f-%.2f    %5.1f    %5.1f", realm.number, realm.name.padding(toLength: 14, withPad: " ", startingAt: 0), avg { $0.normal } * 100, avg { $0.od } * 100, avg(ratio), ratios.min()!, ratios.max()!, avg { $0.pro } * 100, rs.map(\.pro).min()! * 100))
+  }
+  let all = out.map(ratio)
+  let worst = levels.indices.sorted { abs(all[$0] - Overdrive.targetRatio) > abs(all[$1] - Overdrive.targetRatio) }.prefix(8)
+  print(String(format: "\nall: avg ratio %.3f, per-level %.2f-%.2f, outside 0.22-0.38: %d of %d, idle wins %d, e3.5-od zero on %d levels, below 30%% on %d",
+               all.reduce(0, +) / Double(all.count), all.min()!, all.max()!, all.filter { $0 < 0.22 || $0 > 0.38 }.count, all.count, out.map(\.idle).reduce(0, +), out.filter { $0.pro == 0 }.count, out.filter { $0.pro < 0.3 }.count))
+  print("furthest from target: " + worst.map { String(format: "%d:%.2f (n%.0f od%.1f)", levels[$0], all[$0], out[$0].normal * 100, out[$0].od * 100) }.joined(separator: "  "))
+  exit(0)
+}
 
 // The meta table: how often bots earn each challenge and each grade. Exits when done.
 if meta {
@@ -127,7 +254,7 @@ if meta {
   var out = [String](repeating: "", count: levels.count)
   let mlock = NSLock()
   DispatchQueue.concurrentPerform(iterations: levels.count) { i in
-    let lv = levels[i], spec = Campaign.level(lv), list = Challenges.for(level: lv), par = Par.score(spec)
+    let lv = levels[i], spec = Campaign.level(lv, difficulty: difficulty), list = Challenges.for(level: lv), par = difficulty == .overdrive ? Par.score(spec, tuning: Overdrive.tuning(Tuning())) : Par.score(spec)
     var line = String(format: "%-4d w%-3d x%.2f par %-7d ", lv, Campaign.work(of: spec.spawns), spec.speed, par)
     for (kind, rate) in metaBots {
       var wins = 0, earned = [Int](repeating: 0, count: list.count), grades = [Int](repeating: 0, count: 5), ratio = 0.0, t = 0.0, extra = 0.0, combo = 0.0
@@ -159,7 +286,7 @@ DispatchQueue.concurrentPerform(iterations: levels.count) { i in
   for (kind, rate) in bots {
     var wins = 0
     for s in 1...runs {
-      let g = play(lv, kind: kind, rate: rate, seed: UInt64(s))
+      let g = play(lv, kind: kind, rate: rate, seed: seedBase + UInt64(s))
       if g.status == .won { wins += 1 }
       if g.status == .playing { row.stuck += 1 }
       if kind == "human" && rate == 2 {
@@ -178,10 +305,10 @@ func label(_ b: (String, Double)) -> String { "\(b.0.prefix(1))\(b.1 == 0 ? "" :
 if !quiet {
   print("win% over \(runs) runs    lv  spec                            " + bots.map { label($0).padding(toLength: 6, withPad: " ", startingAt: 0) }.joined() + "time  par  3*% ot% e3* stuck")
   for (i, lv) in levels.enumerated() {
-    let spec = Campaign.level(lv)
+    let spec = Campaign.level(lv, difficulty: difficulty)
     let tw = spec.twists.map { String($0.rawValue.prefix(4)) }.joined(separator: "+")
     let text = "\(Campaign.work(of: spec.spawns))w \(spec.spawns.count)b \(String(format: "%.2f", spec.speed))x m\(spec.meterMax)\(spec.gates > 0 ? " g\(spec.gates)" : "")\(spec.isBoss ? " B\(spec.bossPhases)\(spec.boss.rawValue.prefix(3))" : "") \(tw)"
-    let par = Game(mode: .campaign(lv), width: 390, height: 760, top: 70).overtimeAt
+    let par = Game(mode: .campaign(lv), width: 390, height: 760, top: 70, difficulty: difficulty).overtimeAt
     let pct = { (n: Int) in Int((Double(n) / Double(runs) * 100).rounded()) }
     print(String(format: "%-3d ", lv) + text.padding(toLength: 32, withPad: " ", startingAt: 0) + rows[i].wins.map { String(format: "%-6d", $0) }.joined() + String(format: "%3.0fs %4.0fs %3d %3d %3d  %d", rows[i].time / Double(runs), par, pct(rows[i].three), pct(rows[i].overtime), pct(rows[i].proThree), rows[i].stuck))
   }

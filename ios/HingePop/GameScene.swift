@@ -592,6 +592,8 @@ final class GameScene: SKScene {
     let m = game.players.map(\.meter).max() ?? 0
     if m >= game.meterMax - 1 { return UIColor(red: 1, green: 0.3, blue: 0.38, alpha: 1) }
     if m >= game.meterMax - 2 { return UIColor(red: 0.72, green: 0.48, blue: 1, alpha: 1) }
+    // Overdrive runs the hinge hot: amber instead of cyan while it's calm.
+    if game.difficulty == .overdrive { return UIColor(red: 1, green: 0.62, blue: 0.22, alpha: 1) }
     return UIColor(red: 0.3, green: 0.78, blue: 1, alpha: 1)
   }
 
