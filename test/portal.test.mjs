@@ -6,6 +6,7 @@ import { execFileSync } from 'node:child_process';
 import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import vm from 'node:vm';
 import { EDITS, FORBIDDEN, PORTALS, editGame, portalHtml } from '../scripts/portal-html.mjs';
 import { artFiles, gate } from '../scripts/portal-build.mjs';
 import { GD_GAME_ID, GD_GAME_ID_PLACEHOLDER, MIDGAME_GAP_MS } from '../portal/config.js';
@@ -37,11 +38,55 @@ for (const portal of PORTALS) {
   });
 }
 
-test('the zip carries every art file the game names, and they exist', () => {
-  const art = artFiles(src);
+test('the zip carries every art file the portal page names, they exist, and no guest art', () => {
+  const art = artFiles(editGame(src));
   assert.ok(art.includes('game-bubble.webp') && art.includes('logo.webp'));
-  assert.ok(art.some((f) => f.startsWith('cameo-')) && art.some((f) => f.startsWith('arena-')));
+  assert.ok(art.some((f) => f.startsWith('arena-')));
+  assert.ok(!art.some((f) => f.startsWith('cameo-')), 'no guest art');
   for (const f of art) assert.ok(existsSync(join('site/art', f)), f);
+});
+
+// --- No guest stars on a portal ------------------------------------------------------------------------------------
+const GUEST_NAMES = /captain ?fizz|doc ?flux|sir ?glowstick|chosen ?fizz|merlin ?fizz|big ?burp|boo ?bubble|disco ?dot|guest stars?/i;
+function portalSim() {
+  const html = portalHtml(src, 'crazygames', cfg);
+  const sim = html.split('// SIM START')[1].split('// SIM END')[0];
+  const ctx = {};
+  vm.createContext(ctx);
+  vm.runInContext(`${sim};this.createSim=createSim;this.CFG=CFG;`, ctx);
+  return ctx;
+}
+
+test('no guest name, line or art reaches a portal page, and its game script still parses', () => {
+  for (const portal of PORTALS) {
+    const html = portalHtml(src, portal, cfg);
+    assert.doesNotMatch(html, GUEST_NAMES);
+    assert.doesNotMatch(html, /cameo-|CAMEO_INFO/);
+    const game = html.split('<script type="text/plain" id="hp-game">')[1].split('</script>')[0];
+    assert.doesNotThrow(() => new vm.Script(game), 'the game script parses');
+  }
+  for (const dir of ['store/portals/crazygames', 'store/portals/gamedistribution']) {
+    for (const f of readdirSync(dir).filter((n) => n.endsWith('.txt'))) assert.doesNotMatch(readFileSync(join(dir, f), 'utf8'), GUEST_NAMES, `${dir}/${f}`);
+  }
+  assert.match(src, GUEST_NAMES, 'the web game keeps its guests');
+});
+
+test('without guests every level still clears by hand, none clears itself, and no guest ever comes', () => {
+  const { createSim, CFG } = portalSim();
+  assert.equal(CFG.cameos.length, 0);
+  for (let n = 1; n <= 60; n++) {
+    const idle = createSim({ w: 390, h: 760, top: 70, level: n });
+    while (idle.status === 'playing' && idle.t < 300) { idle.step(1 / 30); idle.events.length = 0; assert.equal(idle.visitors.length, 0); }
+    assert.notEqual(idle.status, 'won', `level ${n} cleared itself`);
+    const s = createSim({ w: 390, h: 760, top: 70, level: n });
+    assert.equal(s.summon('docFlux'), null);
+    while (s.status === 'playing' && s.t < 600) {
+      s.step(1 / 30); s.events.length = 0;
+      for (const b of s.bubbles.slice()) if (s.bubbles.includes(b)) s.tap(b);
+      assert.equal(s.visitors.length, 0, `level ${n}: a guest came`);
+    }
+    assert.equal(s.status, 'won', `level ${n} can still be cleared`);
+  }
 });
 
 test('the live build has no portal code in it', () => {

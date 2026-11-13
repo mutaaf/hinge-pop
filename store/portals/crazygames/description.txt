@@ -6,8 +6,6 @@ Four sizes: smaller bubbles are faster and worth more, from 100 to 500 points. P
 
 A big bubble that crosses fills your overload meter, smaller ones add less, and a full meter costs a shield. You have three. Ten taps in a row without a crossing win one back.
 
-Eight guest stars wander through. Catch one for 1,000 points and its gift: a shield back, an empty meter, slow motion, auto-popping magic, a giant stomp, double points, a combo boost or a slash through the crowd.
-
 The levels never end. They come in chapters of ten, each tenth level is a breather, and the arena changes as you go.
 
 Two players: lay a phone or tablet flat between you and sit at each end. Each of you guards one half, and what you miss lands on your rival. Last shield standing wins.

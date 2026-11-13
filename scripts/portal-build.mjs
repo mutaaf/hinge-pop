@@ -14,14 +14,14 @@ import { execFileSync } from 'node:child_process';
 import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { dirname, join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { FORBIDDEN, PORTALS, portalHtml } from './portal-html.mjs';
+import { FORBIDDEN, PORTALS, editGame, portalHtml } from './portal-html.mjs';
 import { GD_GAME_ID, GD_GAME_ID_PLACEHOLDER, MIDGAME_GAP_MS, SDK_WAIT_MS } from '../portal/config.js';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 // CrazyGames' technical requirements: 250 MB and 1,500 files in all, the initial download within 20 MB for mobile.
 export const MAX_FILES = 1500, MAX_BYTES = 20e6;
 
-/** The art files the game's script can ask for: its sprites, the guests, and each chapter's arena both ways. */
+/** The art files the portal page can ask for (pass it the edited source): its sprites, any guests, each chapter's arena. */
 export function artFiles(src) {
   const arenas = JSON.parse(src.match(/const ARENAS = (\[[^\]]*\]);/)[1].replace(/'/g, '"'));
   const cameos = JSON.parse(src.match(/cameos: (\[[^\]]*\]),/)[1].replace(/'/g, '"'));
@@ -45,6 +45,7 @@ export function gate(dir, art) {
   const problems = [];
   if (!existsSync(join(dir, 'index.html'))) problems.push('no index.html at the top');
   for (const f of art) if (!existsSync(join(dir, 'art', f))) problems.push(`art/${f} missing`);
+  if (existsSync(join(dir, 'art'))) for (const f of readdirSync(join(dir, 'art'))) if (/^cameo-/.test(f)) problems.push(`art/${f}: a guest star`);
   const files = walk(dir);
   let bytes = 0;
   for (const f of files) {
@@ -85,7 +86,7 @@ function main() {
   mkdirSync(join(game, 'art'), { recursive: true });
   mkdirSync(join(game, 'fonts'), { recursive: true });
   writeFileSync(join(game, 'index.html'), portalHtml(src, portal, { gdGameId, gdPlaceholder: GD_GAME_ID_PLACEHOLDER, sdkWaitMs: SDK_WAIT_MS, midgameGapMs: MIDGAME_GAP_MS }));
-  const art = artFiles(src);
+  const art = artFiles(editGame(src));
   for (const f of art) copyFileSync(join(ROOT, 'site/art', f), join(game, 'art', f));
   for (const f of FONTS) copyFileSync(join(ROOT, 'site/fonts', f), join(game, 'fonts', f));
   writeFileSync(join(game, 'fonts', 'OFL.txt'), licence());

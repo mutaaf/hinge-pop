@@ -40,10 +40,30 @@ export const EDITS = [
   ['gameplay events', '  function frame(now) {\n    if (!looping) return;', "  function frame(now) {\n    if (!looping) return;\n    __hpPortal.sync(held ? 'held' : mode);"],
   ['game hooks', '  window.hingePop = {',
     "  __hpPortal.attach({\n    pauseGame: () => pause(),\n    pauseAudio: () => { if (audio && audio.state === 'running') audio.suspend(); },\n    resumeAudio: () => { if (audio && audio.state === 'suspended') audio.resume(); },\n  });\n  window.hingePop = {"],
+  // No guest stars on a portal: several wink at famous films and characters (the portals' terms on third-party
+  // trademarks and likeness). Guests never block a clear, never touch the meter and earn nothing that's kept, so the
+  // levels play the same without them; two players never had them.
+  ['no guests (list)', "  // Guest stars wander through, ignore the hinge and leave a gift if you catch them.\n  cameos: ['captainFizz', 'docFlux', 'sirGlowstick', 'chosenFizz', 'merlinFizz', 'bigBurp', 'booBubble', 'discoDot'],",
+    '  // No guests in this version.\n  cameos: [],'],
+  ['no guests (catch note)', '  // A touch on a guest. The Chosen Fizz sees the first one coming.', '  // A touch on a guest (none in this version).'],
+  ['no guests (How to play)', '          <details class="fold" name="learn"><summary>Guest stars</summary><div class="guests" id="guestList"></div></details>\n', ''],
+  ['no guests (tour)', "body: 'Catch any guest stars who drop by. Tap anything up top for details.',", "body: 'Tap anything up top for details.',"],
+  ['no guests (styles)', '.guests { display: grid;', '.unused-guests { display: grid;'],
+];
+
+// Ranges cut out whole: [what, start text, end text (kept), replacement]. Each anchor must occur exactly once.
+export const CUTS = [
+  ['no guests (gifts)', '  function gift(v) {', '  const onHinge = ', '  function gift() {}\n'],
+  ['no guests (spawning and moves)', '  function spawnVisitor(cameo) {', '  // Squash is plain data for the renderer',
+    '  function spawnVisitor() { return null; }\n  function summon() { return null; }\n  function stepVisitors() {}\n\n'],
+  ['no guests (arrivals and catches)', "      if (e.type === 'cameoArrive') {", "      if (e.type === 'split' || e.type === 'pop') {", ''],
+  ['no guests (list in How to play)', '      const met = new Set(readStore().cameos || []);', "    $('settings').hidden = !o.toggles;", '    }\n'],
+  ['no guests (art and drawing)', '  // Guests use the same art as the app.', '  // Which way each bubble faces, kept beside the rules.', '  function drawVisitors() {}\n\n'],
 ];
 
 // Nothing a portal build may carry, in any text file of it (scripts/portal-build.mjs checks every file).
 export const FORBIDDEN = [
+  [/captain ?fizz|doc ?flux|sir ?glowstick|chosen ?fizz|merlin ?fizz|big ?burp|boo ?bubble|disco ?dot|guest stars?|cameo-/i, 'a guest star'],
   [/mutaafaziz/i, 'the mutaafaziz.com address'],
   [/box ?office/i, 'Box Office analytics'],
   [/\/ads\/v1|marquee/i, 'Marquee ads'],
@@ -69,6 +89,13 @@ export function editGame(src) {
     const n = out.split(from).length - 1;
     if (n !== 1) throw new Error(`portal edit "${what}": expected its text once in index.html, found ${n}. Update scripts/portal-html.mjs.`);
     out = out.replace(from, () => to);
+  }
+  for (const [what, start, end, to] of CUTS) {
+    const a = out.split(start).length - 1, b = out.split(end).length - 1;
+    if (a !== 1 || b !== 1) throw new Error(`portal cut "${what}": expected its start and end once in index.html, found ${a} and ${b}. Update scripts/portal-html.mjs.`);
+    const i = out.indexOf(start), j = out.indexOf(end);
+    if (j < i) throw new Error(`portal cut "${what}": its end comes before its start`);
+    out = out.slice(0, i) + to + out.slice(j);
   }
   return out;
 }

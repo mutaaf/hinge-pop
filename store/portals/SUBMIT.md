@@ -13,7 +13,8 @@ The portal builds are separate from the live game at mutaafaziz.com/hingepop, wh
 
 | Feature | On a portal |
 | --- | --- |
-| The game: endless levels, Snap the Hinge, swipe to slice, chain pops, guest stars, two players, the guided tours, Settings | Same as the web |
+| The game: endless levels, Snap the Hinge, swipe to slice, chain pops, two players, the guided tours, Settings | Same as the web |
+| Guest stars | Not in the portal builds. Several wink at famous films and characters, and both portals forbid third-party trademarks and likeness without consent (CrazyGames Developer Terms 4.4(a)(iv), GameDistribution Developer Agreement 2.6.2). Guests never blocked a clear or touched the meter, so every level plays and clears the same without them (`test/portal.test.mjs` plays levels 1 to 60). The tour's last line and the How to play section no longer mention them, and their art is not in the zip. The build fails if a guest's name or art reaches it. |
 | Analytics | None. The web's `track()` calls do nothing (GameDistribution 2.6.8 bans tracking). |
 | The landing page embedding | Off. The game never talks to a parent page. |
 | Screen wake lock | Only where the portal's frame allows it. Otherwise the screen follows the device's own setting. |
@@ -29,7 +30,7 @@ npm run build:crazygames          # → dist-portals/hinge-pop-crazygames.zip
 npm run build:gamedistribution    # → dist-portals/hinge-pop-gamedistribution.zip (paste the game id first, below)
 ```
 
-Each command builds the portal's `index.html` from the game's own `index.html`, adds only the art the game loads and its two fonts with their licence (`fonts/OFL.txt`), and checks the result. It fails if it finds mutaafaziz.com, Box Office, a `/hingepop/` or root-absolute path, a path above the game folder, a link, a store or device name, an outbound address, a service worker or a fullscreen call. Then it zips the game with `index.html` at the zip's root. Last build: 28 files, 0.70 MB unzipped, 0.61 MB zipped.
+Each command builds the portal's `index.html` from the game's own `index.html`, adds only the art the game loads and its two fonts with their licence (`fonts/OFL.txt`), and checks the result. It fails if it finds a guest star's name or art, mutaafaziz.com, Box Office, a `/hingepop/` or root-absolute path, a path above the game folder, a link, a store or device name, an outbound address, a service worker or a fullscreen call. Then it zips the game with `index.html` at the zip's root. Last build: 20 files, 0.60 MB unzipped, 0.52 MB zipped.
 
 To check a build before you upload it:
 
@@ -71,7 +72,7 @@ node scripts/portal-playtest.mjs crazygames --phone    # 390×844, every input a
    - `video-landscape-1920x1080.mp4`
    - `video-portrait-1080x1620.mp4`
 
-   Each runs 18 s at real speed, has no audio, and opens on the cover. Each is real footage of level 34 played with real pointer input (taps, swipes and a guest star caught) through to level 35, with the HUD visible.
+   Each runs 18 s at real speed, has no audio, and opens on the cover. Each is real footage of level 34 played with real pointer input (taps and swipes), with the HUD visible.
 8. **Submit.** The game goes to Basic Launch first, where CrazyGames turns ads off and the game runs without them. The SDK is already integrated, as Full Launch requires: gameplay and loading events, midgame ads, the data module and the mute setting.
 
 ## GameDistribution
@@ -100,6 +101,5 @@ node scripts/portal-playtest.mjs crazygames --phone    # 390×844, every input a
 
 ## Decisions for you
 
-- **The guest stars.** Captain Fizz, Doc Flux, Sir Glowstick, The Chosen Fizz, Merlin Fizz, Big Burp, Boo Bubble and Disco Dot are original names and original art (rendered by the app's own code), with no real titles, logos, quotes or people. Some are clear winks at famous film genres: a time-travelling inventor, a knight with a glowing staff, a figure in dark glasses with green rain. Both portals forbid third-party trademarks and likeness without consent (CrazyGames Developer Terms 4.4(a)(iv), GameDistribution Developer Agreement 2.6.2). I read these as genre parody that uses nothing protected, so they ship as they are. If you'd rather leave no room for doubt, the portal build could drop the guests (`cameos` in the game's CFG) without touching the web.
 - **A pre-roll on GameDistribution.** GameDistribution's wiki calls a pre-roll on the Play button "best practice". The game doesn't show one, because the house rule is no ad before the first game. Adding one would be a small change in `portal/runtime.js` (`advertisementSettings.autoplay`).
 - **Rewarded ads.** None. The web game has nothing a reward could honestly give (no lives, no currency, no continues).
