@@ -5,6 +5,10 @@
 const esc = (s) => String(s).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
 const ORIGIN = 'https://mutaafaziz.com/hingepop/';
 const ISSUES = 'https://github.com/mutaaf/hinge-pop/issues';
+// Box Office usage analytics (mutaaf/box-office), the last element of every page's <body>. Same-origin loader, only
+// on https (a local server or a file has no /boxoffice) and only at the top level: the game framed in the landing page
+// sends its events to the landing page's loader instead (index.html track()), so a visit counts once.
+export const BOX_OFFICE = `<script>if (location.protocol === 'https:' && window.top === window) { var bo = document.createElement('script'); bo.async = true; bo.src = '/boxoffice/v1/insights.js'; document.body.appendChild(bo); }</script>`;
 export const ICON = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%23140a2e'/%3E%3Cpath d='M0 32h64' stroke='%234fd8ff' stroke-width='4'/%3E%3Ccircle cx='24' cy='19' r='10' fill='%2330b6ff'/%3E%3Ccircle cx='43' cy='45' r='7' fill='%23ffc733'/%3E%3C/svg%3E";
 
 export function linkState(url, soon, ready) {
@@ -354,6 +358,7 @@ export function landing(links) {
     </div>
   </div>
 </section>
+${BOX_OFFICE}
 </body>
 </html>
 `;
@@ -372,6 +377,7 @@ ${body}
 <footer class="doc-foot">
   <a href="../">Home</a><a href="../play/">Play</a><a href="../privacy/">Privacy</a><a href="../support/">Support</a>
 </footer>
+${BOX_OFFICE}
 </body>
 </html>
 `;
@@ -379,22 +385,24 @@ ${body}
 
 export const privacy = () => docPage({
   title: 'Privacy: Hinge Pop',
-  description: 'Hinge Pop collects nothing. No accounts, no ads and no analytics. Your progress stays on your device.',
+  description: 'The Hinge Pop app collects nothing. The website counts anonymous usage. No accounts and no ads. Your progress stays on your device.',
   path: 'privacy/',
   heading: 'Privacy',
-  body: `<p class="doc-lede">Hinge Pop collects nothing about you.</p>
-<h2>The game</h2>
+  body: `<p class="doc-lede">The Hinge Pop app collects nothing about you. This website counts anonymous usage.</p>
+<h2>The app</h2>
 <ul>
   <li>There are no accounts, so there is nothing to sign up for or log in to.</li>
-  <li>There are no ads and no analytics, in the app or on this website.</li>
-  <li>The game sends nothing about you or how you play to anyone, including us.</li>
+  <li>There are no ads and no analytics in the app.</li>
+  <li>The app sends nothing about you or how you play to anyone, including us.</li>
 </ul>
+<h2>Usage analytics on this website</h2>
+<p>This website and the web game send anonymous usage analytics to PostHog, through our own relay at mutaafaziz.com: which pages are opened, clicks and taps (for heatmaps), a few game events (a level started or finished, with its level, score, time and whether it was won), the device type and browser, page load times, and an approximate, city-level location. Our relay cuts the last part off your IP address before anything is forwarded, so PostHog never sees the full address. Session replays may be recorded to see where the game is hard to use; every text field is masked in them. A random id, kept in your browser's storage, links one visit to the next; it is not tied to your name or anything else about you. If your browser sends Global Privacy Control or Do Not Track, none of this loads. There are no ads.</p>
 <h2>Your progress</h2>
 <p>Your levels, scores and settings are stored only on your device. In the app they stay in the app's own storage. On the web they stay in your browser's local storage. Delete the app or clear your browser's site data and they are gone, because no other copy exists.</p>
 <h2>This website</h2>
-<p>The site is hosted by Cloudflare. To serve a page, Cloudflare sees the standard data any web host sees, such as your IP address, your browser type and the page you asked for. We do not add tracking to it, and the fonts and images come from this site, not from other companies.</p>
+<p>The site is hosted by Cloudflare. To serve a page, Cloudflare sees the standard data any web host sees, such as your IP address, your browser type and the page you asked for. The fonts and images come from this site, not from other companies, and the only analytics are the anonymous usage analytics above.</p>
 <h2>Children</h2>
-<p>Since the game collects nothing from anyone, it collects nothing from children either.</p>
+<p>The app collects nothing from anyone, children included. The website is not directed at children and collects no personal information.</p>
 <h2>Changes and questions</h2>
 <p>If this ever changes, this page will change first. Questions are welcome at <a href="${ISSUES}" rel="noopener">GitHub issues</a>. Issues are public, so please leave out anything private.</p>`,
 });

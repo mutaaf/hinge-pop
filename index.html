@@ -1246,7 +1246,18 @@ function createSim(opts) {
     }
   }
 
+  // Box Office usage analytics (mutaaf/box-office): queue-safe, a no-op without the loader, never throws. Framed in
+  // the landing page, events go to the landing page's loader (this page loads none there, so a visit counts once).
+  // Props are numbers and enums only.
+  function track(name, props) {
+    try {
+      const w = window.parent !== window ? window.parent : window;
+      (w.boxoffice ??= { q: [], track(...a) { this.q.push(a); } }).track(name, props);
+    } catch (e) { /* analytics never breaks the game */ }
+  }
+
   function play(o) {
+    track('game_start', { mode: o.versus ? 'versus' : 'solo', level: o.versus ? 0 : level });
     initAudio();
     writeStore();
     newSim(o);
@@ -1391,8 +1402,10 @@ function createSim(opts) {
 
   function finish() {
     mode = 'ended';
-    if (sim.versus) { showDuel(); return; }
+    const dur = Math.round(sim.t * 10) / 10;
+    if (sim.versus) { track('game_over', { mode: 'versus', duration_s: dur, draw: sim.winner === null }); showDuel(); return; }
     const p = sim.players[0], won = sim.status === 'won';
+    track('game_over', { mode: 'solo', level, score: p.score, duration_s: dur, won, crossings: p.crossings });
     const stored = readStore();
     let best = stored.best || 0;
     if (won && p.score > best) best = p.score;
@@ -1651,6 +1664,7 @@ function createSim(opts) {
     const seen = readStore().taught || {};
     if (completed) { seen.tap = 1; seen.cross = 1; seen.small = 1; }
     const kind = tour.kind;
+    track('tour_end', { tour: kind, completed: !!completed });
     writeStore(Object.assign({ taught: seen }, kind === 'two' ? { touredTwo: true } : { toured: true }));
     $('tour').hidden = true;
     $('spot').hidden = true;
