@@ -20,24 +20,25 @@ final class WhatsNewTests: XCTestCase {
     app.buttons.containing(NSPredicate(format: "label CONTAINS %@", text)).firstMatch
   }
 
+  func testArcadeCalloutOpensTheArcadePage() {
+    openCard()
+    let arcade = callout("Arcade has its own page")
+    XCTAssertTrue(arcade.waitForExistence(timeout: 5))
+    shot("card")
+    arcade.tap()
+    XCTAssertTrue(app.staticTexts["HIGH SCORE"].waitForExistence(timeout: 10), "didn't land on the Arcade page")
+    XCTAssertFalse(app.buttons["Let's pop!"].exists, "the card stayed open")
+    shot("arcade")
+  }
+
   func testVersusCalloutStartsAFaceOff() {
     openCard()
-    let faceOff = callout("Two players, face to face")
-    XCTAssertTrue(faceOff.waitForExistence(timeout: 5))
-    shot("card")
+    let faceOff = callout("face off across the line")
+    if !faceOff.isHittable { app.swipeUp() }
     faceOff.tap()
     XCTAssertTrue(app.descendants(matching: .any).matching(NSPredicate(format: "label BEGINSWITH %@", "Player 1 shields")).firstMatch.waitForExistence(timeout: 10)
       || app.staticTexts["Step 1 of 4"].firstMatch.waitForExistence(timeout: 5), "didn't land in two-player")
     XCTAssertFalse(app.buttons["Let's pop!"].exists, "the card stayed open")
     shot("versus")
-  }
-
-  func testGuideCalloutOpensTwoPlayers() {
-    openCard()
-    let guide = callout("spin round")
-    if !guide.isHittable { app.swipeUp() }
-    guide.tap()
-    XCTAssertTrue(app.staticTexts["Lay it flat, face to face. The half nearest you is yours."].waitForExistence(timeout: 5), "didn't open the two-player section")
-    shot("guide")
   }
 }

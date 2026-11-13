@@ -320,6 +320,20 @@ struct ResultOverlay: View {
     case .versus:
       Button("Rematch") { session.restart() }.buttonStyle(ChunkyStyle())
       Button("Menu") { app.route = .home }.buttonStyle(QuietStyle())
+    case .arcade:
+      if let wave = session.arcadeNewCheckpoint {
+        Text("Checkpoint unlocked: wave \(wave), \(Arcade.stage(wave).name)").font(.game(.footnote, .heavy)).foregroundStyle(Theme.sun)
+          .multilineTextAlignment(.center).accessibilityIdentifier("arcade-checkpoint")
+      }
+      let from = app.progress.arcade.checkpoint
+      if from > 1 {
+        Button("Continue from wave \(from)") { app.arcadeFrom = from; session.restart() }.buttonStyle(ChunkyStyle())
+          .accessibilityIdentifier("arcade-continue")
+        Button("Start from wave 1") { app.arcadeFrom = 1; session.restart() }.buttonStyle(QuietStyle())
+      } else {
+        Button("Play again") { session.restart() }.buttonStyle(ChunkyStyle())
+      }
+      Button("Arcade") { app.route = .arcade }.buttonStyle(QuietStyle())
     default:
       Button("Play again") { session.restart() }.buttonStyle(ChunkyStyle())
       Button("Menu") { app.route = .home }.buttonStyle(QuietStyle())
@@ -336,7 +350,7 @@ struct ResultOverlay: View {
   private func sub(_ g: Game) -> String {
     switch session.mode {
     case .versus: g.players.contains { $0.shields <= 0 } ? "Last shield gone." : "All clear. Top score wins."
-    case .arcade: "You lasted \(g.waves) \(g.waves == 1 ? "wave" : "waves")."
+    case .arcade: g.startWave > 1 ? "From wave \(g.startWave) to wave \(g.waves)." : "You lasted \(g.waves) \(g.waves == 1 ? "wave" : "waves")."
     default: g.status == .won ? "New level tomorrow." : "Out of shields. You can try again today."
     }
   }

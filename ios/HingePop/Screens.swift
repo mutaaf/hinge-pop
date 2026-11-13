@@ -26,6 +26,7 @@ struct RootView: View {
       case .map: JourneyView()
       case .guide: GuideView()
       case .settings: SettingsView()
+      case .arcade: ArcadeView()
       case .play(let mode): PlayView(mode: mode, app: app).id(String(describing: mode))
       }
     }
@@ -150,12 +151,19 @@ struct HomeView: View {
       .accessibilityLabel(app.progress.nextUp > 1 ? "Play level \(app.progress.nextUp)\(hot ? ", Overdrive" : "")" : "Play\(hot ? ", Overdrive" : "")")
       .accessibilityIdentifier("play")
       DifficultySwitch()
+      Button { app.route = .arcade } label: {
+        HStack(spacing: 8) {
+          Image(systemName: "gamecontroller.fill").accessibilityHidden(true)
+          Text(app.progress.arcade.checkpoint > 1 ? "Arcade · wave \(app.progress.arcade.checkpoint)" : "Arcade")
+        }
+      }
+      .buttonStyle(ChunkyStyle(colors: [Theme.cyan, Color(red: 0.36, green: 0.4, blue: 1)]))
+      .accessibilityIdentifier("arcade")
       Button("Journey") { app.route = .map }.buttonStyle(QuietStyle())
       HStack(spacing: 10) {
-        Button("Arcade") { app.route = .play(.arcade(seed: UInt64(Date().timeIntervalSince1970))) }.buttonStyle(QuietStyle())
         Button("Daily") { app.route = .play(app.today()) }.buttonStyle(QuietStyle())
+        Button("2 Players") { app.route = .play(.versus) }.buttonStyle(QuietStyle())
       }
-      Button("2 Players") { app.route = .play(.versus) }.buttonStyle(QuietStyle())
       HStack(spacing: 10) {
         Button("How to play") { app.route = .guide }.buttonStyle(QuietStyle())
         Button("Settings") { app.route = .settings }.buttonStyle(QuietStyle())

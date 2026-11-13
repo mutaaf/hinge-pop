@@ -23,6 +23,9 @@ final class Haptics {
   private var players: [Cue: CHHapticPatternPlayer] = [:]
   private var lastPlayed = [Double](repeating: 0, count: Cue.allCases.count)
   private var lastAny = 0.0
+  /// When the engine last failed to start. Building one blocks the main thread, so a refused engine isn't
+  /// retried on every pop: that turned a busy screen into a freeze.
+  private var failedAt = -Double.infinity
   private let supports = CHHapticEngine.capabilitiesForHardware().supportsHaptics
   private let light = UIImpactFeedbackGenerator(style: .light)
   private let soft = UIImpactFeedbackGenerator(style: .soft)
@@ -74,7 +77,7 @@ final class Haptics {
 
   private func prepare() {
     guard supports else { [light, rigid, heavy, soft].forEach { $0.prepare() }; return }
-    guard engine == nil else { return }
+    guard engine == nil, CACurrentMediaTime() - failedAt > 5 else { return }
     do {
       let e = try CHHapticEngine()
       e.playsHapticsOnly = true
@@ -83,20 +86,21 @@ final class Haptics {
         Task { @MainActor in
           guard let self else { return }
           self.players.removeAll()
-          try? self.engine?.start()
+          self.engine?.start { _ in }
         }
       }
       e.stoppedHandler = { [weak self] _ in
         Task { @MainActor in
           guard let self else { return }
           self.players.removeAll()
-          try? self.engine?.start()
+          self.engine?.start { _ in }
         }
       }
       try e.start()
       engine = e
     } catch {
       engine = nil
+      failedAt = CACurrentMediaTime()
     }
   }
 
@@ -106,6 +110,7 @@ final class Haptics {
     guard let engine, let pattern = try? CHHapticPattern(events: Self.events(cue), parameters: []) else { return nil }
     let p = try? engine.makePlayer(with: pattern)
     players[cue] = p
+    if p == nil { failedAt = CACurrentMediaTime() }
     return p
   }
 
