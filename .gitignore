@@ -5,3 +5,4 @@ test-results/
 .DS_Store
 store/lobby/out/
 store/private/
+dist-portals/

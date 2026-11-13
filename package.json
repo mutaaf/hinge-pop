@@ -7,14 +7,17 @@
   "scripts": {
     "up": "npm install --no-audit --no-fund --silent && npm run build && node scripts/serve.mjs",
     "build": "node scripts/build.mjs",
-    "test": "node --test test/sim.test.mjs",
+    "test": "node --test test/sim.test.mjs test/portal.test.mjs",
     "test:e2e": "npm run build && node test/e2e.mjs",
     "test:devices": "npm run build && node test/devices.mjs",
     "balance": "node scripts/balance.mjs",
     "deploy": "npm test && npm run build && npx wrangler@4 deploy",
     "test:landing": "npm run build && node test/landing.mjs",
     "art": "node scripts/art.mjs",
-    "sync:aurora": "node scripts/sync-aurora.mjs"
+    "sync:aurora": "node scripts/sync-aurora.mjs",
+    "build:crazygames": "node scripts/portal-build.mjs crazygames",
+    "build:gamedistribution": "node scripts/portal-build.mjs gamedistribution",
+    "build:portals": "node scripts/portal-build.mjs crazygames && node scripts/portal-build.mjs gamedistribution"
   },
   "devDependencies": {
     "playwright": "1.64.1"
