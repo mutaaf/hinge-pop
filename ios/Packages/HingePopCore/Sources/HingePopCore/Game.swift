@@ -370,7 +370,7 @@ public final class Game {
     switch mode {
     case .campaign: villainPlan = spec.villains
     case .daily: villainPlan = Villains.daily
-    case .arcade: villainPlan = Villains.arcade
+    case .arcade: villainPlan = Villains.arcade(wave: 1)
     case .versus: villainPlan = Villains.versus
     case .sandbox: villainPlan = .none
     }
@@ -411,11 +411,17 @@ public final class Game {
   }
   /// How fast a bubble wants to move right now (internal so tests can read it).
   func cruise(_ b: Bubble) -> Double {
-    let pressure = overtimeSpeed * (players[playerIndex(of: b)].fever > 0 ? tuning.feverSlow : 1)
+    let pressure = overtimeSpeed * arcadePace * (players[playerIndex(of: b)].fever > 0 ? tuning.feverSlow : 1)
     guard b.kind == .boss else { return tuning.speeds[b.size] * scale * spec.speed * b.kind.speedFactor * (onRush(b) ? tuning.rushSpeed : 1) * b.spring * surge * pressure * (b.champion ? tuning.championSpeed : 1) }
     let phaseBoost = 1 + tuning.bossPhaseSpeed * Double(b.bossPhase)
     let state = b.bossWindup > 0 ? 0.15 : b.bossDashing ? tuning.bossDashSpeed : 1
     return tuning.speeds[b.size] * scale * spec.speed * b.kind.speedFactor * phaseBoost * state * pressure
+  }
+
+  /// Arcade: past wave 12 everything moves 2% faster each wave, up to 1.8×, so deep checkpoints stay a test.
+  public var arcadePace: Double {
+    guard case .arcade = mode else { return 1 }
+    return min(1.8, 1 + 0.02 * Double(max(0, waves - 12)))
   }
 
   /// The level's par: about how long a steady player takes. Overtime starts there. Endless and practice modes have none.
@@ -1090,7 +1096,9 @@ public final class Game {
 
   private func spawnWave() {
     waves += 1
-    let count = 1 + min(3, waves / 3)
+    // Past wave 12 every ten waves bring one more bubble (up to two more), on top of the pace ramp in `cruise`.
+    let count = 1 + min(3, waves / 3) + min(2, max(0, waves - 12) / 10)
+    villainPlan = tuning.villains ? Villains.arcade(wave: waves) : .none
     let pool: [ActorKind] = waves < 3 ? [.basic, .fast] : [.basic, .fast, .armored, .magnetic, .repel, .golden, .frozen]
     for _ in 0..<count {
       let kind = pool[rng.int(pool.count)]

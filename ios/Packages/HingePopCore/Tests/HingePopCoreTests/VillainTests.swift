@@ -61,7 +61,16 @@ final class VillainTests: XCTestCase {
     XCTAssertTrue(Game(mode: .campaign(400), width: 390, height: 760, tuning: t).villainPlan.isEmpty)
     XCTAssertTrue(Game(mode: .sandbox, width: 390, height: 760).villainPlan.isEmpty)
     XCTAssertFalse(Game(mode: .versus, width: 390, height: 760).villainPlan.isEmpty)
-    XCTAssertFalse(Game(mode: .arcade(seed: 1), width: 390, height: 760).villainPlan.isEmpty)
+    XCTAssertTrue(Villains.arcade(wave: 2).isEmpty, "arcade's first waves have none")
+    XCTAssertEqual(Villains.arcade(wave: 6).pool, [.hex, .phantom, .kaiju])
+    XCTAssertTrue(Villains.arcade(wave: 20).pool.contains(.void))
+    XCTAssertLessThan(Villains.arcade(wave: 30).gap, Villains.arcade(wave: 5).gap)
+    var sturdy = Tuning(); sturdy.shields = 50
+    let arcade = Game(mode: .arcade(seed: 1), width: 390, height: 760, tuning: sturdy)
+    arcade.continueArcade(from: 11)
+    arcade.ready = 0
+    for _ in 0..<(60 * 12) where arcade.waves < 11 { arcade.step(1.0 / 60) }
+    XCTAssertTrue(arcade.villainPlan.pool.contains(.overlord), "a checkpoint deep in brings the Doom villains")
   }
 
   // MARK: Tiers
@@ -246,13 +255,16 @@ final class VillainTests: XCTestCase {
   }
 
   func testVillainsNeverBlockAClear() {
-    let g = Game(mode: .campaign(60), width: 390, height: 760, top: 70)
+    let g = Game(mode: .campaign(58), width: 390, height: 760, top: 70)
     g.ready = 0
     g.summonVillain(.overlord)
     var guardCount = 0
-    while let b = g.bubbles.first, g.status == .playing, guardCount < 2000 { g.tap(b); guardCount += 1; if g.bubbles.isEmpty { g.step(1.0 / 60) } }
-    for _ in 0..<(60 * 4) where g.status == .playing { g.step(1.0 / 60); while let b = g.bubbles.first, g.status == .playing { g.tap(b) } }
-    XCTAssertEqual(g.status, .won)
+    while g.status == .playing, guardCount < 3000 {
+      guardCount += 1
+      if let b = g.bubbles.first { g.tap(b) }
+      g.step(1.0 / 120)
+    }
+    XCTAssertEqual(g.status, .won, "bubbles \(g.bubbles.count) villains \(g.villains.count) after \(guardCount)")
   }
 
   func testTheVoidDragsBubblesIn() {

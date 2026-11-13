@@ -308,6 +308,7 @@ if argv.contains("--ratio") {
   let worst = levels.indices.sorted { abs(all[$0] - Overdrive.targetRatio) > abs(all[$1] - Overdrive.targetRatio) }.prefix(8)
   print(String(format: "\nall: avg ratio %.3f, per-level %.2f-%.2f, outside 0.22-0.38: %d of %d, idle wins %d, e3.5-od zero on %d levels, below 30%% on %d",
                all.reduce(0, +) / Double(all.count), all.min()!, all.max()!, all.filter { $0 < 0.22 || $0 > 0.38 }.count, all.count, out.map(\.idle).reduce(0, +), out.filter { $0.pro == 0 }.count, out.filter { $0.pro < 0.3 }.count))
+  print("outside 0.22-0.38: " + levels.indices.filter { all[$0] < 0.22 || all[$0] > 0.38 }.map { String(levels[$0]) }.joined(separator: ","))
   print("furthest from target: " + worst.map { String(format: "%d:%.2f (n%.0f od%.1f)", levels[$0], all[$0], out[$0].normal * 100, out[$0].od * 100) }.joined(separator: "  "))
   exit(0)
 }

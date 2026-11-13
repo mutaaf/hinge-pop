@@ -190,8 +190,13 @@ public enum Villains {
     return VillainPlan(pool: pool, debut: debut, first: n < 11 ? 5 : n < 30 ? 2.5 : 1.2, gap: gap, maxOn: maxOn, maxDoom: n < 161 ? 1 : 2, summons: summons)
   }
 
-  /// Arcade: menaces and brutes from the start, and the Overlord once it gets going.
-  public static let arcade = VillainPlan(pool: [.hex, .phantom, .kaiju, .mimic, .overlord], first: 8, gap: 9, maxOn: 2)
+  /// Arcade, by wave: none for the first two, then menaces, brutes from wave 6, the Overlord from 10 and the Void
+  /// from 15, coming a little faster every wave, so a checkpoint deep in is a different game.
+  public static func arcade(wave: Int) -> VillainPlan {
+    let pool = [(VillainKind.hex, 3), (.phantom, 4), (.kaiju, 6), (.mimic, 8), (.overlord, 10), (.void, 15)].filter { wave >= $0.1 }.map(\.0)
+    guard !pool.isEmpty else { return .none }
+    return VillainPlan(pool: pool, first: 2, gap: max(4.5, 10 - 0.2 * Double(wave)), maxOn: wave < 12 ? 1 : wave < 30 ? 2 : 3, maxDoom: wave < 25 ? 1 : 2)
+  }
   /// Daily: one plan for everyone, the same every day.
   public static let daily = plan(level: 60)
   /// Two players: villains come in mirrored pairs, one for each half, so nobody's dealt a worse hand.
