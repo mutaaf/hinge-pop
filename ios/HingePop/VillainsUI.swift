@@ -51,7 +51,7 @@ struct VillainAlertOverlay: View {
       Sheet(maxWidth: 440) {
         VStack(alignment: .leading, spacing: 2) {
           Text(kinds.count == 1 ? "NEW VILLAIN" : "NEW VILLAINS").font(.game(.caption, .heavy)).tracking(2).foregroundStyle(Theme.red)
-          Text(kinds.count == 1 ? kinds[0].title : "Hands off!").font(.game(.largeTitle, .black)).foregroundStyle(Theme.ink).minimumScaleFactor(0.7).lineLimit(1)
+          Text("Hands off!").font(.game(.largeTitle, .black)).foregroundStyle(Theme.ink).minimumScaleFactor(0.7).lineLimit(1)
         }
         ForEach(Array(kinds.enumerated()), id: \.element) { i, kind in
           VillainRow(kind: kind, size: kinds.count > 2 ? 52 : 72)
@@ -70,7 +70,6 @@ struct VillainAlertOverlay: View {
       }
     }
     .onAppear { shown = true }
-    .accessibilityIdentifier("villainAlert")
   }
 }
 
