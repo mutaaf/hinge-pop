@@ -30,6 +30,7 @@ capture() { # folder simulator [--display=N]
   shot snap 4 -fresh -toured -level 29 -demo -demoSnap
   shot guest 4 -fresh -toured -level 29 -demo -cameo discoDot
   shot boss 6.5 -fresh -toured -level 40 -demo
+  shot villain 5 -fresh -toured -level 45 -demo -villain all -still
   shot versus 5 -fresh -toured -versus -demo -demoMeter 1
   shot swarm 5 -fresh -toured -level 29 -demo -demoSwipe
   shot howto 2 -fresh -toured -screen guide -fold guests
