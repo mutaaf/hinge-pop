@@ -23,6 +23,8 @@
   // ---- The fallback driver and the track: one scroll listener, at most one update per frame.
   // Layout is read on resize and written to a cache, so the scroll path never forces a reflow.
   var vh = innerHeight, scopes = [], trackTop = 0, trackRun = 1;
+  // The Duo's pinned stage. Without scroll-driven animations its keyframes are paused and scrubbed through --dp.
+  var duoTrack = $('.duo-track'), duoTop = 0, duoRun = 1;
   function measure() {
     vh = innerHeight;
     var y = scrollY;
@@ -32,6 +34,7 @@
         return { el: el, top: r.top + y, h: r.height, own: el.classList.contains('own') };
       });
     }
+    if (duoTrack) { var d = duoTrack.getBoundingClientRect(); duoTop = d.top + y; duoRun = Math.max(1, d.height - vh); }
     var t = track.getBoundingClientRect();
     trackTop = t.top + y;
     trackRun = Math.max(1, t.height - vh);
@@ -56,6 +59,7 @@
         s.el.style.setProperty('--p', clamp(p, 0, 1).toFixed(4));
       }
     }
+    if (jsPar && duoTrack) duoTrack.style.setProperty('--dp', clamp((y - duoTop) / duoRun, 0, 1).toFixed(4));
     onTrack(clamp((y - trackTop) / trackRun, 0, 1));
   }
 
@@ -229,7 +233,7 @@
     num5: { wide: [24, 0, 1.25, 1], narrow: [0, -24, 0.95, 1], pal: 'neon', tint: 'neon' },
     infinity: { wide: [-22, 0, 1.2, 1], narrow: [0, -24, 0.9, 1], pal: 'space', tint: 'space' },
     two: { wide: [0, -6, 1.2, 0.85], narrow: [0, -14, 1, 0.77], pal: 'hot', tint: 'classic' },
-    duo: { wide: [24, 8, 1, 0.77], narrow: [24, -8, 0.8, 0.51], pal: 'classic', tint: 'neon' },
+    duo: { wide: [-20, 6, 1, 0.77], narrow: [24, -8, 0.8, 0.51], pal: 'classic', tint: 'neon' },
     'logo-app': { wide: [26, -14, 0.8, 0.77], narrow: [0, -26, 0.8, 0.48], pal: 'logo', tint: 'classic' },
     seam: { wide: [0, 0, 1, 1], narrow: [0, 0, 1, 1], pal: 'classic', tint: 'classic' },
   };

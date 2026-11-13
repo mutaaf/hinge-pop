@@ -105,18 +105,47 @@ const POWERS = [
   ['shield', 'Shield', 'Gives back one shield, up to 3.'],
   ['chainBurst', 'Chain Burst', 'Pops or splits every bubble around it, right away.'],
 ];
+// Ten realms of eight worlds, ten levels each (ios/Packages/HingePopCore Worlds.swift). Five panels, two realms a panel.
+// The numeral and the aurora shape are the panel's, not a realm number.
 const CHAPTERS = [
-  ['1', 'First Contact', 'Levels 1 to 10', 'Pop and split, then faster bubbles.', 'classic'],
-  ['2', 'Electric Playground', 'Levels 11 to 20', 'Armored bubbles and a touchier hinge.', 'neon'],
-  ['3', 'Magnetic Storm', 'Levels 21 to 30', 'Magnetic and repel bubbles move everything around them.', 'forest'],
-  ['4', 'Overload Protocol', 'Levels 31 to 40', 'Moving gates and mixed bubbles.', 'space'],
-  ['5', 'Bosses & Beyond', 'Levels 41 to 50', 'Boss patterns and combos.', 'neon'],
+  ['1', 'Home Stretch and Sugar Rush', 'Realms 1 and 2 · levels 1 to 160', 'Saturday-morning arcades, then candy-coloured cartoons.', 'classic', 'classic'],
+  ['2', 'Dune Sea and Thunderhead', 'Realms 3 and 4 · levels 161 to 320', 'Desert epics, then caped heroes and storm gods.', 'dunes', 'neon'],
+  ['3', 'Crystal Deep and Night Manor', 'Realms 5 and 6 · levels 321 to 480', 'Quest fantasy, then haunted houses and monster movies.', 'crystal', 'forest'],
+  ['4', 'Circuit City and Wild Temple', 'Realms 7 and 8 · levels 481 to 640', 'Neon noir and heists, then treasure-hunting serials.', 'circuit', 'space'],
+  ['5', 'Cloud Kingdom and Clockwork Sky', 'Realms 9 and 10 · levels 641 to 800', 'Fairy-tale sky castles, then steampunk and time travel.', 'clockwork', 'neon'],
 ];
+// Villains (ios/Packages/HingePopCore Villains.swift). Portraits are cropped from a real capture of the app.
+const VILLAIN_TIERS = [
+  ['menace', 'Menace', 'Touch one: lose a shield and your combo.', [
+    ['hex', 'Hex', 'Weaves as she drifts, so she is never quite where you aimed.'],
+    ['phantom', 'Phantom', 'Fades in and out. Watch where it comes back.'],
+  ]],
+  ['brute', 'Brute', 'Touch one: lose two shields.', [
+    ['kaiju', 'Kaiju', 'Big, slow, and it stomps.'],
+    ['mimic', 'Mimic', 'Looks like a golden bubble. Check for the seam of teeth.'],
+  ]],
+  ['doom', 'Doom', 'Touch one: the run is over.', [
+    ['overlord', 'Overlord', 'A red eye that hunts the nearest bubble.'],
+    ['void', 'Void', 'Pulls every bubble near it in.'],
+  ]],
+];
+// The four ways to hold an iPhone Duo, scrubbed by the scroll. Copy from AGENTS.md "Page play".
+const POSES = [
+  ['closed', 'Closed', 'A phone in one hand.', 'On the outer screen it plays like any iPhone: one hinge across the middle, villains and all.', 'One thumb · outer screen'],
+  ['open', 'Open', 'The hinge jumps onto the fold.', 'Open it and the game moves its hinge onto the real crease. Every 13 seconds the busier page glows gold: faster bubbles, double points.', 'Rush page · double points'],
+  ['tabletop', 'Tabletop', 'Stand it up like a laptop.', 'Pop on one page, then the other, and your combo climbs an extra step. Touch both sides of the fold at once for a Crease Clap that sweeps the whole line.', 'Crease Clap · busts every villain'],
+  ['book', 'Book', 'Two players, one page each.', 'Lay it open between you and each page is a player. Let a bubble cross and it lands on your rival.', 'Face Off · page against page'],
+];
+const TF_ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v10"/><path d="M8 9.5 12 13.5l4-4"/><path d="M5 15c0 3.6 3.1 6 7 6s7-2.4 7-6"/></svg>`;
+function betaCta(state, id, cls = 'cta') {
+  if (!state.ready) return `<span class="${cls} off" id="${id}" aria-disabled="true">${esc(state.label)}</span>`;
+  return `<a class="${cls}" id="${id}" href="${esc(state.url)}" rel="noopener">${TF_ICON}<span>${esc(state.label)}</span><span class="arr" aria-hidden="true">→</span></a>`;
+}
 
 export function landing(links) {
-  const testflight = linkState(links.testflight, 'Coming to TestFlight soon', 'Try it on TestFlight');
+  const testflight = linkState(links.testflight, 'Coming to TestFlight soon', 'Join the beta on TestFlight');
   const appStore = linkState(links.appStore, 'Coming to the App Store soon', 'Get it on the App Store');
-  const description = 'Pop, split, chain, clear. An arcade game about keeping bubbles off an electric hinge. Scroll down this page and you are playing. Coming to iPhone Duo, iPad and iPhone.';
+  const description = 'Pop, split, chain, clear. An arcade game about keeping bubbles off an electric hinge, now in public beta on iPhone Duo, iPad and iPhone. Or scroll down this page and play free.';
   return `${head({
     title: 'Hinge Pop: pop, split, chain, clear',
     description,
@@ -146,7 +175,15 @@ export function landing(links) {
 </div>
 <div id="field-box" aria-hidden="true"><canvas id="field"></canvas></div>
 
-<main>
+<header class="topbar" aria-label="Hinge Pop">
+  <a class="tb-brand" href="#top"><img src="art/logo.webp" alt="Hinge Pop" width="1000" height="860"></a>
+  <nav class="tb-nav" aria-label="Get Hinge Pop">
+    <a class="pill tb-play" href="#play" data-jump>Play free</a>
+    ${betaCta(testflight.ready ? { ...testflight, label: 'Join the beta' } : testflight, 'tb-beta', 'pill solid')}
+  </nav>
+</header>
+
+<main id="top">
 <section class="sec hero" data-shape="logo" aria-label="Hinge Pop">
   ${backdrop('neon', '--d:-16vh', 'to-night', true)}
   ${sparkles(9, 3)}
@@ -154,11 +191,53 @@ export function landing(links) {
   ${bob('bubble-golden', 384, 'right:-4%;top:70%;width:clamp(84px,20vw,190px);--d:60vh;--r0:14deg;--r1:-20deg', '', true)}
   ${bob('bubble-fast', 384, 'right:12%;top:7%;width:clamp(44px,9vw,88px);--d:-6vh', '', true)}
   <div class="front hero-in">
-    <h1 class="l hero-logo" style="--d:26vh"><img src="art/logo.webp" alt="Hinge Pop" width="1000" height="860" fetchpriority="high"></h1>
-    <p class="tag"><span class="l" style="--d:12vh">POP</span><i>·</i><span class="l" style="--d:22vh">SPLIT</span><i>·</i><span class="l" style="--d:16vh">CHAIN</span><i>·</i><span class="l" style="--d:30vh">CLEAR</span></p>
-    <p class="lede l" style="--d:8vh">The line across the screen is alive. Drag off it and it cracks like a whip.</p>
-    <p class="cue l" style="--d:4vh"><a href="#play" data-jump>Keep scrolling. The game is at the end of this page.</a></p>
+    <div class="hero-copy">
+      <h1 class="l hero-logo" style="--d:26vh"><img src="art/logo.webp" alt="Hinge Pop" width="1000" height="860" fetchpriority="high"></h1>
+      <p class="tag"><span class="l" style="--d:3vh">POP</span><i>·</i><span class="l" style="--d:6vh">SPLIT</span><i>·</i><span class="l" style="--d:4vh">CHAIN</span><i>·</i><span class="l" style="--d:8vh">CLEAR</span></p>
+      <div class="beta">
+        <p class="eyebrow"><i aria-hidden="true"></i>Public beta · iPhone Duo · iPad · iPhone</p>
+        ${betaCta(testflight, 'cta-beta')}
+        <p class="fine"><b>Free.</b> No account, no ads. iOS 17 or later.</p>
+        ${testflight.ready ? `<div class="qr"><img src="art/testflight-qr.svg" alt="QR code that opens the Hinge Pop TestFlight invitation" width="96" height="96"><p><b>On a computer?</b> Point your iPhone's camera here to join.</p></div>` : ''}
+      </div>
+      <p class="cue l" style="--d:4vh"><a href="#play" data-jump>Or play free on this page. The game is at the end.</a></p>
+    </div>
+    <div class="hero-duo l" style="--d:-10vh;--r0:-4deg;--r1:3deg" aria-hidden="true">
+      <div class="hd-dev"><img src="art/duo-open.webp" alt="" width="700" height="1018" fetchpriority="high"></div>
+      <span class="chip c1">Hinge on the fold</span>
+      <span class="chip c2 hot">Six villains that bite</span>
+    </div>
   </div>
+</section>
+
+<section class="sec duo-sec" id="duo" data-shape="duo" data-tint="neon" aria-labelledby="h-duo">
+  <div class="front duo-intro">
+    <p class="kicker">iPhone Duo</p>
+    ${stk('h2', 'Fold it. The hinge follows.', 'cy', 'id="h-duo"')}
+    <p class="big">The app finds the real fold and puts the game's hinge right on it. Close it, open it, stand it up: the arena reshapes mid-level.</p>
+  </div>
+  <div class="duo-track">
+    <div class="duo-stage">
+      <div class="duo-words dz" aria-hidden="true">${POSES.map(([, word]) => `<span>${esc(word)}</span>`).join('')}</div>
+      <div class="duo-scene" aria-hidden="true">
+        <div class="dv-floor dz"></div>
+        <div class="dv dz">
+          <div class="set slab dz"><img src="art/duo-closed.webp" alt="" width="700" height="1018" loading="lazy" decoding="async"><img class="lay-open dz" src="art/duo-open.webp" alt="" width="700" height="1018" loading="lazy" decoding="async"></div>
+          <div class="set tb dz"><div class="half top dz"><img src="art/duo-tabletop.webp" alt="" width="700" height="1018" loading="lazy" decoding="async"></div><div class="half bot"><img src="art/duo-tabletop.webp" alt="" width="700" height="1018" loading="lazy" decoding="async"></div></div>
+          <div class="set lr dz"><div class="half lft dz"><img src="art/duo-book.webp" alt="" width="700" height="1018" loading="lazy" decoding="async"></div><div class="half rgt dz"><img src="art/duo-book.webp" alt="" width="700" height="1018" loading="lazy" decoding="async"></div></div>
+        </div>
+        ${POSES.map(([id, , , , chip], i) => `<span class="chip dchip d${i + 1} dz${i % 2 ? ' hot' : ''}">${esc(chip)}</span>`).join('')}
+      </div>
+      <ol class="duo-steps">
+        ${POSES.map(([id, word, head, body], i) => `<li class="step s${i + 1} dz">
+          <img class="still" src="art/duo-${id}.webp" alt="Hinge Pop on iPhone Duo, ${esc(word.toLowerCase())}" width="700" height="1018" loading="lazy" decoding="async">
+          <span class="k">${esc(word)}</span><h3>${esc(head)}</h3><p>${esc(body)}</p>
+        </li>`).join('\n        ')}
+      </ol>
+      <div class="duo-rail" aria-hidden="true"><div class="lbls">${POSES.map(([, word], i) => `<span class="r${i + 1} dz">${esc(word)}</span>`).join('')}</div><div class="bar"><i class="dz"></i></div></div>
+    </div>
+  </div>
+  <p class="note duo-note">The fold sets the layout; how far it's open only brightens the glow. The web game draws its hinge on the screen and does not see folds.</p>
 </section>
 
 <section class="sec hinge" data-shape="hinge" aria-labelledby="h-hinge">
@@ -219,6 +298,24 @@ export function landing(links) {
   }).join('\n  ')}
 </section>
 
+<section class="sec villains" data-shape="star" data-tint="space" aria-labelledby="h-villains">
+  ${sparkles(8, 63)}
+  <div class="front blk villains-title">
+    ${stk('h2', 'Hands off: the villains', 'ho l', 'id="h-villains" style="--d:10vh"')}
+    <p class="big l" style="--d:5vh">Six bubbles you must never touch. Swipe blind and they bite.</p>
+    <p class="note l" style="--d:3vh">Each one is harmless for its first moment, while a ring closes around it. Leave it alone and it leaves with a small bonus. A freeze, a Chain Burst, a snap or a Crease Clap busts them for points. In the app only.</p>
+  </div>
+  <div class="tiers">
+  ${VILLAIN_TIERS.map(([tier, name, rule, cast], t) => `<div class="tier ${tier}">
+    <p class="tier-k front"><b>${esc(name)}</b> ${esc(rule)}</p>
+    ${cast.map(([id, vname, line], i) => `<article class="own villain">
+      <div class="l o art portrait" style="--x0:${i ? 36 : -36}vw;--y0:${14 + t * 6}vh;--r0:${i ? 160 : -160}deg;--s0:.4" aria-hidden="true"><img src="art/villain-${id}.webp" alt="" width="240" height="240" loading="lazy" decoding="async"></div>
+      <div class="front l o" style="--y0:${4 + i * 2}vh"><h3>${esc(vname)}</h3><p>${esc(line)}</p></div>
+    </article>`).join('\n    ')}
+  </div>`).join('\n  ')}
+  </div>
+</section>
+
 <section class="sec powers" data-shape="star" aria-labelledby="h-powers">
   ${sparkles(8, 57)}
   <div class="front blk powers-title">
@@ -250,11 +347,11 @@ export function landing(links) {
 
 <section class="sec chapters" aria-labelledby="h-chapters">
   <div class="front blk chapters-title">
-    ${stk('h2', 'Five chapters, then Infinity', 'cy l', 'id="h-chapters" style="--d:9vh"')}
-    <p class="big l" style="--d:5vh">Fifty levels by hand, and every chapter ends on a boss. After that the levels keep climbing.</p>
-    <p class="note l" style="--d:3vh">Chapters are in the app. The web game has its own endless run of basic-bubble levels.</p>
+    ${stk('h2', 'Ten realms, eighty worlds', 'cy l', 'id="h-chapters" style="--d:9vh"')}
+    <p class="big l" style="--d:5vh">800 levels, each world with its own twist and a boss at the end. Then Infinity keeps climbing.</p>
+    <p class="note l" style="--d:3vh">Play on Normal, or on Overdrive if you want it much harder. Realms are in the app; the web game has its own endless run of basic-bubble levels.</p>
   </div>
-  ${CHAPTERS.map(([n, title, levels, teaches, arena]) => `<article class="blk chapter" data-shape="num${n}" data-tint="${arena}">
+  ${CHAPTERS.map(([n, title, levels, teaches, arena, tint]) => `<article class="blk chapter" data-shape="num${n}" data-tint="${tint}">
     ${backdrop(arena, '--d:-14vh', 'soft')}
     <div class="front ch-in">
       <span class="numeral l" style="--d:34vh" aria-hidden="true">${n}</span>
@@ -265,7 +362,7 @@ export function landing(links) {
     ${backdrop('space', '--d:-14vh', 'soft')}
     <div class="front ch-in">
       <span class="numeral l" style="--d:34vh" aria-hidden="true">∞</span>
-      <div class="l" style="--d:8vh"><p class="ch-levels">Level 51 and up</p>${stk('h3', 'Infinity', 'go')}<p>Generated levels that keep climbing. The same number always gives the same level.</p></div>
+      <div class="l" style="--d:8vh"><p class="ch-levels">Level 801 and up</p>${stk('h3', 'Infinity', 'go')}<p>Generated levels that keep climbing. The same number always gives the same level.</p></div>
     </div>
   </article>
 </section>
@@ -292,7 +389,7 @@ export function landing(links) {
   <div class="device-row">
     <article class="own device duo">
       <div class="l o art frame" style="--y0:50vh;--r0:-14deg" aria-hidden="true"><i class="fold"></i></div>
-      <div class="front l o" style="--y0:6vh"><h3>iPhone Duo</h3><p>The app puts the hinge on the real fold. Hold it like a book for two players and each of you gets a panel.</p></div>
+      <div class="front l o" style="--y0:6vh"><h3>iPhone Duo</h3><p>The hinge sits on the real fold, with page play: rush pages, crossfolds and the Crease Clap. <a href="#duo">See it fold</a>.</p></div>
     </article>
     <article class="own device pad">
       <div class="l o art frame" style="--y0:80vh;--r0:10deg" aria-hidden="true"><i class="line"></i></div>
@@ -312,13 +409,13 @@ export function landing(links) {
   ${bob('bubble-armored', 384, 'left:-5%;top:8%;width:clamp(80px,20vw,180px);--d:28vh;--r1:-20deg')}
   ${bob('bubble-magnetic', 384, 'right:-3%;top:44%;width:clamp(70px,18vw,160px);--d:48vh;--r1:24deg')}
   <div class="front app-in">
-    ${stk('h2', 'Get the app', 'go l', 'id="h-app" style="--d:10vh"')}
+    ${stk('h2', 'Join the beta', 'go l', 'id="h-app" style="--d:10vh"')}
     <div class="buttons l" style="--d:6vh">
       ${storeButton(testflight, 'primary', 'btn-testflight')}
       ${storeButton(appStore, 'secondary', 'btn-appstore')}
     </div>
     <div class="compare l" style="--d:3vh">
-      <div><h3>In the app</h3><p>All 8 bubbles, 5 power-ups, 4 arenas, 5 chapters plus Infinity, Arcade and Daily modes, and the real fold on iPhone Duo.</p></div>
+      <div><h3>In the app</h3><p>All 8 bubbles, 6 villains, 5 power-ups, 8 guest stars, 800 levels in 80 worlds plus Infinity, Normal and Overdrive, Arcade with checkpoints, Daily, Face Off for two, and the real fold on iPhone Duo.</p></div>
       <div><h3>On this page</h3><p>Basic bubbles only, endless levels and two players on one screen. It is free to play here, right now.</p></div>
     </div>
     <p class="promise l" style="--d:2vh">No account. No ads. No analytics. Your progress stays on your device.</p>
@@ -428,7 +525,7 @@ export const support = () => docPage({
 <h3>How do you lose?</h3>
 <p>Each crossing charges the overload meter, by more for bigger bubbles, and a full meter costs a shield. Lose your last shield and the level starts again, with your score back where it began. Nothing else is lost. In a two-player match, losing your last shield loses the match.</p>
 <h3>Are the levels infinite?</h3>
-<p>Yes. The app has 50 levels in five chapters, each ending on a boss, and then Infinity, which generates levels that keep climbing. It also has Arcade and Daily modes. The web game has its own endless run of levels with basic bubbles.</p>
+<p>Yes. The app has 800 levels across 80 worlds in ten realms, each world ending on a boss, and then Infinity, which generates levels that keep climbing. It also has Arcade, with a checkpoint every five waves, and Daily. The web game has its own endless run of levels with basic bubbles.</p>
 <h3>Is it family friendly?</h3>
 <p>It is cartoon bubbles with faces, and nothing worse than a pop. There are no accounts, ads, chat or links to strangers, and the game collects nothing. It does not have an age rating of its own yet, so please judge it for your family by playing a level.</p>
 <h3>Can I customize it?</h3>
