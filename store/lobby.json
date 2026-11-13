@@ -72,17 +72,25 @@
       "sub": "Drag off the line and it cracks like a whip."
     },
     {
-      "id": "swipe",
-      "raw": "guest",
-      "layout": "bleed",
-      "kicker": "GUEST STARS",
-      "title": "Eight visitors. *One gift each.*",
-      "sub": "Each moves its own way. Catch them if you can."
+      "id": "versus",
+      "raw": "swarm",
+      "layout": "tilt",
+      "kicker": "SWIPE AND CHAIN",
+      "title": "One stroke, *every bubble*",
+      "sub": "Then pop one tiny bubble and watch the rest go."
+    },
+    {
+      "id": "villain",
+      "raw": "villain",
+      "layout": "hero",
+      "kicker": "VILLAIN SEASON",
+      "title": "Spikes mean *hands off*",
+      "sub": "Six villain bubbles. One touch costs a shield, two, or the whole run."
     },
     {
       "id": "physics",
       "raw": "boss",
-      "layout": "tilt",
+      "layout": "bleed",
       "kicker": "BOSSES FIGHT BACK",
       "title": "When it glows red, *hit it*",
       "sub": "Or its dash takes a whole shield."
@@ -96,12 +104,12 @@
       "sub": "One side each. Your misses are their problem."
     },
     {
-      "id": "versus",
-      "raw": "swarm",
-      "layout": "hero",
-      "kicker": "SWIPE AND CHAIN",
-      "title": "One stroke, *every bubble*",
-      "sub": "Then pop one tiny bubble and watch the rest go."
+      "id": "swipe",
+      "raw": "guest",
+      "layout": "bleed",
+      "kicker": "GUEST STARS",
+      "title": "Eight visitors. *One gift each.*",
+      "sub": "Each moves its own way. Catch them if you can."
     },
     {
       "id": "map",
