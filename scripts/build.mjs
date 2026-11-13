@@ -7,7 +7,7 @@
 import { createHash } from 'node:crypto';
 import { cpSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { ICON, landing, privacy, support } from '../site/pages.mjs';
+import { BOX_OFFICE, ICON, landing, privacy, support } from '../site/pages.mjs';
 
 const outDir = process.env.HINGEPOP_OUT || 'dist';
 const site = join(outDir, 'hingepop');
@@ -43,6 +43,7 @@ ${head}
 </head>
 <body>
 ${body}
+${BOX_OFFICE}
 </body>
 </html>
 `;
@@ -63,7 +64,7 @@ writeFileSync(join(site, 'vendor/aurora-field.min.js'), vendored);
 for (const f of ['site.css', 'landing.css', 'landing.js']) cpSync(join('site', f), join(site, 'assets', f));
 for (const need of ['art/og.jpg', 'art/game-bubble.webp', 'fonts/titan-one.woff2']) if (!existsSync(join(site, need))) throw new Error('missing ' + need);
 
-// no-transform keeps Cloudflare from injecting analytics into any page, which the privacy page promises.
+// no-transform keeps Cloudflare from injecting its own analytics into any page: the privacy page names only Box Office.
 const html = 'Cache-Control: public, max-age=0, must-revalidate, no-transform';
 const routes = ['/hingepop/', '/hingepop/index.html', '/hingepop/play/', '/hingepop/play/index.html', '/hingepop/privacy/', '/hingepop/privacy/index.html', '/hingepop/support/', '/hingepop/support/index.html'];
 writeFileSync(join(outDir, '_headers'), routes.map((r) => `${r}\n  ${html}\n`).join(''));

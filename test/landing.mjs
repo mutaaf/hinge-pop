@@ -49,7 +49,7 @@ for (const [name, options] of devices) {
 
 const context = await browser.newContext();
 const page = await context.newPage();
-for (const [path, words] of [['privacy/', /sends nothing|collects nothing/i], ['support/', /issues|question/i], ['play/', /./]]) {
+for (const [path, words] of [['privacy/', /app collects nothing[\s\S]*anonymous usage analytics[\s\S]*Global Privacy Control/i], ['support/', /issues|question/i], ['play/', /./]]) {
   const res = await page.goto(ORIGIN + path);
   check(`/hingepop/${path} loads`, res.status() === 200);
   check(`/hingepop/${path} has its content`, words.test(await page.evaluate(() => document.body.innerText)) || path === 'play/');

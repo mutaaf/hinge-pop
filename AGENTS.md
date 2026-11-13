@@ -10,6 +10,7 @@ Arcade game with three parts: a parallax landing site that scrolls into the web 
 - Tune numbers in `CFG`, then run `npm run balance` before and after. Measure with the modelled human and slicer bots, because perfect-aim bots hid that levels 6+ were impossible for people.
 - Hosting is a Cloudflare Worker with static assets only, on route `mutaafaziz.com/hingepop*`. Never give it its own domain.
 - Deploys are manual: `npm run deploy`. Workers Builds is not connected.
+- Analytics (web only, the owner's call 2026-11-12): every page ends its `<body>` with `BOX_OFFICE` (`site/pages.mjs`), which loads Box Office's same-origin loader `/boxoffice/v1/insights.js` on https at the top level only (mutaaf/box-office; PostHog via a mutaafaziz.com relay, IPs truncated, GPC/DNT honoured, inputs masked). The game names events with `track()` in `index.html` (`game_start`, `game_over`, `tour_end`; numbers and enums only), which goes to the landing page's loader when framed. The privacy page says so. The native app has none, and its App Privacy label stays "Data Not Collected".
 
 ## Phone and tablet guidelines
 
