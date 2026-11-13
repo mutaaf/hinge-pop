@@ -64,6 +64,8 @@ final class Session {
   var tourNote = ""
   var meetQueue: [ActorKind] = []
   var resultWasBest = false
+  /// A checkpoint the last arcade run reached for the first time.
+  var arcadeNewCheckpoint: Int?
   /// Mastery for the run in play: its level's challenges, what it's done so far, and the verdict at the end.
   private(set) var challenges: [Challenge] = []
   private(set) var run = RunLog()
@@ -209,6 +211,7 @@ final class Session {
   func startGame() {
     if case .campaign(let n) = mode { levelNumber = n }
     game = makeGame(mode)
+    if case .arcade = mode { game.continueArcade(from: app.arcadeFrom) }
     generation += 1
     acc = 0; endTimer = 0
     startScore = game.players[0].score
@@ -438,8 +441,9 @@ final class Session {
       }
     case .arcade:
       let score = game.players[0].score
-      resultWasBest = score > app.progress.arcadeBest
-      app.progress.arcadeBest = max(app.progress.arcadeBest, score)
+      let before = app.progress.arcade.checkpoint
+      resultWasBest = app.progress.recordArcade(score: score, wave: game.waves)
+      arcadeNewCheckpoint = app.progress.arcade.checkpoint > before ? app.progress.arcade.checkpoint : nil
       Haptics.shared.bad()
     case .daily:
       let score = game.status == .won ? game.players[0].score : 0

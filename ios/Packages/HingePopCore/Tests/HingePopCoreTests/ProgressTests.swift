@@ -183,3 +183,49 @@ final class MasteryProgressTests: XCTestCase {
     XCTAssertEqual(p.mastery, 240)
   }
 }
+
+final class ArcadeProgressTests: XCTestCase {
+  func testCheckpointsEveryFiveWaves() {
+    XCTAssertEqual(Arcade.checkpoint(reaching: 0), 1)
+    XCTAssertEqual(Arcade.checkpoint(reaching: 4), 1)
+    XCTAssertEqual(Arcade.checkpoint(reaching: 5), 5)
+    XCTAssertEqual(Arcade.checkpoint(reaching: 14), 10)
+    XCTAssertEqual(Arcade.stage(1).name, "Insert Coin")
+    XCTAssertEqual(Arcade.stage(10).name, "Boss Rush")
+    XCTAssertTrue(Arcade.stage(200).name.hasPrefix("Loop"))
+    XCTAssertEqual(Arcade.ladder(best: 12).map(\.wave), [1, 5, 10, 15, 20])
+  }
+
+  func testRecordingAnArcadeRun() {
+    var p = GameProgress()
+    XCTAssertTrue(p.recordArcade(score: 500, wave: 7))
+    XCTAssertFalse(p.recordArcade(score: 300, wave: 3))
+    XCTAssertEqual(p.arcadeBest, 500)
+    XCTAssertEqual(p.arcade.bestWave, 7)
+    XCTAssertEqual(p.arcade.runs, 2)
+    XCTAssertEqual(p.arcade.lastWave, 3)
+    XCTAssertEqual(p.arcade.checkpoint, 5)
+  }
+
+  func testOlderSavesLoadWithAnEmptyArcadeLog() throws {
+    var old = GameProgress()
+    old.arcadeBest = 900
+    var json = try JSONSerialization.jsonObject(with: JSONEncoder().encode(old)) as! [String: Any]
+    json["arcadeLog"] = nil
+    let loaded = try JSONDecoder().decode(GameProgress.self, from: JSONSerialization.data(withJSONObject: json))
+    XCTAssertEqual(loaded.arcadeBest, 900)
+    XCTAssertEqual(loaded.arcade, ArcadeLog())
+  }
+
+  func testContinuingFromACheckpointStartsAtThatWave() {
+    let g = Game(mode: .arcade(seed: 3), width: 390, height: 760, top: 70, seed: 3)
+    g.continueArcade(from: 10)
+    XCTAssertEqual(g.startWave, 10)
+    var t = 0.0
+    while g.waves < 10 && t < 20 { g.step(1.0 / 60); t += 1.0 / 60 }
+    XCTAssertEqual(g.waves, 10, "the first new wave is the checkpoint's")
+    let c = Game(mode: .campaign(3), width: 390, height: 760, top: 70, seed: 3)
+    c.continueArcade(from: 10)
+    XCTAssertEqual(c.startWave, 1, "only arcade continues")
+  }
+}

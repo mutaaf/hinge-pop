@@ -2,13 +2,20 @@ import SwiftUI
 import HingePopCore
 
 enum Route: Equatable {
-  case home, map, guide, settings
+  case home, map, guide, settings, arcade
   case play(GameMode)
 }
 
 @MainActor @Observable
 final class AppModel {
   var route = Route.home
+  /// The wave the next arcade run starts from: 1, or a checkpoint picked on the Arcade page.
+  var arcadeFrom = 1
+  /// Starts an arcade run, from wave 1 or a checkpoint.
+  func playArcade(from wave: Int = 1) {
+    arcadeFrom = wave
+    route = .play(.arcade(seed: UInt64(Date().timeIntervalSince1970)))
+  }
   /// This version's update card, when there's one to show.
   var updateNotes: UpdateNotes?
   /// The card was forced with -whatsNew (debug only), so closing it doesn't record the version.
@@ -65,6 +72,7 @@ final class AppModel {
     case "map": route = .map
     case "guide": route = .guide
     case "settings": route = .settings
+    case "arcade": route = .arcade
     default: break
     }
     if let n = Debug.int("-level") { route = .play(.campaign(n)) }
@@ -78,6 +86,8 @@ final class AppModel {
     }
     if args.contains("-versus") { route = .play(.versus) }
     if args.contains("-arcade") { route = .play(.arcade(seed: 7)) }
+    // -arcadeBest N: a save that has reached wave N, so the Arcade page has checkpoints to continue from.
+    if let w = Debug.int("-arcadeBest") { progress.recordArcade(score: w * 900, wave: w) }
     if args.contains("-daily") { route = .play(today()) }
     #endif
     applySettings()
@@ -119,7 +129,7 @@ final class AppModel {
     case .settings: route = .settings
     case .guide(let section): guideSection = section; route = .guide
     case .play: route = .play(.campaign(progress.nextUp))
-    case .arcade: route = .play(.arcade(seed: UInt64(Date().timeIntervalSince1970)))
+    case .arcade: route = .arcade
     case .daily: route = .play(today())
     case .versus: route = .play(.versus)
     }

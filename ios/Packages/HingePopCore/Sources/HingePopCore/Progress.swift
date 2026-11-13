@@ -37,6 +37,24 @@ public struct GameProgress: Codable, Equatable, Sendable {
   public var overdriveClears: Int { overdriveLog?.count ?? 0 }
   /// True once someone has played, so an update can tell them what changed.
   public var playedBefore: Bool { seenTour || unlocked > 1 || arcadeBest > 0 || !stars.isEmpty }
+  /// Arcade's long view: the furthest wave, runs played and the last run. Optional so older saves load.
+  private var arcadeLog: ArcadeLog? = nil
+  public var arcade: ArcadeLog {
+    get { arcadeLog ?? ArcadeLog() }
+    set { arcadeLog = newValue }
+  }
+  /// Files an arcade run. True when it set a new best score.
+  @discardableResult public mutating func recordArcade(score: Int, wave: Int) -> Bool {
+    var log = arcade
+    log.runs += 1
+    log.lastScore = score
+    log.lastWave = wave
+    log.bestWave = max(log.bestWave, wave)
+    arcade = log
+    let best = score > arcadeBest
+    arcadeBest = max(arcadeBest, score)
+    return best
+  }
   public init() {}
 
   public func hasCaught(_ cameo: Cameo) -> Bool { cameoLog?.contains(cameo.rawValue) ?? false }

@@ -587,7 +587,7 @@ struct PauseOverlay: View {
     }
   }
   private var restart: some View { Button(session.versus ? "Rematch" : "Restart") { session.restart() }.buttonStyle(QuietStyle()) }
-  private var menu: some View { Button("Menu") { app.route = session.isCampaign ? .map : .home }.buttonStyle(QuietStyle()) }
+  private var menu: some View { Button("Menu") { app.route = session.isCampaign ? .map : (session.mode.isArcade ? .arcade : .home) }.buttonStyle(QuietStyle()) }
 }
 
 // The end card (`ResultOverlay`) lives in EndCard.swift.

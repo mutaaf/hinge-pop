@@ -238,6 +238,16 @@ public final class Game {
   public var events: [GameEvent] = []
   private var focusClock = 0.0
   private var waveClock = 8.0
+  /// The wave an arcade run started from: 1, or a checkpoint.
+  public private(set) var startWave = 1
+
+  /// Starts an arcade run from a checkpoint: the next wave in is `wave`, at that wave's pace.
+  public func continueArcade(from wave: Int) {
+    guard case .arcade = mode, time == 0, wave > 1 else { return }
+    startWave = wave
+    waves = wave - 1
+    waveClock = min(waveClock, max(3.5, 9 - Double(waves) * 0.25))
+  }
   /// Bubbles still waiting to come in, and how long since the last one did.
   private var arrivals: [Spawn] = []
   private var arrivalClock = 0.0
