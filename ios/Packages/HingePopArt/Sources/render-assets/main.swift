@@ -100,6 +100,7 @@ if CommandLine.arguments.contains("--worlds") {
 if CommandLine.arguments.contains("--sprites") {
     for k in BubbleKind.allCases { writePNG(Art.bubble(k, size: 256, scale: 2), "bubble-\(k.rawValue).png") }
     for k in CameoKind.allCases { writePNG(Art.cameo(k, size: 160, scale: 2), "cameo-\(k.rawValue).png") }
+    for k in VillainSprite.allCases { writePNG(Art.villain(k, size: 160, scale: 2), "villain-\(k.rawValue).png"); writePNG(Art.villain(k, size: 44, scale: 3), "villain-\(k.rawValue)-small.png") }
     for k in PowerKind.allCases { writePNG(Art.power(k, size: 160, scale: 2), "power-\(k.rawValue).png") }
     for g in UIGlyph.allCases { writePNG(Art.glyph(g, size: 96, scale: 2), "glyph-\(g.rawValue).png") }
     // Variant 0 keeps the original names; variants 1-3 add -v<n> (arena-candy-v2-tall.png).

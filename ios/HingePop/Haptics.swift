@@ -17,6 +17,8 @@ final class Haptics {
     case snap, clap
     case bossIntro, bossHit, bossStagger, bossPhase, bossDown, bossSlam, windup
     case combo, comboTop, win, lose, power, fever, overtime, lastOne
+    /// Villains: one arriving (a low warning), one biting, and a Doom ending the run.
+    case villain, villainHit, doom
   }
 
   private var engine: CHHapticEngine?
@@ -67,10 +69,10 @@ final class Haptics {
     case .pop, .chain: light.impactOccurred(intensity: 0.6)
     case .split: light.impactOccurred()
     case .bigSplit, .bossHit, .combo, .power, .lastOne: rigid.impactOccurred()
-    case .crossing, .windup, .overtime: soft.impactOccurred()
+    case .crossing, .windup, .overtime, .villain: soft.impactOccurred()
     case .heartbeat: soft.impactOccurred(intensity: 0.7)
     case .snap, .clap, .bossStagger, .bossSlam, .bossIntro: heavy.impactOccurred()
-    case .shieldLost, .lose: notify.notificationOccurred(.error)
+    case .shieldLost, .lose, .villainHit, .doom: notify.notificationOccurred(.error)
     case .bossPhase, .bossDown, .win, .comboTop, .fever: notify.notificationOccurred(.success)
     }
   }
@@ -160,6 +162,9 @@ final class Haptics {
     case .fever: return [tick(0, 0.8, 0.9), tick(0.08, 0.9, 0.9), tick(0.16, 1, 1), hum(0.16, 0.4, 0.6, 0.7)]
     case .overtime: return [tick(0, 0.7, 0.4), tick(0.14, 0.7, 0.4)]
     case .lastOne: return [tick(0, 0.5, 0.9)]
+    case .villain: return [tick(0, 0.55, 0.1), tick(0.16, 0.7, 0.1)]
+    case .villainHit: return [tick(0, 1, 0.5), hum(0, 0.3, 0.9, 0.3), tick(0.09, 0.9, 0.7)]
+    case .doom: return [tick(0, 1, 0.2), hum(0, 0.9, 1, 0.05), tick(0.3, 0.9, 0.1), tick(0.6, 0.7, 0.1)]
     }
   }
 }

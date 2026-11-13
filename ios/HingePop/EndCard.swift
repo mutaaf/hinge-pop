@@ -266,17 +266,22 @@ struct ResultOverlay: View {
     AuroraSpot(arena: session.arena) {
       VStack(spacing: 8) {
         HStack(spacing: 8) {
-          Text("LEVEL \(n) · OVERLOADED").font(.game(.caption, .heavy)).tracking(2).foregroundStyle(.white.opacity(0.9))
+          Text("LEVEL \(n) · \(g.lostTo?.tier == .doom ? "DOOMED" : g.lostTo != nil ? "CURSED" : "OVERLOADED")").font(.game(.caption, .heavy)).tracking(2).foregroundStyle(.white.opacity(0.9))
           if g.difficulty == .overdrive { OverdriveTag(big: true) }
         }
         HStack(spacing: 6) {
           ForEach(0..<g.tuning.shields, id: \.self) { _ in ArtImage(item: .glyph(.shieldOff), size: 30) }
         }
         .accessibilityHidden(true)
-        Text(cause.headline).font(.game(.title, .black)).foregroundStyle(.white)
-          .multilineTextAlignment(.center).fixedSize(horizontal: false, vertical: true)
-          .accessibilityIdentifier("lossReason")
-        Text(cause.hint).font(.game(.subheadline, .bold)).foregroundStyle(.white)
+        if let foe = g.lostTo {
+          // A villain finished it: it takes the stage, with its line.
+          VillainLoss(kind: foe)
+        } else {
+          Text(cause.headline).font(.game(.title, .black)).foregroundStyle(.white)
+            .multilineTextAlignment(.center).fixedSize(horizontal: false, vertical: true)
+            .accessibilityIdentifier("lossReason")
+        }
+        Text(g.lostTo != nil ? ShieldCause.villain.hint : cause.hint).font(.game(.subheadline, .bold)).foregroundStyle(.white)
           .padding(.horizontal, 12).padding(.vertical, 5)
           .background(Capsule().fill(.black.opacity(0.45)))
       }
@@ -348,7 +353,8 @@ struct ResultOverlay: View {
     }
   }
   private func sub(_ g: Game) -> String {
-    switch session.mode {
+    if let foe = g.lostTo { return "\(foe.title): “\(foe.taunt)”" }
+    return switch session.mode {
     case .versus: g.players.contains { $0.shields <= 0 } ? "Last shield gone." : "All clear. Top score wins."
     case .arcade: g.startWave > 1 ? "From wave \(g.startWave) to wave \(g.waves)." : "You lasted \(g.waves) \(g.waves == 1 ? "wave" : "waves")."
     default: g.status == .won ? "New level tomorrow." : "Out of shields. You can try again today."

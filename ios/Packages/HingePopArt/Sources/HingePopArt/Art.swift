@@ -42,6 +42,14 @@ public enum Art {
         }
     }
 
+    /// A villain bubble, warning rim included. Its body is the same size as a bubble's (`bodyFraction(.basic)`).
+    public static func villain(_ kind: VillainSprite, size: CGFloat, scale: CGFloat) -> CGImage {
+        cached(.villain(kind), size, size, scale) {
+            let small = size < smallBelow
+            return unitSprite(pixels: px(size, scale)) { drawVillain(kind, $0, small: small) }
+        }
+    }
+
     public static func power(_ kind: PowerKind, size: CGFloat, scale: CGFloat) -> CGImage {
         cached(.power(kind), size, size, scale) {
             unitSprite(pixels: px(size, scale)) { drawPower(kind, $0) }
@@ -107,7 +115,7 @@ public enum Art {
     // MARK: Cache
 
     private enum Item: Hashable {
-        case bubble(BubbleKind, ArenaKind?), cameo(CameoKind), power(PowerKind), glyph(UIGlyph), fx(FXKind), arena(ArenaKind, Int), logo, appIcon
+        case bubble(BubbleKind, ArenaKind?), cameo(CameoKind), villain(VillainSprite), power(PowerKind), glyph(UIGlyph), fx(FXKind), arena(ArenaKind, Int), logo, appIcon
     }
     private struct Key: Hashable { let item: Item; let w: CGFloat; let h: CGFloat; let scale: CGFloat }
 

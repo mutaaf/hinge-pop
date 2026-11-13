@@ -30,6 +30,8 @@ enum Callout: String, CaseIterable {
   case lastOne = "LAST ONE!", fever = "FEVER!", overtime = "OVERTIME!", faster = "FASTER!", shieldDown = "SHIELD DOWN!", surge = "SURGE!"
   case phase2 = "PHASE 2", phase3 = "PHASE 3", phase4 = "PHASE 4", finalPhase = "FINAL PHASE!", boss = "BOSS"
   case comboBreak = "COMBO LOST"
+  /// Villains: their tier on arrival, and what happened to them.
+  case menace = "MENACE", brute = "BRUTE", doom = "DOOM", busted = "BUSTED!", doomed = "DOOMED!", dodged = "DODGED"
   /// Two-player verdicts, one for each half.
   case youWin = "YOU WIN!", soClose = "SO CLOSE!", draw = "DRAW!"
 
@@ -38,6 +40,7 @@ enum Callout: String, CaseIterable {
     switch self {
     case .boss, .comboBreak: 22
     case .shieldDown, .phase2, .phase3, .phase4, .finalPhase, .faster, .lastOne, .surge: 40
+    case .menace, .brute, .doom, .dodged: 32
     default: 54
     }
   }

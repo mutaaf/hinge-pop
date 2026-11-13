@@ -197,6 +197,8 @@ public enum Challenges {
 /// What cost a shield.
 public enum ShieldCause: String, Sendable, Equatable {
   case big, medium, small, boss
+  /// A villain bubble that got touched.
+  case villain
 }
 
 /// Everything a challenge, a grade or the losing card needs to know about one run, gathered from `GameEvent`s
@@ -220,6 +222,9 @@ public struct RunLog: Equatable, Sendable {
   public var staggers = 0
   public var wastedBossHits = 0
   public var gustCrossings = 0
+  /// Villains busted with a power, and left alone until they left.
+  public var villainsBusted = 0
+  public var villainsDodged = 0
   /// What cost each shield, in order.
   public var causes: [ShieldCause] = []
   private var gustUntil = -Double.infinity
@@ -236,6 +241,10 @@ public struct RunLog: Equatable, Sendable {
         lastCost = size == 0 ? .big : size == 1 ? .medium : .small
         if time <= gustUntil { gustCrossings += 1 }
       case .bossSlam(_, _, _, let p) where p == player: lastCost = .boss
+      case .villainStruck(_, _, _, _, let p, _) where p == player: lastCost = .villain
+      case .villainDoom(_, _, _, _, let p) where p == player: lastCost = .villain; causes.append(.villain)
+      case .villainBusted(_, _, _, _, _, let p, _) where p == player: villainsBusted += 1
+      case .villainEscaped(_, _, _, _, let p) where p == player: villainsDodged += 1
       case .shieldLost(let p) where p == player: causes.append(lastCost ?? .small)
       case .hingeSnap(_, let p, let flung) where p == player: bestSnap = max(bestSnap, flung)
       case .creaseClap(let flung): bestSnap = max(bestSnap, flung)
@@ -282,6 +291,7 @@ extension ShieldCause {
     case .medium: "Mediums kept slipping over"
     case .small: "Too many smalls slipped by"
     case .boss: "The boss broke through"
+    case .villain: "A villain bit back"
     }
   }
   /// And what to try next time.
@@ -291,6 +301,7 @@ extension ShieldCause {
     case .medium: "Snap the line when they bunch up."
     case .small: "Tap smalls, or split them to tiny."
     case .boss: "Hit it while it glows red."
+    case .villain: "Spiked rims mean hands off."
     }
   }
 }

@@ -201,6 +201,7 @@ struct AuroraAssemble: View {
     switch item {
     case .bubble(let k): Art.bubble(k, size: size, scale: 1)
     case .cameo(let k): Art.cameo(k, size: size, scale: 1)
+    case .villain(let k): Art.villain(k, size: size, scale: 1)
     case .power(let k): Art.power(k, size: size, scale: 1)
     case .glyph(let g): Art.glyph(g, size: size, scale: 1)
     case .logo: Art.logo(width: size, scale: 1)

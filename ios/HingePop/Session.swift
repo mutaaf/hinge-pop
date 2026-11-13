@@ -11,6 +11,8 @@ enum Overlay: Equatable {
   case none, paused, result, meet(ActorKind), tour
   /// The first time you enter a world: its name and its twist.
   case world(Int)
+  /// The first time villains can turn up: who they are and what a touch costs.
+  case villains([VillainKind])
 }
 
 struct Tip: Identifiable, Equatable {
@@ -63,6 +65,7 @@ final class Session {
   var tourDone = false
   var tourNote = ""
   var meetQueue: [ActorKind] = []
+  var villainQueue: [VillainKind] = []
   var resultWasBest = false
   /// A checkpoint the last arcade run reached for the first time.
   var arcadeNewCheckpoint: Int?
@@ -232,6 +235,8 @@ final class Session {
 
   private func introduce() {
     meetQueue = []
+    villainQueue = game.villainPlan.pool.filter { !app.progress.taught.contains("villain-\($0.rawValue)") }
+    if versus { villainQueue = [] }
     for spawn in game.spec.spawns where spawn.kind != .basic {
       let key = "meet-\(spawn.kind.rawValue)"
       if !app.progress.taught.contains(key), !meetQueue.contains(spawn.kind) { meetQueue.append(spawn.kind) }
@@ -249,6 +254,8 @@ final class Session {
       overlay = .world(w.number)
     } else if let first = meetQueue.first {
       overlay = .meet(first)
+    } else if !villainQueue.isEmpty {
+      overlay = .villains(villainQueue)
     } else if versus {
       show("Face to face. Your half is the one nearest you.")
     } else if isCampaign {
@@ -267,7 +274,7 @@ final class Session {
   func dismissWorld() {
     guard case .world(let n) = overlay else { return }
     app.progress.taught.insert("world-\(n)")
-    overlay = meetQueue.first.map { .meet($0) } ?? .none
+    overlay = meetQueue.first.map { .meet($0) } ?? (villainQueue.isEmpty ? .none : .villains(villainQueue))
     if overlay == .none { show("Level \(levelNumber): \(Campaign.chapter(of: levelNumber).title)", seconds: 1.6) }
   }
 
@@ -275,7 +282,14 @@ final class Session {
     guard case .meet(let kind) = overlay else { return }
     app.progress.taught.insert("meet-\(kind.rawValue)")
     meetQueue.removeAll { $0 == kind }
-    overlay = meetQueue.first.map { .meet($0) } ?? .none
+    overlay = meetQueue.first.map { .meet($0) } ?? (villainQueue.isEmpty ? .none : .villains(villainQueue))
+  }
+
+  func dismissVillains() {
+    guard case .villains(let kinds) = overlay else { return }
+    for k in kinds { app.progress.taught.insert("villain-\(k.rawValue)") }
+    villainQueue = []
+    overlay = .none
   }
 
   /// Again, from the score the level began with, even after a win (so retrying for an S never inflates it).
@@ -499,7 +513,17 @@ final class Session {
       var guardCount = 0
       while let b = game.bubbles.first, game.status == .playing, guardCount < 800 { game.tap(b); guardCount += 1 }
     }
-    if Debug.has("-lose") || endCard == "lose", game.status == .playing, game.time > 0.6 {
+    // `-villain <kind>` (or `all`) keeps villains on stage for captures and tests; with `-endCard lose` it touches one.
+    if let name = Debug.string("-villain"), game.status == .playing, game.time > 0.4 {
+      let kinds = name == "all" ? VillainKind.allCases : VillainKind(rawValue: name).map { [$0] } ?? []
+      for (i, k) in kinds.enumerated() where !game.villains.contains(where: { $0.kind == k }) {
+        let u = kinds.count == 1 ? 0.5 : 0.12 + 0.76 * Double(i) / Double(kinds.count - 1)
+        game.summonVillain(k, u: u, v: kinds.count == 1 ? 0.3 : (i % 2 == 0 ? 0.25 : 0.75), degrees: 70)
+      }
+      if Debug.has("-still") { game.villainsHeld = true }
+      if endCard == "lose", game.time > 0.8, let v = game.villains.first(where: { $0.solid }) { game.strike(v) }
+    }
+    if Debug.string("-villain") == nil, Debug.has("-lose") || endCard == "lose", game.status == .playing, game.time > 0.6 {
       game.players[0].shields = 1; game.players[0].meter = game.meterMax - 1
       let pick = endCard == "lose" ? game.bubbles.first(where: { $0.size == 0 && $0.kind != .boss }) : nil
       if let b = pick ?? game.bubbles.first(where: { $0.size < 3 }) { if game.vertical { b.x = game.hinge - Double(b.side); b.vx = -Double(b.side) * 400 } else { b.y = game.hinge - Double(b.side); b.vy = -Double(b.side) * 400 }; b.grace = 0 }

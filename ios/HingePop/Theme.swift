@@ -77,7 +77,7 @@ struct Sheet<Content: View>: View {
 
 /// Art as a SwiftUI image. The scale matches the screen so it stays crisp.
 struct ArtImage: View {
-  enum Item { case bubble(BubbleKind), cameo(CameoKind), power(PowerKind), glyph(UIGlyph), logo }
+  enum Item { case bubble(BubbleKind), cameo(CameoKind), villain(VillainSprite), power(PowerKind), glyph(UIGlyph), logo }
   let item: Item
   let size: CGFloat
   @Environment(\.displayScale) private var scale
@@ -85,6 +85,7 @@ struct ArtImage: View {
     switch item {
     case .bubble(let k): Image(decorative: Art.bubble(k, size: size, scale: scale), scale: scale)
     case .cameo(let k): Image(decorative: Art.cameo(k, size: size, scale: scale), scale: scale)
+    case .villain(let k): Image(decorative: Art.villain(k, size: size, scale: scale), scale: scale)
     case .power(let k): Image(decorative: Art.power(k, size: size, scale: scale), scale: scale)
     case .glyph(let g): Image(decorative: Art.glyph(g, size: size, scale: scale), scale: scale)
     case .logo: Image(decorative: Art.logo(width: size, scale: scale), scale: scale)

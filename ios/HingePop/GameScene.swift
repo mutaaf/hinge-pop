@@ -49,6 +49,8 @@ final class GameScene: SKScene {
   private var sparePuppets: [BubbleNode] = []
   private var pickupNodes: [Int: SKSpriteNode] = [:]
   private var visitorNodes: [Int: SKSpriteNode] = [:]
+  private var villainNodes: [Int: VillainPuppet] = [:]
+  private var spareVillains: [VillainPuppet] = []
   private var textures: [String: SKTexture] = [:]
   private var fxTextures: [String: SKTexture] = [:]
   private var spareSprites: [SKSpriteNode] = []
@@ -384,6 +386,7 @@ final class GameScene: SKScene {
     lap(3)
     #endif
     drawVisitors(game, alpha: alpha)
+    drawVillains(game, alpha: alpha)
     drawPickups(game)
     #if DEBUG
     lap(4)
@@ -402,6 +405,8 @@ final class GameScene: SKScene {
     pickupNodes.removeAll()
     for n in visitorNodes.values { n.removeFromParent() }
     visitorNodes.removeAll()
+    for n in villainNodes.values { n.removeFromParent(); spareVillains.append(n) }
+    villainNodes.removeAll()
     for n in gateNodes { n.removeFromParent() }
     gateNodes.removeAll()
     active.removeAll()
@@ -438,10 +443,12 @@ final class GameScene: SKScene {
       }
     }
     let cameo = CGFloat(game.visitorRadius * 2) / 0.72
+    let villains = VillainKind.allCases.map { ($0.artKind, villainDrawSize(game, $0)) }
     let power = CGFloat(54 * max(1, min(1.6, game.scale)))
     Task.detached(priority: .userInitiated) {
       for (k, px) in bubbles { _ = Art.bubble(k, size: px, scale: scale, biome: biome) }
       for k in CameoKind.allCases { _ = Art.cameo(k, size: cameo, scale: scale) }
+      for (k, px) in villains { _ = Art.villain(k, size: px, scale: scale) }
       for k in PowerKind.allCases { _ = Art.power(k, size: power, scale: scale) }
       for k in [FXKind.popBurst, .particleStar] { _ = Art.fx(k, size: 96, scale: scale) }
       _ = Art.fx(.shockwave, size: 128, scale: scale)
@@ -852,6 +859,72 @@ final class GameScene: SKScene {
     for (id, n) in visitorNodes where !seen.contains(id) {
       n.removeFromParent()
       visitorNodes[id] = nil
+    }
+  }
+
+  private func villainDrawSize(_ game: Game, _ kind: VillainKind) -> CGFloat {
+    (CGFloat(game.villainRadius(kind) * 2) / Art.bodyFraction(.basic)).rounded()
+  }
+  private func villainTexture(_ kind: VillainSprite, size px: CGFloat) -> SKTexture {
+    let key = "villain-\(kind.rawValue)-\(Int(px))"
+    if let t = textures[key] { return t }
+    let t = SKTexture(cgImage: Art.villain(kind, size: px, scale: displayScale))
+    textures[key] = t
+    return t
+  }
+
+  /// Villains draw above bubbles, so one sitting on a bubble is never hidden. A ring in the tier's colour closes in
+  /// while one materialises (it can't bite yet), then breathes while it can. Under Reduce Motion the ring holds
+  /// still and the sprite doesn't pulse; the spiked rim in the art is the tell either way.
+  private func drawVillains(_ game: Game, alpha: Double) {
+    var seen = Set<Int>()
+    for v in game.villains {
+      seen.insert(v.id)
+      let node: VillainPuppet
+      if let n = villainNodes[v.id] {
+        node = n
+      } else {
+        node = spareVillains.popLast() ?? VillainPuppet()
+        node.kind = nil
+        node.ring.texture = fxTexture(.shockwave, size: 128)
+        world.addChild(node)
+        villainNodes[v.id] = node
+      }
+      let draw = villainDrawSize(game, v.kind)
+      if node.kind != v.kind || node.drawSize != draw {
+        node.kind = v.kind
+        node.drawSize = draw
+        node.sprite.texture = villainTexture(v.kind.artKind, size: draw)
+        node.sprite.size = CGSize(width: draw, height: draw)
+        node.ring.color = v.kind.uiTint
+      }
+      node.position = CGPoint(x: v.prevX + (v.x - v.prevX) * alpha, y: y(v.prevY + (v.y - v.prevY) * alpha))
+      node.zRotation = facing(player: game.versus && v.side > 0 ? 1 : 0)
+      let body = CGFloat(v.r * 2)
+      if v.warn > 0 {
+        // Materialising: the ring closes in from far out.
+        let t = CGFloat(1 - v.warn / game.tuning.villainWarn)
+        node.ring.size = CGSize(width: body * (reduceMotion ? 1.5 : 3.2 - 1.8 * t), height: body * (reduceMotion ? 1.5 : 3.2 - 1.8 * t))
+        node.ring.alpha = 0.95
+        node.sprite.alpha = max(0.25, CGFloat(v.presence))
+        node.sprite.setScale(1)
+      } else if v.leaving {
+        node.ring.alpha = 0
+        node.sprite.alpha = CGFloat(max(0, v.presence))
+        node.sprite.setScale(1)
+      } else {
+        let beat = reduceMotion ? 0 : CGFloat(sin(clock * (v.tier == .doom ? 7 : 5)))
+        node.ring.size = CGSize(width: body * (1.45 + 0.08 * beat), height: body * (1.45 + 0.08 * beat))
+        // A faded Phantom keeps a faint outline and a dim ring, so you can still see where it is.
+        node.ring.alpha = v.solid ? 0.55 + 0.25 * beat : 0.22
+        node.sprite.alpha = v.solid ? 1 : 0.32
+        node.sprite.setScale(v.solid ? 1 + 0.035 * beat : 1)
+      }
+    }
+    for (id, n) in villainNodes where !seen.contains(id) {
+      n.removeFromParent()
+      spareVillains.append(n)
+      villainNodes[id] = nil
     }
   }
 
@@ -1699,6 +1772,79 @@ final class GameScene: SKScene {
       ripple(CGPoint(x: area.width / 2, y: area.height / 2))
       sound.thump(70, gain: 0.2)
       haptic.play(.bossSlam)
+    case let .villainArrived(kind, x, gy, player):
+      let p = CGPoint(x: x, y: y(gy)), tint = kind.uiTint
+      shockwave(at: p, r: CGFloat(session?.game?.villainRadius(kind) ?? 30) * 2.2, tint: tint)
+      let word: Callout = kind.tier == .doom ? .doom : kind.tier == .brute ? .brute : .menace
+      feel.callout(word, at: CGPoint(x: p.x, y: p.y + CGFloat(session?.game?.villainRadius(kind) ?? 30) + 26), color: tint, size: 0.7, facing: facing(player: player))
+      if kind.tier == .doom { feel.warnPulse(0.8, color: tint) } else { feel.warnPulse(0.35, color: tint) }
+      sound.blip(kind.tier == .doom ? 110 : 180, 0.45, .saw, gain: 0.12, fall: -0.5); sound.blip(kind.tier == .doom ? 116 : 190, 0.45, .saw, gain: 0.08, fall: -0.5)
+      haptic.play(.villain)
+    case let .villainStruck(kind, x, gy, r, _, _):
+      let p = CGPoint(x: x, y: y(gy)), tint = kind.uiTint
+      burst(at: p, r: CGFloat(r), particles: 10)
+      sparks(at: p, r: CGFloat(r) * 1.2, count: 34, color: tint, fast: true)
+      shockwave(at: p, r: CGFloat(r) * 2.4, tint: tint)
+      feel.flash(0.35, tint)
+      feel.punch(0.04, at: p)
+      sound.blip(90, 0.3, .square, gain: 0.18, fall: -0.6); sound.crack()
+      haptic.play(.villainHit)
+      #if DEBUG
+      freeze("villain", after: 0.1)
+      #endif
+    case let .villainDoom(kind, x, gy, r, player):
+      // The run's over: everything stops on the villain, the screen goes red and it takes the stage.
+      let p = CGPoint(x: x, y: y(gy)), tint = kind.uiTint
+      lastPopPoint = p
+      feel.hitStop(0.2, force: true)
+      feel.slowMo(0.25, for: 1.4)
+      feel.flash(0.7, tint)
+      feel.shake(1)
+      feel.punch(0.08, at: p)
+      feel.vignette(1, mask: half(player))
+      sparks(at: p, r: CGFloat(r) * 2, count: 40, color: tint)
+      sparks(at: p, r: CGFloat(r) * 1.4, count: 40, color: .white, fast: true)
+      shockwave(at: p, r: CGFloat(r) * 3, tint: tint)
+      shockwave(at: p, r: CGFloat(r) * 5, tint: .black)
+      bloom = 1
+      pulse = 2
+      if let game = session?.game, game.versus {
+        feel.callout(.doomed, at: halfMiddle(player, game), color: tint, size: 1.1, facing: facing(player: player))
+      } else {
+        feel.callout(.doomed, at: CGPoint(x: area.width / 2, y: area.height * 0.6), color: tint, size: 1.2)
+      }
+      sound.thump(40, gain: 0.35); sound.blip(70, 1.1, .saw, gain: 0.2, fall: -0.7)
+      haptic.play(.doom)
+      #if DEBUG
+      freeze("doom", after: 0.15)
+      #endif
+    case let .villainBusted(kind, x, gy, r, points, player, _):
+      let p = CGPoint(x: x, y: y(gy)), gold = UIColor(red: 1, green: 0.85, blue: 0.3, alpha: 1)
+      burst(at: p, r: CGFloat(r), particles: 12)
+      sparks(at: p, r: CGFloat(r) * 1.2, count: 30, color: kind.uiTint, fast: true)
+      shockwave(at: p, r: CGFloat(r) * 2, tint: gold)
+      scoreText(points, at: p, color: gold)
+      feel.callout(.busted, at: CGPoint(x: p.x, y: p.y + CGFloat(r) + 30), color: gold, size: 0.8, facing: facing(player: player))
+      feel.hitStop(0.05)
+      feel.shake(0.3)
+      bloom = max(bloom, 0.7)
+      sound.blip(880, 0.1); sound.blip(1320, 0.18, .sine, gain: 0.14)
+      haptic.play(.power)
+      comboCheck(at: p)
+    case let .villainEscaped(_, x, gy, points, player):
+      let p = CGPoint(x: min(max(30, x), area.width - 30), y: min(max(30, y(gy)), area.height - 30))
+      if points > 0 { scoreText(points, at: p, color: UIColor(red: 0.6, green: 1, blue: 0.7, alpha: 1)) }
+      feel.callout(.dodged, at: CGPoint(x: p.x, y: p.y + 24), color: UIColor(red: 0.6, green: 1, blue: 0.7, alpha: 1), size: 0.55, facing: facing(player: player))
+    case let .villainCrossed(kind, x, gy, _):
+      ripple(CGPoint(x: x, y: y(gy)))
+      feel.warnPulse(0.25, color: kind.uiTint)
+    case let .villainRepelled(kind, x, gy):
+      shockwave(at: CGPoint(x: x, y: y(gy)), r: 60, tint: kind.uiTint)
+      sound.blip(240, 0.12, .square, gain: 0.08)
+    case let .villainStomp(x, gy, _):
+      ripple(CGPoint(x: x, y: y(gy)))
+      if !reduceMotion { feel.shake(0.12) }
+      sound.thump(55, gain: 0.12)
     case let .bossShed(x, gy, r):
       let p = CGPoint(x: x, y: y(gy))
       sparks(at: p, r: CGFloat(r) * 0.6, count: 20)
@@ -1812,6 +1958,8 @@ final class GameScene: SKScene {
         if let guest = game.hitVisitor(x: p.x, y: p.y) { game.catchVisitor(guest.id); continue }
         if let pickup = game.hitPickup(x: p.x, y: p.y) { game.collect(pickup); continue }
       }
+      // A finger that lands on a villain touches it, whatever it meant to do.
+      if let foe = game.hitVillain(x: p.x, y: p.y) { game.strike(foe); continue }
       let b = game.hit(x: p.x, y: p.y)
       // An empty tap on the world's hidden spot counts toward its Easter egg (and still plays normally).
       if b == nil, session.overlay != .tour, !game.onHinge(x: p.x, y: p.y) { _ = tapSpot(touch.location(in: view), game: game) }
@@ -1875,6 +2023,24 @@ final class GameScene: SKScene {
   override func touchesCancelled(_ touches: Set<UITouch>, with event: UIEvent?) {
     for touch in touches { active[ObjectIdentifier(touch)] = nil }
   }
+}
+
+/// A villain on screen: its warning ring under the sprite. Reused from a pool.
+final class VillainPuppet: SKNode {
+  let ring = SKSpriteNode()
+  let sprite = SKSpriteNode()
+  var kind: VillainKind?
+  var drawSize: CGFloat = 0
+  override init() {
+    super.init()
+    zPosition = 7.5
+    ring.blendMode = .add
+    ring.colorBlendFactor = 1
+    ring.zPosition = -0.1
+    addChild(ring)
+    addChild(sprite)
+  }
+  required init?(coder: NSCoder) { fatalError("init(coder:) is not used") }
 }
 
 final class BubbleNode: SKNode {
