@@ -10,7 +10,7 @@
 // Videos (same page): 15–20 s, no sound, landscape 1080p 16:9 and portrait 1080×1620 2:3, opening on the static cover,
 // no cursor, no fast-forward, no black bars or promotional text. The game's clock is stepped 1/30 s per frame (rAF and
 // performance.now are driven from here), so the footage is smooth at real speed however slow the capture is. The
-// player is a small bot using real pointer input: taps, swipes, Snap the Hinge and catching guest stars, with the HUD
+// player is a small bot using real pointer input: taps, swipes and Snap the Hinge, with the HUD
 // showing. Frames are encoded with ffmpeg (H.264, yuv420p, no audio track).
 import http from 'node:http';
 import { execFileSync } from 'node:child_process';
@@ -74,7 +74,7 @@ async function openGame({ w, h, level }) {
 }
 const step = (page) => page.evaluate((ms) => window.__clock.advance(ms), 1000 / FPS);
 
-// The bot: one move every few frames, with real pointer input. Catch a guest, snap the hinge when it's crowded,
+// The bot: one move every few frames, with real pointer input. Snap the hinge when it's crowded,
 // otherwise swipe through (or tap) the bubble nearest the line.
 let moves = 0;
 async function act(page) {
@@ -85,7 +85,6 @@ async function act(page) {
     return {
       mode: h.mode, ox: r.left, oy: r.top, line: sim.line(), vertical: sim.vertical, snapReady: sim.players[0].snapLeft <= 0,
       bubbles: sim.bubbles.map((b) => ({ x: b.x + b.vx * 0.06, y: b.y + b.vy * 0.06, r: b.r, g: b.g })),
-      guests: sim.visitors.filter((v) => v.age > 1.2 && (v.presence ?? 1) > 0.6).map((v) => ({ x: v.x, y: v.y })),
     };
   });
   if (s.mode === 'ended') { await page.click('#play').catch(() => {}); return; }
@@ -93,7 +92,6 @@ async function act(page) {
   moves++;
   const at = (x, y) => [s.ox + x, s.oy + y];
   const gap = (b) => Math.abs((s.vertical ? b.x : b.y) - s.line);
-  if (s.guests.length) { const [x, y] = at(s.guests[0].x, s.guests[0].y); await page.mouse.click(x, y); return; }
   const near = s.bubbles.filter((b) => b.g < 3 && gap(b) < 110);
   if (s.snapReady && near.length >= 2 && moves > 12) {
     const along = near.reduce((n, b) => n + (s.vertical ? b.y : b.x), 0) / near.length;
