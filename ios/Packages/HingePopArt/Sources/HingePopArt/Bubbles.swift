@@ -332,7 +332,7 @@ private func drawPushMarks(_ c: CGContext, _ r: CGFloat, small: Bool) {
 
 // MARK: - Golden
 
-private func drawGoldenRays(_ c: CGContext, _ r: CGFloat, small: Bool) {
+func drawGoldenRays(_ c: CGContext, _ r: CGFloat, small: Bool) {
     let n = 12
     let pts = starPoints(mid, 0.462, r * 1.02, n, rot: 15)
     let spikes = polygon(pts, round: 0.008)

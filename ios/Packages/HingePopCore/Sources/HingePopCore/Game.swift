@@ -128,6 +128,10 @@ public struct Player: Sendable {
   /// Fever: seconds left (0 when none), and how many this level.
   public var fever = 0.0
   public var fevers = 0
+  /// Villains: touched (and hurt by), busted with a power, and left alone until they left.
+  public var villainHits = 0
+  public var villainsBusted = 0
+  public var villainsDodged = 0
 }
 
 public enum GameEvent: Equatable, Sendable {
@@ -182,6 +186,15 @@ public enum GameEvent: Equatable, Sendable {
   case surgeWarning(count: Int)
   case surge(count: Int)
   case bossShed(x: Double, y: Double, r: Double)
+  /// Villains. `player` is whose half it's on (always 0 solo). A strike took `shields`; a Doom took the run.
+  case villainArrived(VillainKind, x: Double, y: Double, player: Int)
+  case villainStruck(VillainKind, x: Double, y: Double, r: Double, player: Int, shields: Int)
+  case villainDoom(VillainKind, x: Double, y: Double, r: Double, player: Int)
+  case villainBusted(VillainKind, x: Double, y: Double, r: Double, points: Int, player: Int, by: VillainCounter)
+  case villainEscaped(VillainKind, x: Double, y: Double, points: Int, player: Int)
+  case villainCrossed(VillainKind, x: Double, y: Double, player: Int)
+  case villainRepelled(VillainKind, x: Double, y: Double)
+  case villainStomp(x: Double, y: Double, r: Double)
   case shieldLost(player: Int)
   case recharge(player: Int)
   case cooled(player: Int)
@@ -225,6 +238,17 @@ public final class Game {
   public private(set) var bubbles: [Bubble] = []
   public private(set) var pickups: [Pickup] = []
   public private(set) var visitors: [Visitor] = []
+  /// Villain bubbles on the field (see `Villains.swift`).
+  public private(set) var villains: [Villain] = []
+  /// The level's villain plan (the campaign's comes with its spec; other modes have their own).
+  public private(set) var villainPlan = VillainPlan.none
+  /// The villain that ended the run: a Doom's touch, or whoever took the last shield. Nil otherwise.
+  public private(set) var lostTo: VillainKind?
+  /// Holds villains where they are and stops new ones, for automated touch tests and captures.
+  public var villainsHeld = false
+  private var villainClock = 0.0
+  private var villainRng = SplitMix(seed: 5)
+  private var villainDebuted = false
   public private(set) var gates: [Gate] = []
   public var players: [Player]
   public private(set) var status = GameStatus.playing
@@ -343,6 +367,16 @@ public final class Game {
     cameoClock = tuning.cameoFirst + cameoRng.unit() * 4
     cameoTurn = spec.number
     spawnLevel()
+    switch mode {
+    case .campaign: villainPlan = spec.villains
+    case .daily: villainPlan = Villains.daily
+    case .arcade: villainPlan = Villains.arcade(wave: 1)
+    case .versus: villainPlan = Villains.versus
+    case .sandbox: villainPlan = .none
+    }
+    if !tuning.villains { villainPlan = .none }
+    villainRng = SplitMix(seed: UInt64(max(1, spec.number)) &* 0x9E1 &+ seed &* 31 &+ 11)
+    villainClock = villainPlan.first
     overtimeAt = par()
     for i in 0..<spec.gates {
       let span = alongSpan
@@ -377,11 +411,17 @@ public final class Game {
   }
   /// How fast a bubble wants to move right now (internal so tests can read it).
   func cruise(_ b: Bubble) -> Double {
-    let pressure = overtimeSpeed * (players[playerIndex(of: b)].fever > 0 ? tuning.feverSlow : 1)
+    let pressure = overtimeSpeed * arcadePace * (players[playerIndex(of: b)].fever > 0 ? tuning.feverSlow : 1)
     guard b.kind == .boss else { return tuning.speeds[b.size] * scale * spec.speed * b.kind.speedFactor * (onRush(b) ? tuning.rushSpeed : 1) * b.spring * surge * pressure * (b.champion ? tuning.championSpeed : 1) }
     let phaseBoost = 1 + tuning.bossPhaseSpeed * Double(b.bossPhase)
     let state = b.bossWindup > 0 ? 0.15 : b.bossDashing ? tuning.bossDashSpeed : 1
     return tuning.speeds[b.size] * scale * spec.speed * b.kind.speedFactor * phaseBoost * state * pressure
+  }
+
+  /// Arcade: past wave 12 everything moves 2% faster each wave, up to 1.8×, so deep checkpoints stay a test.
+  public var arcadePace: Double {
+    guard case .arcade = mode else { return 1 }
+    return min(1.8, 1 + 0.02 * Double(max(0, waves - 12)))
   }
 
   /// The level's par: about how long a steady player takes. Overtime starts there. Endless and practice modes have none.
@@ -527,7 +567,8 @@ public final class Game {
   }
 
   public func clearScene() {
-    bubbles.removeAll(); pickups.removeAll(); gates.removeAll(); visitors.removeAll(); events.removeAll(); arrivals.removeAll(); ready = 0
+    bubbles.removeAll(); pickups.removeAll(); gates.removeAll(); visitors.removeAll(); villains.removeAll(); events.removeAll(); arrivals.removeAll(); ready = 0
+    villainPlan = .none
     surgeDone = true; surgeIn = 0; overtimeAt = .infinity
   }
   public func addPickup(_ kind: PowerUp, x: Double, y: Double) {
@@ -573,6 +614,7 @@ public final class Game {
       let reached = bubbles.filter { $0.kind != .boss && hypot($0.x - pickup.x, $0.y - pickup.y) <= radius && (!isVersus || playerIndex(of: $0) == owner) }
       for b in reached { burst(b, by: owner) }
       if let boss = bubbles.first(where: { $0.kind == .boss && hypot($0.x - pickup.x, $0.y - pickup.y) <= radius + $0.r }) { hitBoss(boss, by: owner) }
+      bustVillains(near: pickup.x, pickup.y, radius: radius, by: owner, how: .burst)
       checkEnd()
     }
     return true
@@ -725,11 +767,23 @@ public final class Game {
       catchVisitor(v.id, owner: 0)
     }
     let len = len2.squareRoot()
-    for (b, _) in hits where status == .playing {
+    // A villain in the stroke's path gets touched too, in order along the stroke: a blind swipe pays for it.
+    var foes: [(Villain, Double)] = []
+    for v in villains where v.solid && !skip.contains(v.id) {
+      if isVersus && v.side != touch { continue }
+      let t = max(0, min(1, ((v.x - x0) * dx + (v.y - y0) * dy) / len2))
+      if hypot(v.x - (x0 + dx * t), v.y - (y0 + dy * t)) <= v.r + tuning.villainTouch { foes.append((v, t)) }
+    }
+    var fi = 0
+    foes.sort { $0.1 < $1.1 }
+    for (b, t) in hits where status == .playing {
+      while fi < foes.count, foes[fi].1 <= t, status == .playing { skip.insert(foes[fi].0.id); strike(foes[fi].0); fi += 1 }
+      guard status == .playing else { break }
       skip.insert(b.id)
       // A swipe meets a bubble on the side it came from.
       if tap(b, dirX: dx * 3, dirY: dy * 3, atX: b.x - dx / len * b.r, atY: b.y - dy / len * b.r) { count += 1 }
     }
+    while fi < foes.count, status == .playing { skip.insert(foes[fi].0.id); strike(foes[fi].0); fi += 1 }
     if count > 0 { players[isVersus && touch > 0 ? 1 : 0].slices += 1 }
     return count
   }
@@ -859,6 +913,11 @@ public final class Game {
     }
     // The first phase also leaves a Chain Burst to deal with the help.
     if b.bossPhase == 1 { addPickup(.chainBurst, x: b.x, y: b.y) }
+    // From realm 3 a boss calls a villain to its side at each phase change.
+    if let foe = villainPlan.summons, !villainsHeld {
+      let a = atan2(b.vy, b.vx) + .pi * 0.5
+      spawnVillain(foe, x: b.x + cos(a) * b.r * 1.6, y: b.y + sin(a) * b.r * 1.6, angle: a)
+    }
   }
 
   private func maybeDrop(x: Double, y: Double, size: Int) {
@@ -892,6 +951,7 @@ public final class Game {
     players[owner].snapLeft = tuning.snapCooldown
     players[owner].snaps += 1
     let flung = fling(reach: tuning.snapReach * scale, owner: owner)
+    whip(reach: tuning.snapReach * scale, owner: owner, how: .snap)
     events.append(.hingeSnap(along: along, player: owner, flung: flung))
     return true
   }
@@ -912,6 +972,7 @@ public final class Game {
     players[0].snapLeft = tuning.snapCooldown
     players[0].claps += 1
     let flung = fling(reach: tuning.snapReach * tuning.clapSweep * scale, owner: 0)
+    whip(reach: tuning.snapReach * tuning.clapSweep * scale, owner: 0, how: .clap)
     events.append(.creaseClap(flung: flung))
     return true
   }
@@ -952,13 +1013,19 @@ public final class Game {
       players[owner].meter += 1
       guard players[owner].meter >= meterMax else { continue }
       players[owner].meter = 0
-      players[owner].shields -= 1
-      players[owner].shieldsLost += 1
-      events.append(.shieldLost(player: owner))
-      if players[owner].shields <= 0 {
-        if isVersus { status = .ended; winner = 1 - owner } else if mode != .sandbox { status = .lost }
-        if mode == .sandbox { players[owner].shields = 1 } else { events.append(.finished) }
-      }
+      breakShield(owner)
+    }
+  }
+
+  /// One shield gone. The last one ends the run (in two-player, the round goes to the other player).
+  private func breakShield(_ owner: Int, by foe: VillainKind? = nil) {
+    guard status == .playing else { return }
+    players[owner].shields -= 1
+    players[owner].shieldsLost += 1
+    events.append(.shieldLost(player: owner))
+    if players[owner].shields <= 0 {
+      if isVersus { status = .ended; winner = 1 - owner } else if mode != .sandbox { status = .lost }
+      if mode == .sandbox { players[owner].shields = 1 } else { lostTo = foe; events.append(.finished) }
     }
   }
 
@@ -1029,7 +1096,9 @@ public final class Game {
 
   private func spawnWave() {
     waves += 1
-    let count = 1 + min(3, waves / 3)
+    // Past wave 12 every ten waves bring one more bubble (up to two more), on top of the pace ramp in `cruise`.
+    let count = 1 + min(3, waves / 3) + min(2, max(0, waves - 12) / 10)
+    villainPlan = tuning.villains ? Villains.arcade(wave: waves) : .none
     let pool: [ActorKind] = waves < 3 ? [.basic, .fast] : [.basic, .fast, .armored, .magnetic, .repel, .golden, .frozen]
     for _ in 0..<count {
       let kind = pool[rng.int(pool.count)]
@@ -1069,6 +1138,7 @@ public final class Game {
     stepFocus(real)
     stepPickups(real)
     stepVisitors(real)
+    stepVillains(dt, real: real)
     stepArrivals(real)
     stepSurge(real)
     stepGates(dt)
@@ -1209,6 +1279,7 @@ public final class Game {
     case .sirGlowstick, .bigBurp:
       let radius = tuning.chainRadius * scale * (v.cameo == .bigBurp ? 1.3 : 1)
       for b in bubbles where b.kind != .boss && hypot(b.x - v.x, b.y - v.y) <= radius { burst(b, by: owner) }
+      bustVillains(near: v.x, v.y, radius: radius, by: owner, how: .burst)
       if let boss = bubbles.first(where: { $0.kind == .boss && hypot($0.x - v.x, $0.y - v.y) <= radius + $0.r }), boss.bossGuard <= 0 { hitBoss(boss, by: owner) }
     case .chosenFizz: freeze = tuning.freezeTime
     case .merlinFizz: focus = tuning.focusTime; focusClock = 0
@@ -1668,6 +1739,16 @@ public final class Game {
       b.prevX = b.x; b.prevY = b.y
     }
     visitors.removeAll()
+    for v in villains {
+      let u = v.x / oldW, t = (v.y - oldTop) / oldH
+      v.x = (turned ? t : u) * w
+      v.y = top + (turned ? u : t) * (h - top)
+      if turned { swap(&v.vx, &v.vy) }
+      v.vx *= ratio; v.vy *= ratio
+      v.r = villainRadius(v.kind)
+      v.side = (vertical ? v.x : v.y) < hinge ? -1 : 1
+      v.prevX = v.x; v.prevY = v.y
+    }
     placeWells()
     let span = alongSpan
     for i in gates.indices {
@@ -1686,5 +1767,239 @@ public final class Game {
     let p = players[0]
     if p.shieldsLost == 0 && p.crossings <= 2 && overtime == 0 { return 3 }
     return p.shieldsLost <= 1 ? 2 : 1
+  }
+}
+
+// MARK: Villains
+
+extension Game {
+  public func villainRadius(_ kind: VillainKind) -> Double { tuning.radii[1] * scale * kind.radiusFactor }
+  private func villainSpeed(_ v: Villain) -> Double { tuning.speeds[1] * scale * max(0.55, spec.speed) * v.kind.speedFactor * overtimeSpeed }
+  private func villainOwner(_ v: Villain) -> Int { isVersus && v.side > 0 ? 1 : 0 }
+
+  /// Puts a villain in by fractions, like `put`: u along the hinge, v across it (below 0.5 is the near side).
+  @discardableResult
+  private func placeVillain(_ kind: VillainKind, u: Double, v: Double, degrees: Double) -> Villain {
+    let a = degrees * .pi / 180
+    let toward = v < 0.5 ? 1.0 : -1.0
+    let al = cos(a), ac = abs(sin(a)) * toward
+    let nearLen = vertical ? hinge : hinge - top, farLen = vertical ? w - hinge : h - hinge
+    let acrossAt = v < 0.5 ? v * 2 * nearLen : (v - 0.5) * 2 * farLen
+    if vertical {
+      return spawnVillain(kind, x: v < 0.5 ? acrossAt : hinge + acrossAt, y: top + u * (h - top), angle: atan2(al, ac))
+    }
+    return spawnVillain(kind, x: u * w, y: v < 0.5 ? top + acrossAt : hinge + acrossAt, angle: atan2(ac, al))
+  }
+
+  @discardableResult
+  private func spawnVillain(_ kind: VillainKind, x: Double, y: Double, angle: Double) -> Villain {
+    let r = villainRadius(kind)
+    let cx = min(max(r, x), w - r), cy = min(max(top + r, y), h - r)
+    let v = Villain(id: nextId, kind: kind, x: cx, y: cy, vx: 0, vy: 0, r: r, life: tuning.villainLife * (kind == .kaiju ? 1.2 : 1), warn: tuning.villainWarn, side: (vertical ? cx : cy) < hinge ? -1 : 1)
+    nextId += 1
+    let sp = villainSpeed(v)
+    v.vx = cos(angle) * sp; v.vy = sin(angle) * sp
+    villains.append(v)
+    events.append(.villainArrived(kind, x: v.x, y: v.y, player: villainOwner(v)))
+    return v
+  }
+
+  /// Brings a chosen villain on, already solid (for the tour, store captures and tests).
+  @discardableResult
+  public func summonVillain(_ kind: VillainKind, u: Double = 0.5, v: Double = 0.3, degrees: Double = 60, solid: Bool = true) -> Villain {
+    let foe = placeVillain(kind, u: u, v: v, degrees: degrees)
+    if solid { foe.warn = 0; foe.presence = 1 }
+    return foe
+  }
+
+  private func nextVillainKind() -> VillainKind? {
+    let plan = villainPlan
+    if !villainDebuted, let d = plan.debut { villainDebuted = true; return d }
+    let dooms = villains.filter { $0.tier == .doom && !$0.leaving }.count
+    let pool = plan.pool.filter { $0.tier != .doom || dooms < plan.maxDoom }
+    guard !pool.isEmpty else { return nil }
+    let weights = pool.map { $0.tier == .doom ? 0.7 : 1.0 }
+    var pick = villainRng.unit() * weights.reduce(0, +)
+    for (k, wt) in zip(pool, weights) { pick -= wt; if pick <= 0 { return k } }
+    return pool.last
+  }
+
+  func stepVillains(_ dt: Double, real: Double) {
+    if !villainsHeld, !villainPlan.isEmpty, status == .playing, !bubbles.isEmpty {
+      villainClock -= real
+      if villainClock <= 0 {
+        villainClock = villainPlan.gap * (0.85 + 0.3 * villainRng.unit())
+        let on = villains.filter { !$0.leaving }.count
+        if on < villainPlan.maxOn, let kind = nextVillainKind() {
+          let u = 0.15 + villainRng.unit() * 0.7, deg = 25 + villainRng.unit() * 130
+          if isVersus {
+            // A mirrored pair, one for each half.
+            placeVillain(kind, u: u, v: 0.12, degrees: deg)
+            placeVillain(kind, u: u, v: 0.88, degrees: deg)
+          } else {
+            placeVillain(kind, u: u, v: villainRng.int(2) == 0 ? 0.12 : 0.88, degrees: deg)
+          }
+        }
+      }
+    }
+    if villainsHeld { for v in villains { v.prevX = v.x; v.prevY = v.y }; return }
+    for v in villains.reversed() {
+      v.prevX = v.x; v.prevY = v.y
+      v.age += real
+      if v.leaving {
+        v.presence -= real / tuning.villainFade
+        if v.presence <= 0 {
+          villains.removeAll { $0 === v }
+          let owner = villainOwner(v)
+          let pts = tuning.villainDodgePoints[v.tier.rawValue]
+          players[owner].score += pts
+          players[owner].villainsDodged += 1
+          events.append(.villainEscaped(v.kind, x: v.x, y: v.y, points: pts, player: owner))
+          continue
+        }
+      } else if v.warn > 0 {
+        v.warn = max(0, v.warn - real)
+        v.presence = 1 - v.warn / tuning.villainWarn
+      } else {
+        v.life -= real
+        if v.life <= 0 { v.leaving = true }
+        if v.kind == .phantom {
+          // Solid for a while, a quick fade, faint for a while, back again.
+          let fade = 0.35, cycle = tuning.phantomSolid + tuning.phantomFaint + 2 * fade
+          v.phaseClock = (v.phaseClock + real).truncatingRemainder(dividingBy: cycle)
+          let t = v.phaseClock
+          if t < tuning.phantomSolid { v.presence = 1 }
+          else if t < tuning.phantomSolid + fade { v.presence = 1 - 0.78 * (t - tuning.phantomSolid) / fade }
+          else if t < tuning.phantomSolid + fade + tuning.phantomFaint { v.presence = 0.22 }
+          else { v.presence = 0.22 + 0.78 * (t - tuning.phantomSolid - fade - tuning.phantomFaint) / fade }
+        } else {
+          v.presence = 1
+        }
+      }
+      var heading = atan2(v.vy, v.vx)
+      switch v.kind {
+      case .hex:
+        heading += sin(v.age * 2.4) * 1.1 * dt
+      case .overlord:
+        // Its eye locks on the nearest bubble and it drifts after it.
+        if v.targetId == nil || !bubbles.contains(where: { $0.id == v.targetId }) {
+          v.targetId = bubbles.filter { $0.kind != .boss }.min { hypot($0.x - v.x, $0.y - v.y) < hypot($1.x - v.x, $1.y - v.y) }?.id
+        }
+        if let t = bubbles.first(where: { $0.id == v.targetId }) {
+          var turn = atan2(t.y - v.y, t.x - v.x) - heading
+          while turn > .pi { turn -= 2 * .pi }
+          while turn < -.pi { turn += 2 * .pi }
+          heading += max(-1, min(1, turn)) * tuning.overlordTurn * dt
+        }
+      case .void:
+        guard v.solid else { break }
+        let reach = tuning.voidReach * scale
+        for b in bubbles where b.kind != .boss {
+          let dx = v.x - b.x, dy = v.y - b.y, d = hypot(dx, dy)
+          guard d < reach, d > 1 else { continue }
+          let f = tuning.voidPull * scale * (1 - d / reach) * dt
+          b.vx += dx / d * f - dy / d * f * 0.5
+          b.vy += dy / d * f + dx / d * f * 0.5
+          let rim = v.r + b.r
+          if d < rim { b.x = v.x - dx / d * rim; b.y = v.y - dy / d * rim }
+        }
+      case .kaiju:
+        guard v.solid else { break }
+        v.stompClock -= real
+        if v.stompClock <= 0 { v.stompClock = 2.4; events.append(.villainStomp(x: v.x, y: v.y, r: v.r)) }
+      default: break
+      }
+      let sp = villainSpeed(v) * (v.leaving ? 1.3 : 1)
+      v.vx = cos(heading) * sp; v.vy = sin(heading) * sp
+      v.x += v.vx * dt; v.y += v.vy * dt
+      if v.x < v.r { v.x = v.r; v.vx = abs(v.vx) }
+      if v.x > w - v.r { v.x = w - v.r; v.vx = -abs(v.vx) }
+      if v.y < top + v.r { v.y = top + v.r; v.vy = abs(v.vy) }
+      if v.y > h - v.r { v.y = h - v.r; v.vy = -abs(v.vy) }
+      let side = (vertical ? v.x : v.y) < hinge ? -1 : 1
+      if side != v.side {
+        v.side = side
+        // In two-player a villain that crosses becomes the other player's problem.
+        if isVersus { events.append(.villainCrossed(v.kind, x: v.x, y: v.y, player: villainOwner(v))) }
+      }
+    }
+  }
+
+  /// The villain a touch landed on, if any. A bubble the touch is more squarely on wins, so a careful touch on a
+  /// bubble beside a villain is safe. In two-player a touch stays on its own half.
+  public func hitVillain(x: Double, y: Double) -> Villain? {
+    let touch = (vertical ? x : y) < hinge ? -1 : 1
+    var best: Villain?, bestQ = Double.infinity
+    for v in villains where v.solid {
+      if isVersus && v.side != touch { continue }
+      let d = hypot(v.x - x, v.y - y)
+      if d <= v.r + tuning.villainTouch, d / v.r < bestQ { best = v; bestQ = d / v.r }
+    }
+    guard let best else { return nil }
+    for b in bubbles where canTouch(b) {
+      if isVersus && b.side != touch { continue }
+      let d = hypot(b.x - x, b.y - y)
+      if d <= b.r, d / b.r < bestQ { return nil }
+    }
+    return best
+  }
+
+  /// A touch on a villain. It bites: a Menace takes a shield and the combo, a Brute two shields, a Doom the run.
+  /// While everything's frozen it shatters instead, for points. Returns false when it couldn't be touched.
+  @discardableResult
+  public func strike(_ v: Villain) -> Bool {
+    guard status == .playing, ready <= 0, villains.contains(where: { $0 === v }), v.solid else { return false }
+    let owner = villainOwner(v)
+    if freeze > 0 { bust(v, by: owner, how: .freeze); return true }
+    villains.removeAll { $0 === v }
+    players[owner].villainHits += 1
+    endFever(owner)
+    players[owner].combo = 1; players[owner].comboT = 0
+    players[owner].streak = 0
+    if v.tier == .doom {
+      events.append(.villainDoom(v.kind, x: v.x, y: v.y, r: v.r, player: owner))
+      guard mode != .sandbox else { return true }
+      players[owner].shieldsLost += players[owner].shields
+      players[owner].shields = 0
+      if isVersus { status = .ended; winner = 1 - owner } else { status = .lost }
+      lostTo = v.kind
+      events.append(.finished)
+      return true
+    }
+    events.append(.villainStruck(v.kind, x: v.x, y: v.y, r: v.r, player: owner, shields: v.tier.shields))
+    for _ in 0..<v.tier.shields { breakShield(owner, by: v.kind) }
+    return true
+  }
+
+  private func bust(_ v: Villain, by owner: Int, how: VillainCounter) {
+    villains.removeAll { $0 === v }
+    let pts = Int((Double(tuning.villainBustPoints[v.tier.rawValue]) * players[owner].combo).rounded())
+    players[owner].score += pts
+    players[owner].villainsBusted += 1
+    bumpCombo(owner)
+    events.append(.villainBusted(v.kind, x: v.x, y: v.y, r: v.r, points: pts, player: owner, by: how))
+  }
+
+  /// A burst busts every villain it reaches.
+  func bustVillains(near x: Double, _ y: Double, radius: Double, by owner: Int, how: VillainCounter) {
+    for v in villains where v.solid && hypot(v.x - x, v.y - y) <= radius + v.r {
+      if isVersus && villainOwner(v) != owner { continue }
+      bust(v, by: owner, how: how)
+    }
+  }
+
+  /// Snap the Hinge busts menaces and brutes near the line and throws a Doom back. A Crease Clap busts them all.
+  func whip(reach: Double, owner: Int, how: VillainCounter) {
+    for v in villains where v.solid {
+      if isVersus && villainOwner(v) != owner { continue }
+      let gap = (vertical ? v.x : v.y) - hinge
+      guard abs(gap) <= reach + v.r else { continue }
+      if how == .clap || v.tier != .doom { bust(v, by: owner, how: how); continue }
+      let dir = gap >= 0 ? 1.0 : -1.0, sp = hypot(v.vx, v.vy)
+      if vertical { v.vx = dir * sp; v.x = hinge + dir * max(abs(gap), reach + v.r) } else { v.vy = dir * sp; v.y = hinge + dir * max(abs(gap), reach + v.r) }
+      v.x = min(max(v.r, v.x), w - v.r); v.y = min(max(top + v.r, v.y), h - v.r)
+      v.side = (vertical ? v.x : v.y) < hinge ? -1 : 1
+      events.append(.villainRepelled(v.kind, x: v.x, y: v.y))
+    }
   }
 }

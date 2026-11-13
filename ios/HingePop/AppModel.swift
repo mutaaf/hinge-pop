@@ -45,6 +45,7 @@ final class AppModel {
       progress.taught.formUnion(["snapped", "windup", "stagger", "gate", "cross", "small", "shield", "recharge", "combo", "chain", "drop", "slam", "phase", "nearfull", "gatepass", "rush", "crossfold", "clap", "clap-hint", "current"])
       PowerUp.allCases.forEach { progress.taught.insert("got-\($0.rawValue)") }
       for w in Worlds.all { progress.taught.insert("world-\(w.number)") }
+      for v in VillainKind.allCases { progress.taught.insert("villain-\(v.rawValue)") }
       progress.taught.formUnion(["dark", "fogged", "phased", "beat", "shielded", "blink", "regrow"])
     }
     if let n = Debug.int("-unlock") {

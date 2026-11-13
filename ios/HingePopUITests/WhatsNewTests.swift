@@ -20,25 +20,24 @@ final class WhatsNewTests: XCTestCase {
     app.buttons.containing(NSPredicate(format: "label CONTAINS %@", text)).firstMatch
   }
 
+  func testVillainCalloutOpensTheVillainGuide() {
+    openCard()
+    let villains = callout("Villain bubbles are here")
+    XCTAssertTrue(villains.waitForExistence(timeout: 5))
+    shot("card")
+    villains.tap()
+    XCTAssertTrue(app.staticTexts["Spiked rims mean hands off. The colour says how bad a touch is."].waitForExistence(timeout: 10), "didn't open the Villains section")
+    XCTAssertFalse(app.buttons["Let's pop!"].exists, "the card stayed open")
+    shot("guide")
+  }
+
   func testArcadeCalloutOpensTheArcadePage() {
     openCard()
     let arcade = callout("Arcade has its own page")
-    XCTAssertTrue(arcade.waitForExistence(timeout: 5))
-    shot("card")
+    if !arcade.isHittable { app.swipeUp() }
     arcade.tap()
     XCTAssertTrue(app.staticTexts["HIGH SCORE"].waitForExistence(timeout: 10), "didn't land on the Arcade page")
     XCTAssertFalse(app.buttons["Let's pop!"].exists, "the card stayed open")
     shot("arcade")
-  }
-
-  func testVersusCalloutStartsAFaceOff() {
-    openCard()
-    let faceOff = callout("face off across the line")
-    if !faceOff.isHittable { app.swipeUp() }
-    faceOff.tap()
-    XCTAssertTrue(app.descendants(matching: .any).matching(NSPredicate(format: "label BEGINSWITH %@", "Player 1 shields")).firstMatch.waitForExistence(timeout: 10)
-      || app.staticTexts["Step 1 of 4"].firstMatch.waitForExistence(timeout: 5), "didn't land in two-player")
-    XCTAssertFalse(app.buttons["Let's pop!"].exists, "the card stayed open")
-    shot("versus")
   }
 }

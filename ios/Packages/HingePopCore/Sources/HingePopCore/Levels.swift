@@ -71,6 +71,8 @@ public struct LevelSpec: Equatable, Sendable {
   public var wells = 2
   /// Surge: how many small bubbles rush in as the level's last push, announced by `surgeWarning` (0 for none).
   public var surge = 0
+  /// Villain bubbles: which can come and how densely (see `Villains.plan`). None by default.
+  public var villains = VillainPlan.none
   public func has(_ t: Twist) -> Bool { twists.contains(t) }
   public var isBoss: Bool { bossPhases > 0 }
 }
@@ -185,6 +187,12 @@ public enum Campaign {
   }
 
   public static func level(_ n: Int) -> LevelSpec {
+    var s = authored(n)
+    s.villains = Villains.plan(level: max(1, n))
+    return s
+  }
+
+  private static func authored(_ n: Int) -> LevelSpec {
     let n = max(1, n)
     let ch = chapter(of: n)
     let k = (n - 1) % 10 + 1

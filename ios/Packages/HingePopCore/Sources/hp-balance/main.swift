@@ -31,6 +31,8 @@ let difficulty = option("--difficulty").flatMap(Difficulty.init(rawValue:)) ?? .
 let seedBase = option("--seed-base").flatMap(UInt64.init) ?? 0
 /// `--heat H` plays Overdrive at one heat everywhere instead of the calibrated table (for probing).
 let fixedHeat = option("--heat").flatMap(Double.init)
+/// `--no-villains` plays without villain bubbles, for before/after comparisons.
+let baseTuning: Tuning = { var t = Tuning(); t.villains = !CommandLine.arguments.contains("--no-villains"); return t }()
 
 /// `--why` counts what cost the meter: crossings by size, boss slams and dashes.
 let why = argv.contains("--why")
@@ -50,6 +52,11 @@ func tally(_ events: [GameEvent]) {
     case .surge: key = "surge"
     case .bossShed: key = "shed"
     case .championCrack: key = "champion"
+    case .villainArrived(let k, _, _, _): key = "v+\(k.rawValue)"
+    case .villainStruck(let k, _, _, _, _, _): key = "vhit-\(k.rawValue)"
+    case .villainDoom(let k, _, _, _, _): key = "vdoom-\(k.rawValue)"
+    case .villainBusted: key = "vbust"
+    case .villainEscaped: key = "vdodge"
     default: break
     }
     if let key { reasonLock.lock(); reasons[key, default: 0] += 1; reasonLock.unlock() }
@@ -64,13 +71,26 @@ func play(_ n: Int, kind: String, rate: Double, seed: UInt64, w: Double = 390, h
 func play(_ n: Int, kind: String, rate: Double, seed: UInt64, w: Double = 390, h: Double = 760, log: inout RunLog, difficulty: Difficulty = difficulty, heat: Double? = nil) -> Game {
   var r = SplitMix(seed: seed)
   let g = duo
-    ? Game(mode: .campaign(n), width: 1300, height: 900, top: 70, vertical: true, hinge: 650, seed: seed, difficulty: difficulty, heat: heat)
-    : Game(mode: .campaign(n), width: w, height: h, top: 70, seed: seed, difficulty: difficulty, heat: heat)
+    ? Game(mode: .campaign(n), width: 1300, height: 900, top: 70, vertical: true, hinge: 650, tuning: baseTuning, seed: seed, difficulty: difficulty, heat: heat)
+    : Game(mode: .campaign(n), width: w, height: h, top: 70, tuning: baseTuning, seed: seed, difficulty: difficulty, heat: heat)
   g.foldPlay = duo
   var next = 0.8 + 0.4 * r.unit()
   let dark = g.spec.has(.blackout)
-  let expert = kind == "expert"
+  let expert = kind == "expert", blind = kind == "blind"
   let miss = expert ? 0.08 : 0.15, stray = expert ? 0.15 : 0.33, sees = expert ? 0.85 : 0.5, snaps = expert ? 0.6 : 0.33
+  // Villains: how often a player waits rather than touch a bubble a villain is sitting on, and how often they
+  // spot a villain for what it is (a Mimic passes for a golden bubble now and then; a careless glance misses others).
+  let wary = expert ? 0.95 : 0.85
+  // Decided once per villain, the first time it's seen: a player fooled by one stays fooled.
+  var spotted: [Int: Bool] = [:]
+  func spots(_ v: Villain, _ r: inout SplitMix) -> Bool {
+    if blind { return false }
+    if let known = spotted[v.id] { return known }
+    let p = v.kind == .mimic ? (expert ? 0.97 : 0.88) : v.kind == .phantom ? (expert ? 0.99 : 0.95) : (expert ? 0.995 : 0.98)
+    let seen = r.unit() < p
+    spotted[v.id] = seen
+    return seen
+  }
   while g.status == .playing && g.time < 300 {
     g.step(1.0 / 60)
     if why { tally(g.events) }
@@ -83,15 +103,54 @@ func play(_ n: Int, kind: String, rate: Double, seed: UInt64, w: Double = 390, h
     // A person sees a guest about half the time, and sees a boss winding up about half the time.
     if let v = g.visitors.first(where: { $0.presence > 0.35 && $0.x > 0 && $0.x < g.w }), r.unit() < 0.25 { g.catchVisitor(v.id); continue }
     if let boss = g.bubbles.first(where: { $0.bossWindup > 0 }), r.unit() < sees { touch(g, boss, &r); continue }
+    // While everything's frozen a villain shatters for points; an alert player cashes in.
+    if !blind, g.freeze > 0.4, let v = g.villains.first(where: { $0.solid }), r.unit() < (expert ? 0.6 : 0.2) { g.strike(v); continue }
     // Once it's ready, they snap about a third of the time a big bubble is close to the line.
     if g.players[0].snapLeft <= 0, r.unit() < snaps, g.bubbles.contains(where: { $0.size == 0 && $0.kind != .boss && abs((g.vertical ? $0.x : $0.y) - g.hinge) < 100 }) { if duo { g.clap() } else { g.snap(along: 100) }; continue }
+    // An expert also whips a menace or brute off the line for points.
+    if expert, g.players[0].snapLeft <= 0, r.unit() < 0.3, g.villains.contains(where: { $0.solid && $0.tier != .doom && abs((g.vertical ? $0.x : $0.y) - g.hinge) < 100 }) { if duo { g.clap() } else { g.snap(along: 100) }; continue }
     // People only aim at what they can see: fogged and out-of-phase bubbles are skipped. In the dark they
     // can make out a faint outline, so they tap at it, which lights it for the next touch.
-    let seen = dark ? g.bubbles : g.bubbles.filter { g.visibility($0) >= 0.4 && $0.presence >= 0.5 }
+    var seen = dark ? g.bubbles : g.bubbles.filter { g.visibility($0) >= 0.4 && $0.presence >= 0.5 }
+    // Villains they don't recognise look like any other bubble, so they may go for one.
+    let unseen = g.villains.filter { $0.solid && !spots($0, &r) }
+    if !blind {
+      let foes = g.villains.filter { $0.solid }
+      seen = seen.filter { b in !foes.contains { hypot($0.x - b.x, $0.y - b.y) < $0.r + b.r * 0.7 } || r.unit() > wary }
+    }
+    let lure = blind ? g.villains.filter { $0.solid } : unseen
+    guard !seen.isEmpty || !lure.isEmpty else { continue }
+    if !lure.isEmpty, r.unit() < Double(lure.count) / Double(lure.count + max(1, seen.count)) * (blind ? 1 : 0.5) {
+      let v = lure[r.int(lure.count)]
+      if blind || kind == "slicer" {
+        let a = r.unit() * 6.283, len = 120 * g.scale
+        var skip = Set<Int>()
+        g.slice(fromX: v.x - cos(a) * len, fromY: v.y - sin(a) * len, toX: v.x + cos(a) * len, toY: v.y + sin(a) * len, skip: &skip)
+      } else { g.strike(v) }
+      continue
+    }
     guard !seen.isEmpty else { continue }
     let target: Bubble = r.unit() < stray ? seen[r.int(seen.count)] : seen.min { timeToHinge(g, $0) < timeToHinge(g, $1) }!
-    if kind == "slicer" {
+    if blind {
+      // Straight strokes through the target, whatever else is in the way.
       let a = r.unit() * 6.283, len = 120 * g.scale
+      var skip = Set<Int>()
+      g.slice(fromX: target.x - cos(a) * len, fromY: target.y - sin(a) * len, toX: target.x + cos(a) * len, toY: target.y + sin(a) * len, skip: &skip)
+      g.illuminate(x: target.x, y: target.y)
+    } else if kind == "slicer" {
+      // A wary slicer picks a line that misses the villains.
+      var a = r.unit() * 6.283
+      let len = 120 * g.scale
+      for _ in 0..<6 {
+        let from = (target.x - cos(a) * len, target.y - sin(a) * len), to = (target.x + cos(a) * len, target.y + sin(a) * len)
+        let blocked = g.villains.contains { v in
+          guard v.solid else { return false }
+          let dx = to.0 - from.0, dy = to.1 - from.1, t = max(0, min(1, ((v.x - from.0) * dx + (v.y - from.1) * dy) / (dx * dx + dy * dy)))
+          return hypot(v.x - (from.0 + dx * t), v.y - (from.1 + dy * t)) <= v.r + 12
+        }
+        if !blocked || r.unit() > wary { break }
+        a = r.unit() * 6.283
+      }
       var skip = Set<Int>()
       let from = (target.x - cos(a) * len, target.y - sin(a) * len)
       g.slice(fromX: from.0, fromY: from.1, toX: target.x, toY: target.y, skip: &skip)
@@ -101,14 +160,19 @@ func play(_ n: Int, kind: String, rate: Double, seed: UInt64, w: Double = 390, h
       touch(g, target, &r)
     }
   }
+  if why { tally(g.events) }
   log.close(g)
+  if why, g.status == .lost { reasonLock.lock(); reasons["lost-\(g.lostTo?.rawValue ?? "meter")", default: 0] += 1; reasonLock.unlock() }
   return g
 }
 
 /// A tap where a person would put it: on a shielded boss, the open side most of the time.
 func touch(_ g: Game, _ b: Bubble, _ r: inout SplitMix) {
   let open = b.kind == .boss && r.unit() < 0.8 ? b.shieldAngle + .pi : r.unit() * 6.283
-  g.tap(b, atX: b.x + cos(open) * b.r * 0.6, atY: b.y + sin(open) * b.r * 0.6)
+  let at = (b.x + cos(open) * b.r * 0.6, b.y + sin(open) * b.r * 0.6)
+  // The finger lands where it lands: on a villain sitting over the bubble, that's who gets touched.
+  if let v = g.hitVillain(x: at.0, y: at.1) { g.strike(v); return }
+  g.tap(b, atX: at.0, atY: at.1)
   g.illuminate(x: b.x, y: b.y)
 }
 
@@ -116,7 +180,7 @@ let allBots: [(String, Double)] = [("idle", 0), ("human", 1), ("human", 1.5), ("
 func parseBots(_ s: String) -> [(String, Double)] {
   s.split(separator: ",").map { t in
     if t == "idle" { return ("idle", 0) }
-    return (t.hasPrefix("s") ? "slicer" : t.hasPrefix("e") ? "expert" : "human", Double(t.dropFirst()) ?? 2)
+    return (t.hasPrefix("s") ? "slicer" : t.hasPrefix("e") ? "expert" : t.hasPrefix("b") ? "blind" : "human", Double(t.dropFirst()) ?? 2)
   }
 }
 let ranged = option("--range")
@@ -244,6 +308,7 @@ if argv.contains("--ratio") {
   let worst = levels.indices.sorted { abs(all[$0] - Overdrive.targetRatio) > abs(all[$1] - Overdrive.targetRatio) }.prefix(8)
   print(String(format: "\nall: avg ratio %.3f, per-level %.2f-%.2f, outside 0.22-0.38: %d of %d, idle wins %d, e3.5-od zero on %d levels, below 30%% on %d",
                all.reduce(0, +) / Double(all.count), all.min()!, all.max()!, all.filter { $0 < 0.22 || $0 > 0.38 }.count, all.count, out.map(\.idle).reduce(0, +), out.filter { $0.pro == 0 }.count, out.filter { $0.pro < 0.3 }.count))
+  print("outside 0.22-0.38: " + levels.indices.filter { all[$0] < 0.22 || all[$0] > 0.38 }.map { String(levels[$0]) }.joined(separator: ","))
   print("furthest from target: " + worst.map { String(format: "%d:%.2f (n%.0f od%.1f)", levels[$0], all[$0], out[$0].normal * 100, out[$0].od * 100) }.joined(separator: "  "))
   exit(0)
 }
@@ -320,13 +385,16 @@ if argv.contains("--realms") {
   let hi = bots.firstIndex { $0.0 == "human" && $0.1 == 2 } ?? bots.lastIndex { $0.0 == "human" } ?? bots.count - 1
   let idle = bots.firstIndex { $0.0 == "idle" }
   let pro = bots.lastIndex { $0.0 == "expert" }
+  let blindBot = bots.firstIndex { $0.0 == "blind" }
   func avg(_ xs: [Int]) -> String { xs.isEmpty ? "  -" : String(format: "%3.0f", Double(xs.reduce(0, +)) / Double(xs.count)) }
-  print("\nper realm, \(label(bots[hi])) win%    k1   k2  k3-8   k9  boss  last-world  e:last  idle-max  worst-level")
+  print("\nper realm, \(label(bots[hi])) win%    k1   k2  k3-8   k9  boss  last-world  e:last  idle-max  worst-level" + (blindBot != nil ? "  blind(avg/max)" : ""))
   for realm in Worlds.realms {
     var first: [Int] = [], second: [Int] = [], mid: [Int] = [], nine: [Int] = [], boss: [Int] = [], last: [Int] = [], proLast: [Int] = [], idleMax = 0
     var worst = (lv: 0, win: 101)
+    var blindWins: [Int] = []
     for (i, lv) in levels.enumerated() {
       guard let w = Worlds.world(ofLevel: lv), w.realm == realm.number else { continue }
+      if let blindBot { blindWins.append(rows[i].wins[blindBot]) }
       let k = (lv - 1) % 10 + 1, win = rows[i].wins[hi]
       if let idle { idleMax = max(idleMax, rows[i].wins[idle]) }
       if w.number % 8 == 0 { last.append(win); if let pro { proLast.append(rows[i].wins[pro]) } }
@@ -335,7 +403,7 @@ if argv.contains("--realms") {
       if win < worst.win { worst = (lv, win) }
     }
     guard !(first + second + mid + nine + boss + last).isEmpty else { continue }
-    print(String(format: "%2d %@", realm.number, realm.name.padding(toLength: 14, withPad: " ", startingAt: 0)) + "     \(avg(first))  \(avg(second))  \(avg(mid))  \(avg(nine))   \(avg(boss))      \(avg(last))     \(avg(proLast))       \(String(format: "%3d", idleMax))       \(worst.lv):\(worst.win)")
+    print(String(format: "%2d %@", realm.number, realm.name.padding(toLength: 14, withPad: " ", startingAt: 0)) + "     \(avg(first))  \(avg(second))  \(avg(mid))  \(avg(nine))   \(avg(boss))      \(avg(last))     \(avg(proLast))       \(String(format: "%3d", idleMax))       \(worst.lv):\(worst.win)" + (blindBot != nil ? "      \(avg(blindWins))/\(blindWins.max() ?? 0)" : ""))
   }
 }
 if why { print(reasons.sorted { $0.key < $1.key }.map { "\($0.key)=\($0.value)" }.joined(separator: " ")) }

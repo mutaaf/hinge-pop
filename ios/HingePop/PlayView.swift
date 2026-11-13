@@ -114,6 +114,7 @@ struct PlayView: View {
     case .result: if session.versus { VersusResultOverlay(session: session) } else { ResultOverlay(session: session) }
     case .meet(let kind): MeetOverlay(kind: kind) { session.dismissMeet() }
     case .world(let n): if let w = Worlds.world(n) { WorldIntroOverlay(world: w) { session.dismissWorld() } }
+    case .villains(let kinds): VillainAlertOverlay(kinds: kinds) { session.dismissVillains() }
     case .tour: TourOverlay(session: session, spots: spots, size: size, fold: fold)
     }
   }

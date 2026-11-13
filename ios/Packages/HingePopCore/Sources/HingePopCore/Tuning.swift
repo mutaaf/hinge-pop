@@ -150,6 +150,24 @@ public struct Tuning: Sendable {
   public var bossShedEvery = 6.5
   /// Surge: a level's last push is announced this long before it lands.
   public var surgeWarn = 1.5
+  /// Villains: seconds each one materialises (glowing, harmless) before it can bite, how long it stays, what
+  /// leaving one alone pays (by tier), and what busting one with a power pays (by tier, times the combo).
+  /// Off only for measuring the game without them (`hp-balance --no-villains`).
+  public var villains = true
+  public var villainWarn = 0.9
+  public var villainLife = 11.0
+  public var villainFade = 0.7
+  public var villainDodgePoints = [0, 50, 100, 200]
+  public var villainBustPoints = [0, 300, 600, 1200]
+  /// A touch has to land this close to a villain's edge to reach it (a bit stingier than a bubble's).
+  public var villainTouch = 4.0
+  /// The Void drags bubbles within `voidReach` toward it; the Overlord's eye turns toward its prey this fast.
+  public var voidReach = 160.0
+  public var voidPull = 230.0
+  public var overlordTurn = 1.1
+  /// Phantom: seconds solid, then seconds faded (harmless) between bites.
+  public var phantomSolid = 2.2
+  public var phantomFaint = 1.5
   public init() {}
 }
 
