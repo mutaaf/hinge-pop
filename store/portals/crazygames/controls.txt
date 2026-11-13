@@ -1,0 +1,11 @@
+Mouse or touch
+Tap or click a bubble to split it.
+Swipe or drag across bubbles to slice through all of them.
+Drag off the hinge (the glowing line) to snap it and fling nearby bubbles back.
+Tap a guest star to catch it.
+
+Keyboard
+Esc pauses.
+
+Settings
+Swipe to slice can be turned off, so only taps split.
