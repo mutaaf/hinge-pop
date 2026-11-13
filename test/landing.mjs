@@ -24,6 +24,9 @@ for (const [name, options] of devices) {
   page.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); });
   await page.goto(ORIGIN);
   await page.waitForTimeout(800);
+  // The beta call to action is the first thing on the page: a working link, fully on the first screen.
+  const cta = await page.evaluate(() => { const a = document.querySelector('#cta-beta'), r = a?.getBoundingClientRect(); return a && { href: a.getAttribute('href') || '', top: r.top, bottom: r.bottom }; });
+  check(`${name}: beta button on the first screen`, cta && /^https:\/\/testflight\.apple\.com\//.test(cta.href) && cta.top >= 0 && cta.bottom <= options.viewport.height, JSON.stringify(cta));
   const end = await page.evaluate(() => document.documentElement.scrollHeight - innerHeight);
   // A real horizontal gesture halfway down. Decorations may hang past the edge, but the page must not move.
   let sideways = false;

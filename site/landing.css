@@ -83,7 +83,7 @@ p { margin: 0; }
 .big { font: 400 clamp(23px, 3.5vw, 46px)/1.14 var(--display); text-wrap: balance; }
 .note { color: var(--muted); }
 .front p, .front h3:not(.stk) { text-shadow: 0 1px 2px rgba(10, 4, 28, .9), 0 0 18px rgba(10, 4, 28, .85); }
-.skip { position: fixed; left: 12px; top: -80px; z-index: 20; padding: 12px 18px; background: var(--sun); color: #33140f; border-radius: 12px; font-weight: 600; }
+.skip { position: fixed; left: 12px; top: -80px; z-index: 40; padding: 12px 18px; background: var(--sun); color: #33140f; border-radius: 12px; font-weight: 600; }
 .skip:focus { top: 12px; }
 .cue a { display: inline-flex; align-items: center; min-height: 48px; color: var(--ink); text-underline-offset: 4px; }
 
@@ -311,3 +311,206 @@ html:not(.js) .stage { position: relative; }
   .l { animation: none !important; transform: none !important; opacity: 1 !important; }
   .hero-logo img, .bobs img, .bobber, .spark i, .bolt, .bolt-v, .curtain canvas { animation: none !important; }
 }
+
+/* ==== Beta: a top bar and a hero call to action. The bar steps aside while the game has the screen. ==== */
+.topbar { position: fixed; top: 0; left: 0; right: 0; z-index: 30; display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  padding: calc(8px + env(safe-area-inset-top)) max(12px, env(safe-area-inset-right)) 8px max(12px, env(safe-area-inset-left));
+  background: linear-gradient(rgba(20, 10, 46, .92), rgba(20, 10, 46, .72)); -webkit-backdrop-filter: blur(12px) saturate(1.4); backdrop-filter: blur(12px) saturate(1.4);
+  border-bottom: 1px solid rgba(176, 131, 255, .22); transition: transform .4s cubic-bezier(.2, .8, .2, 1), opacity .3s ease; }
+.parting .topbar, .in-game .topbar { transform: translateY(-110%); opacity: 0; pointer-events: none; }
+.tb-brand img { width: 82px; height: auto; filter: drop-shadow(0 2px 6px rgba(0, 0, 0, .4)); }
+.tb-nav { display: flex; gap: 8px; align-items: center; }
+.topbar .pill { min-height: 44px; font-size: 15px; }
+.pill.solid { background: linear-gradient(#ffe066, #ffb21f); border-color: #ffd23f; color: #3a1607; box-shadow: 0 4px 0 #a8460a, 0 8px 22px rgba(255, 180, 40, .35); }
+.pill.solid:hover { filter: brightness(1.06); }
+.pill.solid svg, .pill.solid .arr { display: none; }
+.pill.off { opacity: .6; }
+
+.hero { padding-top: 64px; }
+.hero-in { position: relative; }
+.hero-copy { display: grid; justify-items: center; gap: clamp(8px, 1.6vh, 18px); }
+.hero-copy .tag { margin-bottom: 1vh; font-size: clamp(25px, 5.6vw, 50px); }
+.hero-logo { width: min(88vw, 44vh, 600px); }
+.beta { display: grid; justify-items: center; gap: 10px; }
+.eyebrow { display: inline-flex; align-items: center; gap: 9px; padding: 6px 14px; border-radius: 999px; background: rgba(20, 10, 46, .72); border: 1px solid rgba(79, 216, 255, .35);
+  font-size: 13px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--cyan); }
+.eyebrow i { width: 8px; height: 8px; border-radius: 50%; background: #5dffb0; box-shadow: 0 0 0 0 rgba(93, 255, 176, .6); animation: live 2s ease-out infinite; }
+@keyframes live { 0% { box-shadow: 0 0 0 0 rgba(93, 255, 176, .6); } 70%, 100% { box-shadow: 0 0 0 10px rgba(93, 255, 176, 0); } }
+.cta { position: relative; overflow: hidden; display: inline-flex; align-items: center; justify-content: center; gap: 12px; min-height: 64px; padding: 0 28px; border-radius: 22px;
+  font: 400 clamp(20px, 2.4vw, 27px)/1 var(--display); letter-spacing: .01em; color: #3a1607; text-decoration: none;
+  background: linear-gradient(#fff3a0, #ffc41f 46%, #ff8f1a); border: 3px solid #170a38;
+  box-shadow: 0 6px 0 #a82c06, 0 6px 0 3px #170a38, 0 18px 40px -8px rgba(255, 170, 30, .55); transition: transform .15s ease, box-shadow .15s ease; }
+.cta svg { width: 26px; height: 26px; flex: none; }
+.cta .arr { transition: transform .2s ease; }
+.cta:hover, .cta:focus-visible { transform: translateY(-2px); }
+.cta:hover .arr { transform: translateX(4px); }
+.cta:active { transform: translateY(4px); box-shadow: 0 2px 0 #a82c06, 0 2px 0 3px #170a38, 0 8px 20px -8px rgba(255, 170, 30, .5); }
+html.js:not(.calm) .cta::after { content: ""; position: absolute; inset: 0; background: linear-gradient(105deg, transparent 35%, rgba(255, 255, 255, .6) 50%, transparent 65%); transform: translateX(-120%); animation: sheen 3.6s ease-in-out 1.4s infinite; pointer-events: none; }
+@keyframes sheen { 0%, 70% { transform: translateX(-120%); } 100% { transform: translateX(120%); } }
+.cta.off { background: var(--night-2); color: var(--muted); box-shadow: none; border-color: var(--edge); }
+.fine { font-size: 15px; color: var(--muted); }
+.fine b { color: var(--ink); }
+.qr { display: none; }
+@media (hover: hover) and (pointer: fine) and (min-width: 900px) {
+  .qr { display: flex; align-items: center; gap: 12px; margin-top: 4px; padding: 8px 14px 8px 8px; border-radius: 16px; background: rgba(20, 10, 46, .72); border: 1px solid rgba(176, 131, 255, .3); text-align: left; }
+  .qr img { width: 84px; height: 84px; border-radius: 8px; image-rendering: pixelated; }
+  .qr p { max-width: 15em; font-size: 14px; line-height: 1.3; color: var(--muted); }
+  .qr b { display: block; color: var(--ink); }
+}
+
+/* The hero's Duo: a real capture, tilted, with two chips riding along. */
+.hero-duo { position: relative; justify-self: center; width: min(58vw, 300px); margin-top: 3vh; perspective: 1400px; }
+.hd-dev { aspect-ratio: .58; border-radius: 30px; overflow: hidden; border: 6px solid #0d0620; box-shadow: 0 0 0 2px #6e4fbf, 0 30px 70px -20px rgba(0, 0, 0, .8), 0 0 60px rgba(79, 216, 255, .25);
+  transform: rotateY(-16deg) rotateX(6deg) rotateZ(2deg); }
+.hd-dev img, .dv img { width: 100%; height: 100%; object-fit: cover; object-position: 0% 50%; }
+.chip { position: absolute; z-index: 3; display: inline-block; padding: 8px 14px; border-radius: 999px; white-space: nowrap; background: rgba(20, 10, 46, .9); border: 2px solid var(--cyan);
+  color: var(--ink); font-size: 14px; font-weight: 600; box-shadow: 0 10px 30px -8px rgba(0, 0, 0, .7); }
+.chip.hot { border-color: #ff5c7a; }
+.hero-duo .c1 { left: -18%; top: 16%; }
+.hero-duo .c2 { right: -16%; bottom: 18%; }
+@media (min-width: 900px) and (min-aspect-ratio: 1/1) {
+  .hero-in { grid-template-columns: minmax(0, 1.25fr) minmax(0, .75fr); align-items: center; text-align: center; gap: 4vw; }
+  .hero-logo { width: min(34vw, 40vh, 480px); }
+  .hero-copy .tag { font-size: clamp(25px, 2.7vw, 42px); flex-wrap: nowrap; white-space: nowrap; }
+  .hero-duo { width: min(24vw, 46vh, 340px); margin-top: 0; }
+}
+@media (max-height: 640px) and (max-width: 700px) { .hero-logo { width: min(80vw, 38vh); } .cta { min-height: 56px; padding: 0 18px; } }
+
+/* ==== The Duo: a pinned stage the scroll scrubs through Closed, Open, Tabletop and Book. ====
+   Every .dz runs its own keyframes on the track's timeline. Scroll-driven where the browser can; elsewhere landing.js
+   pauses them and writes --dp (0 to 1) on the track, which becomes a negative delay. Calm, or no script: a still grid. */
+.duo-sec { padding-block: 12vh 8vh; }
+.duo-intro { width: min(1120px, 100% - 40px); margin-inline: auto; display: grid; gap: 12px; }
+.duo-intro .big { max-width: 24em; }
+.kicker { font-weight: 600; letter-spacing: .14em; text-transform: uppercase; color: var(--cyan); }
+.duo-stage { position: relative; width: min(1120px, 100% - 32px); margin: 6vh auto 0; }
+.duo-scene, .duo-words, .duo-rail { display: none; }
+.duo-steps { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 230px), 1fr)); gap: 22px; }
+.step .still { display: block; width: 100%; height: auto; aspect-ratio: .58; object-fit: cover; object-position: 0% 50%; border-radius: 22px; border: 5px solid #0d0620; box-shadow: 0 0 0 2px #6e4fbf; margin-bottom: 12px; }
+.step .k { display: block; font-weight: 600; letter-spacing: .14em; text-transform: uppercase; font-size: 13px; color: var(--cyan); }
+.step h3 { margin: 2px 0 6px; font: 400 clamp(24px, 2.8vw, 34px)/1.08 var(--display); color: var(--sun); }
+.step p { font-size: .95em; }
+.duo-note { width: min(1120px, 100% - 40px); margin: 4vh auto 0; max-width: 720px; font-size: 15px; }
+
+html.js:not(.calm) .duo-track { height: 460vh; height: 460svh; view-timeline: --duo block; }
+html.js:not(.calm) .duo-stage { position: sticky; top: 64px; height: calc(100vh - 64px); height: calc(100svh - 64px); margin-top: 2vh; width: 100%; overflow: clip;
+  display: grid; grid-template-columns: minmax(0, 1fr) minmax(250px, 380px); grid-template-rows: minmax(0, 1fr) auto; column-gap: 4vw;
+  padding: 0 max(20px, calc(50% - 560px)) 16px; }
+html.js:not(.calm) .duo-scene { display: grid; place-items: center; grid-row: 1 / 3; grid-column: 1; position: relative; perspective: 1800px; perspective-origin: 50% 35%; z-index: 1; }
+html.js:not(.calm) .duo-words { display: flex; position: absolute; left: 0; top: 50%; width: 400%; translate: 0 -55%; z-index: 0; pointer-events: none; }
+.duo-words span { flex: 0 0 25%; text-align: center; font: 400 clamp(70px, 17vw, 250px)/1 var(--display); text-transform: uppercase; color: transparent; -webkit-text-stroke: 2px rgba(79, 216, 255, .28); }
+html.js:not(.calm) .duo-steps { grid-row: 1; grid-column: 2; align-self: center; display: grid; grid-template-columns: 1fr; gap: 0; position: relative; z-index: 2; }
+html.js:not(.calm) .step { grid-area: 1 / 1; padding: 16px 18px; border-radius: 20px; background: rgba(20, 10, 46, .8); border: 1px solid rgba(176, 131, 255, .3); }
+html.js:not(.calm) .step .still { display: none; }
+html.js:not(.calm) .duo-rail { display: grid; gap: 10px; grid-row: 2; grid-column: 2; position: relative; z-index: 2; padding-top: 18px; }
+.duo-rail .lbls { display: flex; justify-content: space-between; font-size: 12px; font-weight: 600; letter-spacing: .12em; text-transform: uppercase; }
+.duo-rail .lbls span { opacity: .4; }
+.duo-rail .bar { height: 4px; border-radius: 4px; background: rgba(176, 131, 255, .25); overflow: hidden; }
+.duo-rail .bar i { display: block; height: 100%; background: linear-gradient(90deg, var(--cyan), var(--sun)); transform-origin: left; transform: scaleX(0); }
+
+.dv { --W: min(34vw, 380px, calc((100svh - 64px - 120px) * .58)); --H: calc(var(--W) / .58); position: relative; width: var(--W); height: var(--H); transform-style: preserve-3d; }
+.set { position: absolute; inset: 0; transform-style: preserve-3d; }
+html.js:not(.calm) .tb, html.js:not(.calm) .lr { visibility: hidden; }
+.slab, .half { overflow: hidden; background: #0d0620; box-shadow: 0 0 0 5px #0d0620, 0 0 0 7px #6e4fbf, 0 0 50px rgba(79, 216, 255, .22); }
+.slab { border-radius: 26px; }
+.slab img { position: absolute; inset: 0; }
+.half { position: absolute; backface-visibility: hidden; }
+.half img { position: absolute; width: var(--W); height: var(--H); max-width: none; }
+/* Tabletop folds across at the game's own hinge (47% down). Book folds down the middle. */
+.tb .top { left: 0; right: 0; top: 0; height: 47%; border-radius: 26px 26px 0 0; transform-origin: 50% 100%; }
+.tb .bot { left: 0; right: 0; bottom: 0; height: 53%; border-radius: 0 0 26px 26px; }
+.tb .bot img { top: calc(var(--H) * -.47); }
+.lr .lft { left: 0; top: 0; bottom: 0; width: 50%; border-radius: 26px 0 0 26px; transform-origin: 100% 50%; }
+.lr .rgt { right: 0; top: 0; bottom: 0; width: 50%; border-radius: 0 26px 26px 0; transform-origin: 0 50%; }
+.lr .rgt img { left: calc(var(--W) * -.5); }
+.dv-floor { position: absolute; left: 50%; top: 50%; width: calc(var(--W, 300px) * 2.2); width: 70%; aspect-ratio: 3; translate: -50% 120%; border-radius: 50%;
+  background: radial-gradient(closest-side, rgba(79, 216, 255, .28), rgba(79, 216, 255, 0)); }
+.dchip { opacity: 0; }
+.dchip.d1, .dchip.d3 { left: 4%; top: 18%; }
+.dchip.d2, .dchip.d4 { right: 4%; bottom: 20%; }
+
+html.js:not(.calm) .dz { animation-duration: 1ms; animation-timing-function: linear; animation-fill-mode: both; }
+@supports (animation-timeline: view()) {
+  html.js:not(.calm):not(.js-par) .dz { animation-duration: auto; animation-timeline: --duo; animation-range: contain 0% contain 100%; }
+}
+html.js-par:not(.calm) .dz { animation-duration: 1000ms; animation-play-state: paused; animation-delay: calc(var(--dp, 0) * -1000ms); }
+html.js:not(.calm) .dv { animation-name: dz-dv; }
+html.js:not(.calm) .slab { animation-name: dz-slab; }
+html.js:not(.calm) .lay-open { animation-name: dz-open; }
+html.js:not(.calm) .tb { animation-name: dz-tb; }
+html.js:not(.calm) .tb .top { animation-name: dz-tb-top; }
+html.js:not(.calm) .lr { animation-name: dz-lr; }
+html.js:not(.calm) .lr .lft { animation-name: dz-lft; }
+html.js:not(.calm) .lr .rgt { animation-name: dz-rgt; }
+html.js:not(.calm) .duo-words { animation-name: dz-words; }
+html.js:not(.calm) .dv-floor { animation-name: dz-floor; }
+html.js:not(.calm) .s1, html.js:not(.calm) .d1 { animation-name: dz-p1; }
+html.js:not(.calm) .s2, html.js:not(.calm) .d2 { animation-name: dz-p2; }
+html.js:not(.calm) .s3, html.js:not(.calm) .d3 { animation-name: dz-p3; }
+html.js:not(.calm) .s4, html.js:not(.calm) .d4 { animation-name: dz-p4; }
+html.js:not(.calm) .r1 { animation-name: dz-r1; }
+html.js:not(.calm) .r2 { animation-name: dz-r2; }
+html.js:not(.calm) .r3 { animation-name: dz-r3; }
+html.js:not(.calm) .r4 { animation-name: dz-r4; }
+html.js:not(.calm) .duo-rail .bar i { animation-name: dz-bar; }
+/* Closed 0-20, opens 20-28, Open 28-46, stands 46-56, Tabletop 56-70, turns 70-80, Book 80-100. */
+@keyframes dz-dv {
+  0% { transform: translate3d(0, 4%, 0) rotateX(14deg) rotateY(-26deg) rotateZ(5deg) scale(.8); }
+  20% { transform: translate3d(0, 0, 0) rotateX(6deg) rotateY(-12deg) rotateZ(2deg) scale(.86); }
+  28%, 46% { transform: translate3d(0, 0, 0) rotateX(0deg) rotateY(0deg) rotateZ(0deg) scale(1); }
+  56%, 70% { transform: translate3d(0, 10%, 0) rotateX(52deg) rotateY(0deg) rotateZ(-10deg) scale(.86); }
+  80%, 100% { transform: translate3d(0, 2%, 0) rotateX(12deg) rotateY(0deg) rotateZ(0deg) scale(.94); }
+}
+@keyframes dz-slab { 0%, 47% { opacity: 1; } 49%, 100% { opacity: 0; } }
+@keyframes dz-open { 0%, 21% { opacity: 0; } 27%, 100% { opacity: 1; } }
+/* The folding sets switch with visibility: opacity on a 3D parent would flatten its halves. */
+@keyframes dz-tb { 0%, 48% { visibility: hidden; } 48.5%, 73% { visibility: visible; } 73.5%, 100% { visibility: hidden; } }
+@keyframes dz-tb-top { 0%, 49% { transform: rotateX(0deg); } 58%, 100% { transform: rotateX(-64deg); } }
+@keyframes dz-lr { 0%, 73% { visibility: hidden; } 73.5%, 100% { visibility: visible; } }
+@keyframes dz-lft { 0%, 76% { transform: rotateY(0deg); } 88%, 100% { transform: rotateY(30deg); } }
+@keyframes dz-rgt { 0%, 76% { transform: rotateY(0deg); } 88%, 100% { transform: rotateY(-30deg); } }
+@keyframes dz-words { 0%, 18% { transform: translate3d(0, 0, 0); } 28%, 46% { transform: translate3d(-25%, 0, 0); } 56%, 70% { transform: translate3d(-50%, 0, 0); } 80%, 100% { transform: translate3d(-75%, 0, 0); } }
+@keyframes dz-floor { 0% { opacity: .5; transform: scale(.7); } 28%, 46% { opacity: 1; transform: scale(1); } 56%, 70% { opacity: 1; transform: scale(1.35); } 80%, 100% { opacity: .9; transform: scale(1.05); } }
+@keyframes dz-p1 { 0%, 16% { opacity: 1; transform: translate3d(0, 0, 0); } 21%, 100% { opacity: 0; transform: translate3d(0, -24px, 0); } }
+@keyframes dz-p2 { 0%, 22% { opacity: 0; transform: translate3d(0, 24px, 0); } 28%, 44% { opacity: 1; transform: translate3d(0, 0, 0); } 49%, 100% { opacity: 0; transform: translate3d(0, -24px, 0); } }
+@keyframes dz-p3 { 0%, 50% { opacity: 0; transform: translate3d(0, 24px, 0); } 56%, 69% { opacity: 1; transform: translate3d(0, 0, 0); } 74%, 100% { opacity: 0; transform: translate3d(0, -24px, 0); } }
+@keyframes dz-p4 { 0%, 76% { opacity: 0; transform: translate3d(0, 24px, 0); } 82%, 100% { opacity: 1; transform: translate3d(0, 0, 0); } }
+@keyframes dz-r1 { 0%, 18% { opacity: 1; color: var(--cyan); } 22%, 100% { opacity: .4; color: var(--ink); } }
+@keyframes dz-r2 { 0%, 22% { opacity: .4; color: var(--ink); } 26%, 46% { opacity: 1; color: var(--cyan); } 50%, 100% { opacity: .4; color: var(--ink); } }
+@keyframes dz-r3 { 0%, 50% { opacity: .4; color: var(--ink); } 54%, 70% { opacity: 1; color: var(--cyan); } 74%, 100% { opacity: .4; color: var(--ink); } }
+@keyframes dz-r4 { 0%, 76% { opacity: .4; color: var(--ink); } 80%, 100% { opacity: 1; color: var(--cyan); } }
+@keyframes dz-bar { from { transform: scaleX(.03); } to { transform: scaleX(1); } }
+html.js:not(.calm) .duo-scene, html.js:not(.calm) .duo-words, html.js:not(.calm) .dv { will-change: transform; }
+
+@media (max-width: 899px), (max-aspect-ratio: 1/1) {
+  html.js:not(.calm) .duo-stage { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) auto auto; padding: 0 16px calc(12px + env(safe-area-inset-bottom)); }
+  html.js:not(.calm) .duo-scene { grid-row: 1; grid-column: 1; }
+  html.js:not(.calm) .duo-steps { grid-row: 2; grid-column: 1; align-self: end; }
+  html.js:not(.calm) .duo-rail { grid-row: 3; grid-column: 1; padding-top: 10px; }
+  html.js:not(.calm) .step { padding: 12px 14px; }
+  .step h3 { font-size: clamp(21px, 6vw, 28px); }
+  html.js:not(.calm) .step p { font-size: 15px; line-height: 1.35; }
+  .dv { --W: min(56vw, 340px, calc((100svh - 64px - 330px) * .58)); }
+  .dchip { font-size: 12px; padding: 6px 10px; }
+  .dchip.d1, .dchip.d3 { left: 0; top: 4%; }
+  .dchip.d2, .dchip.d4 { right: 0; top: 4%; bottom: auto; }
+}
+
+/* ==== Villains: three tiers, two each, flying in from the edges. ==== */
+.villains { padding-block: 14vh 10vh; }
+.villains-title { width: min(1120px, 100% - 40px); margin-inline: auto; display: grid; gap: 12px; }
+.villains-title .note { max-width: 36em; }
+.tiers { width: min(1120px, 100% - 32px); margin: 6vh auto 0; display: grid; gap: 5vh; }
+.tier { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr)); gap: 16px 28px; padding: 18px; border-radius: 26px;
+  background: rgba(20, 10, 46, .55); border: 2px solid var(--tc); box-shadow: inset 0 0 40px -10px var(--tc); }
+.tier.menace { --tc: #ffc733; } .tier.brute { --tc: #ff8a3d; } .tier.doom { --tc: #ff3b6b; }
+.tier-k { grid-column: 1 / -1; font-size: 16px; }
+.tier-k b { display: inline-block; margin-right: 8px; padding: 3px 12px; border-radius: 999px; background: var(--tc); color: #1a0a2e; font: 400 18px/1.2 var(--display); letter-spacing: .03em; }
+.villain { position: relative; display: grid; grid-template-columns: clamp(86px, 22vw, 120px) minmax(0, 1fr); gap: 14px; align-items: center; }
+.villain .portrait { position: relative; }
+.villain .portrait img { border-radius: 50%; border: 4px solid var(--tc); box-shadow: 0 0 24px -2px var(--tc); }
+.villain h3 { margin: 0 0 2px; font: 400 clamp(24px, 2.8vw, 32px)/1.05 var(--display); color: var(--tc); }
+.villain p { font-size: 16px; line-height: 1.35; }
+
+@media (prefers-reduced-motion: reduce) { .eyebrow i, .cta::after { animation: none !important; } }
+.calm .hd-dev { transform: none; }
