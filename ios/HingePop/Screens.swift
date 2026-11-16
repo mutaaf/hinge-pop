@@ -6,6 +6,7 @@ import HingePopCore
 struct HingePopApp: App {
   @State private var app = AppModel()
   @State private var duo = DuoModel()
+  @Environment(\.scenePhase) private var phase
   var body: some Scene {
     WindowGroup {
       RootView()
@@ -13,6 +14,11 @@ struct HingePopApp: App {
         .environment(duo)
         .modifier(TracksHinge(duo: duo))
         .preferredColorScheme(.dark)
+    }
+    // Usage events go in one batch on the way to the background; a long time away starts a new session.
+    .onChange(of: phase) { old, new in
+      if new == .background { Usage.shared.didEnterBackground() }
+      if new == .active, old == .background { Usage.shared.willEnterForeground() }
     }
   }
 }
@@ -531,6 +537,22 @@ struct SettingsRows: View {
   }
 }
 
+/// 0.4.1: the usage counts the game sends, and the one switch that stops them (off deletes the queue and the id).
+struct PrivacyRows: View {
+  @Environment(AppModel.self) private var app
+  var body: some View {
+    @Bindable var model = app
+    VStack(alignment: .leading, spacing: 6) {
+      Toggle("Share usage stats", isOn: $model.progress.usage)
+        .toggleStyle(GameToggle(detail: "Counts like a level started or finished, with its level, score and time, and a random id made on this device. No name, location or advertising id. Off sends nothing and deletes the id."))
+        .accessibilityIdentifier("usage")
+      Link("Privacy policy", destination: URL(string: "https://mutaafaziz.com/hingepop/privacy/")!)
+        .font(.game(.footnote, .bold)).foregroundStyle(Theme.cyan).frame(minHeight: Theme.target)
+    }
+    .onChange(of: app.progress.usage) { _, v in Usage.shared.setOn(v) }
+  }
+}
+
 struct GameToggle: ToggleStyle {
   let detail: String
   func makeBody(configuration: Configuration) -> some View {
@@ -568,8 +590,9 @@ struct SettingsView: View {
             GuideBlock(title: "Your records") {
               Text("Stars: \(app.progress.totalStars). Challenges: \(app.progress.mastery) of \(Challenges.total). S grades: \(app.progress.sGrades). Overdrive clears: \(app.progress.overdriveClears). Arcade best: \(app.progress.arcadeBest.formatted()). Today's daily best: \((app.progress.dailyBest[app.dailyKey] ?? 0).formatted()).")
                 .font(.game(.subheadline, .medium)).foregroundStyle(Theme.ink).fixedSize(horizontal: false, vertical: true)
-              Text("Everything stays on this device. There is no account, and no ads.").font(.game(.footnote, .medium)).foregroundStyle(Theme.muted).fixedSize(horizontal: false, vertical: true)
+              Text("Your progress stays on this device. There is no account, and no ads.").font(.game(.footnote, .medium)).foregroundStyle(Theme.muted).fixedSize(horizontal: false, vertical: true)
             }
+            GuideBlock(title: "Privacy") { PrivacyRows() }
           }
           .padding(.horizontal, 16)
           .padding(.bottom, 28)

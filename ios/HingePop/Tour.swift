@@ -160,7 +160,9 @@ extension Session {
     if tourIndex + 1 < tourSteps.count { enterTour(tourIndex + 1) } else { endTour() }
   }
   func tourBack() { if tourIndex > 0 { enterTour(tourIndex - 1) } }
-  func endTour() {
+  /// The tour's last Next (completed) or Skip tour (not): tour_end, as the web names it.
+  func endTour(completed: Bool = true) {
+    Usage.shared.track("tour_end", ["tour": .text(tourKind == .versus ? "two" : "solo"), "completed": .bool(completed)])
     if tourKind == .versus { app.progress.seenVersusTour = true } else {
       app.progress.seenTour = true
       app.progress.taught.formUnion(["cross", "small", "shield", "recharge", "combo"])

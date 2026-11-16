@@ -482,15 +482,16 @@ ${BOX_OFFICE}
 
 export const privacy = () => docPage({
   title: 'Privacy: Hinge Pop',
-  description: 'The Hinge Pop app collects nothing. The website counts anonymous usage. No accounts and no ads. Your progress stays on your device.',
+  description: 'Up to version 0.4.0 the Hinge Pop app collects nothing; from 0.4.1 it counts plays, and Settings turns that off. The website counts anonymous usage. No accounts and no ads.',
   path: 'privacy/',
   heading: 'Privacy',
-  body: `<p class="doc-lede">The Hinge Pop app collects nothing about you. This website counts anonymous usage.</p>
+  body: `<p class="doc-lede">Up to version 0.4.0, the Hinge Pop app collects nothing about you. From 0.4.1 it counts how the game is played, and one switch turns that off. This website counts anonymous usage.</p>
 <h2>The app</h2>
 <ul>
-  <li>There are no accounts, so there is nothing to sign up for or log in to.</li>
-  <li>There are no ads and no analytics in the app.</li>
-  <li>The app sends nothing about you or how you play to anyone, including us.</li>
+  <li>There are no accounts, so there is nothing to sign up for or log in to. There are no ads.</li>
+  <li>Up to version 0.4.0, the app collects nothing and sends nothing about you or how you play to anyone, including us.</li>
+  <li>From version 0.4.1, the app sends a few usage counts to our own relay at mutaafaziz.com, which forwards them to PostHog: the app opened, a level started or finished (its mode, level, difficulty, score, time, crossings and whether it was won), and the guided tour finished or skipped. They carry a random id made on your device, the app's version, and nothing else: no name, no location, no advertising id, nothing you type. Our relay drops cookies and cuts the last part off your IP address before anything is forwarded, and no location is worked out from it. Counts are sent between levels, never during play.</li>
+  <li>To stop them, open Settings, then Privacy, and turn off Share usage stats. That deletes the random id and any counts not yet sent. Deleting the app does the same.</li>
 </ul>
 <h2>Usage analytics on this website</h2>
 <p>This website and the web game send anonymous usage analytics to PostHog, through our own relay at mutaafaziz.com: which pages are opened, clicks and taps (for heatmaps), a few game events (a level started or finished, with its level, score, time and whether it was won), the device type and browser, page load times, and an approximate, city-level location. Our relay cuts the last part off your IP address before anything is forwarded, so PostHog never sees the full address. Session replays may be recorded to see where the game is hard to use; every text field is masked in them. A random id, kept in your browser's storage, links one visit to the next; it is not tied to your name or anything else about you. If your browser sends Global Privacy Control or Do Not Track, none of this loads. There are no ads.</p>
@@ -499,7 +500,7 @@ export const privacy = () => docPage({
 <h2>This website</h2>
 <p>The site is hosted by Cloudflare. To serve a page, Cloudflare sees the standard data any web host sees, such as your IP address, your browser type and the page you asked for. The fonts and images come from this site, not from other companies, and the only analytics are the anonymous usage analytics above.</p>
 <h2>Children</h2>
-<p>The app collects nothing from anyone, children included. The website is not directed at children and collects no personal information.</p>
+<p>The app is not directed at children. Up to 0.4.0 it collects nothing from anyone; from 0.4.1 it sends only the usage counts above, which identify no one. The website is not directed at children and collects no personal information.</p>
 <h2>Changes and questions</h2>
 <p>If this ever changes, this page will change first. Questions are welcome at <a href="${ISSUES}" rel="noopener">GitHub issues</a>. Issues are public, so please leave out anything private.</p>`,
 });

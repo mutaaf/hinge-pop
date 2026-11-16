@@ -3,7 +3,7 @@ SIM_PHONE ?= iPhone 17
 SIM_PAD ?= iPad Pro 11-inch (M5)
 DD := build/dd
 export DEVELOPER_DIR ?= /Applications/Xcode.app/Contents/Developer
-.PHONY: up gen icon core build test sim shots device balance clean
+.PHONY: up gen icon rules core build test sim shots device balance clean
 up: gen core sim
 gen:
 	@command -v xcodegen >/dev/null || brew install xcodegen
@@ -13,7 +13,9 @@ gen:
 icon:
 	cd Packages/HingePopArt && swift run render-assets ../../build/art
 	cp build/art/AppIcon-1024.png HingePop/Assets.xcassets/AppIcon.appiconset/AppIcon-1024.png
-core:
+rules:
+	scripts/check-rules.sh
+core: rules
 	cd Packages/HingePopCore && swift test
 	cd Packages/HingePopArt && swift test
 balance:

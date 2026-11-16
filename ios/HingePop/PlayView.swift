@@ -82,7 +82,7 @@ struct PlayView: View {
     }
     .onChange(of: phase) { _, new in if new != .active { session.pause() } }
     .onAppear { UIApplication.shared.isIdleTimerDisabled = true }
-    .onDisappear { UIApplication.shared.isIdleTimerDisabled = false }
+    .onDisappear { UIApplication.shared.isIdleTimerDisabled = false; Usage.shared.left() }
     .background(Theme.night.ignoresSafeArea())
     #if DEBUG
     .task {
@@ -710,7 +710,7 @@ struct TourOverlay: View {
       HStack {
         Text("Step \(session.tourIndex + 1) of \(session.tourSteps.count)").font(.game(.caption, .semibold)).foregroundStyle(Theme.muted)
         Spacer()
-        Button("Skip tour") { session.endTour() }
+        Button("Skip tour") { session.endTour(completed: false) }
           .font(.game(.footnote, .semibold)).foregroundStyle(Theme.muted)
           .frame(minHeight: Theme.target).contentShape(Rectangle())
           .padding(.vertical, -10)
