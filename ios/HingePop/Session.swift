@@ -225,6 +225,12 @@ final class Session {
     challenges = isCampaign ? Challenges.for(level: levelNumber) : []
     par = isCampaign ? Par.score(game.spec, tuning: game.tuning) : 0
     overlay = .none; tip = nil; toast = nil; tourRun = false; tourInput = false
+    if let d = Insights.describe(mode) {
+      var p: [String: Insights.Value] = ["mode": .text(d.mode), "level": .num(d.level)]
+      // Only the campaign has a difficulty (Overdrive); the other modes don't carry the prop.
+      if isCampaign { p["difficulty"] = .text(game.difficulty.rawValue) }
+      Usage.shared.gameStarted(p)
+    }
     syncHUD()
     introduce()
     calendarSecrets()
@@ -466,10 +472,26 @@ final class Session {
       app.progress.dailyBest[key] = max(app.progress.dailyBest[key] ?? 0, score)
     default: Haptics.shared.good()
     }
+    reportOver()
     overlay = .result
     #if DEBUG
     Debug.ready("result")
     #endif
+  }
+
+  /// The end card's game_over, with the web's props (once per level, from `finish`, never per step).
+  private func reportOver() {
+    guard let d = Insights.describe(mode) else { return }
+    var p: [String: Insights.Value] = ["mode": .text(d.mode), "duration_s": .num(Insights.seconds(game.time))]
+    if isCampaign { p["difficulty"] = .text(game.difficulty.rawValue) }
+    if versus {
+      p["draw"] = .bool(game.winner == nil)
+    } else {
+      let me = game.players[0]
+      p["level"] = .num(d.level); p["score"] = .num(Double(me.score)); p["won"] = .bool(game.status == .won)
+      p["crossings"] = .num(Double(me.crossings))
+    }
+    Usage.shared.gameOver(p)
   }
 
   // MARK: Tips

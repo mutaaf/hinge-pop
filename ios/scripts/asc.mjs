@@ -272,7 +272,7 @@ async function betaInfo() {
   for (const k of ["BETA_CONTACT_FIRST", "BETA_CONTACT_LAST", "BETA_CONTACT_EMAIL", "BETA_CONTACT_PHONE"]) if (!e[k]) throw new Error(`Missing ${k} in .env.testflight`);
   const a = await app();
   const attrs = {
-    description: "Hinge Pop is an arcade game: split, slice and chain bubbles and keep the big ones off the hinge. Please test the first levels, the guided tour, two players on one screen, and iPhone Duo folding if you have one. No sign-in, nothing leaves the device.",
+    description: "Hinge Pop is an arcade game: split, slice and chain bubbles and keep the big ones off the hinge. Please test the first levels, the guided tour, two players on one screen, and iPhone Duo folding if you have one. No sign-in. From 0.4.1 it sends a few anonymous usage counts (Settings > Privacy turns them off).",
     feedbackEmail: e.BETA_CONTACT_EMAIL,
     marketingUrl: "https://mutaafaziz.com/hingepop/",
     privacyPolicyUrl: "https://mutaafaziz.com/hingepop/privacy/",
@@ -286,7 +286,7 @@ async function betaInfo() {
   await api("PATCH", `/v1/betaAppReviewDetails/${d.data.id}`, { data: { type: "betaAppReviewDetails", id: d.data.id, attributes: {
     contactFirstName: e.BETA_CONTACT_FIRST, contactLastName: e.BETA_CONTACT_LAST, contactEmail: e.BETA_CONTACT_EMAIL, contactPhone: e.BETA_CONTACT_PHONE,
     demoAccountRequired: false,
-    notes: "No sign-in needed, and it works offline. Tap Play for the guided tour. No ads, accounts, purchases, analytics or network use.",
+    notes: "No sign-in needed, and it works offline. Tap Play for the guided tour. No ads, accounts or purchases. From 0.4.1, first-party usage counts (no SDK) go to mutaafaziz.com/boxoffice; Settings > Privacy > Share usage stats turns them off.",
   } } });
   console.log("✓ beta review contact");
 }
@@ -354,7 +354,10 @@ No ads, no accounts, no in-app purchases and no tracking. Your progress stays on
   primaryCategory: "GAMES",
   primarySubcategories: ["GAMES_ACTION", "GAMES_CASUAL"],
   contentRights: "DOES_NOT_USE_THIRD_PARTY_CONTENT",
-  reviewNotes: `Hinge Pop is a single-device arcade game. No sign-in, accounts, ads, analytics, in-app purchases or network use. Progress stays on the device.
+  reviewNotes: `Hinge Pop is a single-device arcade game. No sign-in, accounts, ads or in-app purchases. Progress stays on the device, and it plays offline.
+
+USAGE COUNTS (NEW IN 0.4.1)
+First-party, no SDK. A few counts (session start; a level started or finished with its mode, level, score, time, crossings and whether it was won; the guided tour finished or skipped) and a random install id go to our own relay at mutaafaziz.com/boxoffice, which strips cookies, cuts the IP and forwards them to our analytics project (PostHog). Batched between levels, never during play. Settings > Privacy > Share usage stats turns them off and deletes the id. App Privacy: Product Interaction and Device ID, Analytics, linked, not tracking. No IDFA, no ATT prompt, no ads. This is the app's only network use.
 
 CHANGES SINCE THE PREVIOUS SUBMISSION (guideline 4.3 feedback)
 1. New core mechanic, Snap the Hinge. Drag a finger off the glowing line and it cracks like a whip, flinging nearby bubbles away, with a 7 second recharge. The guided tour teaches it.

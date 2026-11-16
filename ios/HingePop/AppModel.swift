@@ -93,6 +93,7 @@ final class AppModel {
     #endif
     applySettings()
     checkUpdateNotes()
+    Usage.shared.sessionStart()
   }
 
   /// Shows the update card once per version. A fresh install marks the version seen without showing it.
@@ -139,6 +140,7 @@ final class AppModel {
   func applySettings() {
     Sound.shared.enabled = progress.sound
     Haptics.shared.enabled = progress.haptics
+    Usage.shared.enabled = progress.usage
   }
 
   private func save() {

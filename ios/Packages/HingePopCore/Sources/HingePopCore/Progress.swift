@@ -20,6 +20,12 @@ public struct GameProgress: Codable, Equatable, Sendable {
     set { soundChoice = newValue }
   }
   public var haptics = true
+  /// Settings > Privacy > Share usage stats (0.4.1, `Insights`): on unless turned off. Optional so older saves load.
+  private var usageChoice: Bool? = nil
+  public var usage: Bool {
+    get { usageChoice ?? true }
+    set { usageChoice = newValue }
+  }
   public var arena: Arena? = nil
   /// Optional so saves from before cameos existed still load.
   private var cameoLog: [String]? = nil
