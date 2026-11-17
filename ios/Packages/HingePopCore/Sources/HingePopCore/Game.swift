@@ -2003,3 +2003,24 @@ extension Game {
     }
   }
 }
+
+// MARK: - How far a run got (read-only, for the lose card)
+
+extension Game {
+  /// How much of the level was done, 0...1, for "so close" on the lose card. On a boss level while the boss
+  /// stands, it's the boss's health taken; otherwise the taps of bubble work cleared, counting what's still
+  /// to arrive and the surge. Reads state only; it never changes play.
+  public var clearedFraction: Double {
+    if spec.isBoss, let boss = bubbles.first(where: { $0.kind == .boss }) {
+      let per = max(1, bossHitsPerPhase), phases = max(1, spec.bossPhases)
+      let done = Double(boss.bossPhase * per + boss.bossHits) / Double(per * phases)
+      return min(1, max(0, done))
+    }
+    let plain = spec.spawns.filter { $0.kind != .boss }
+    let total = Campaign.work(of: plain) + spec.surge * Campaign.work[2]
+    guard total > 0 else { return 0 }
+    let onScreen = bubbles.reduce(0) { $0 + ($1.kind == .boss ? 0 : Campaign.work[min($1.size, Campaign.work.count - 1)]) }
+    let left = onScreen + Campaign.work(of: arrivals.filter { $0.kind != .boss }) + (surgeDone ? 0 : spec.surge * Campaign.work[2])
+    return min(1, max(0, 1 - Double(left) / Double(total)))
+  }
+}

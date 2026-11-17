@@ -240,4 +240,13 @@ final class ArcadeProgressTests: XCTestCase {
     p.dailyBest["2026-11-4"] = 900
     XCTAssertEqual(p.dailyStreak(year: 2026, month: 11, day: 4), 1)
   }
+
+  func testClearedFractionRunsFromNothingToAll() {
+    let g = Game(mode: .campaign(12), width: 390, height: 760, top: 70, seed: 5)
+    XCTAssertLessThan(g.clearedFraction, 0.05, "nothing popped yet")
+    g.clearScene()
+    XCTAssertEqual(g.clearedFraction, 1, accuracy: 0.001, "an empty arena with nothing to come is all done")
+    let boss = Game(mode: .campaign(10), width: 390, height: 760, top: 70, seed: 5)
+    XCTAssertEqual(boss.clearedFraction, 0, accuracy: 0.001, "an untouched boss")
+  }
 }
