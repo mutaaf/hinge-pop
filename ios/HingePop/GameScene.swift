@@ -1652,6 +1652,13 @@ final class GameScene: SKScene {
         let turn = facing(player: i), lift = up(turn)
         feel.callout(step.word, at: CGPoint(x: p.x + lift.dx * 70, y: p.y + lift.dy * 70), color: step.color, size: 0.8 + CGFloat(tier) * 0.06, facing: turn)
         feel.flash(0.05 + Double(tier) * 0.015, step.color)
+        // Higher rungs ring out from the pop that reached them.
+        if tier >= 3 && !reduceMotion {
+          shockwave(at: p, r: 50 + CGFloat(tier) * 14, tint: step.color)
+          debris.emit(glintTex, at: p, spin: 2.5, life: 0.36, size: CGSize(width: 110 + CGFloat(tier) * 16, height: 110 + CGFloat(tier) * 16),
+                      scale: (0.4, 1.3), color: step.color, add: true)
+          feel.punch(0.006 + Double(tier) * 0.002, at: p)
+        }
         bloom = max(bloom, 0.3 + Double(tier) * 0.1)
         Haptics.shared.play(tier == ComboTier.steps.count ? .comboTop : .combo)
         #if DEBUG
@@ -1765,7 +1772,8 @@ final class GameScene: SKScene {
       let link = CGPoint(x: x, y: y(gy))
       if let last = lastChain, clock - lastChainClock < 0.05 { arc(from: last, to: link) }
       lastChain = link; lastChainClock = clock
-      popFX(at: link, r: CGFloat(r) * 1.3, size: 3)
+      // Each link of a chain lands a little bigger than the last.
+      popFX(at: link, r: CGFloat(r) * 1.3 * (1 + CGFloat(min(count, 10)) * 0.05), size: 3)
       scoreText(points, at: link, color: UIColor(red: 0.55, green: 1, blue: 0.75, alpha: 1))
       sound.blip((880 * Sound.ladder(1 + Double(min(count, 12)) * 0.5)).rounded(), 0.08)
       haptic.play(.chain)

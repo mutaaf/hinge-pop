@@ -394,28 +394,48 @@ struct Jolt: GeometryEffect {
   }
 }
 
-/// The score rolls up to its new value and pops on each gain.
+/// The score counts up to its new value, ticking through the numbers, and pops on each gain: harder, and
+/// flushed gold, for a big one.
 struct RollingScore: View {
   let value: Int
   var big = true
   @Environment(\.accessibilityReduceMotion) private var reduceMotion
-  @State private var bump = false
+  @State private var bump: CGFloat = 0
+  @State private var hot = false
   var body: some View {
-    Text(value.formatted())
-      .font(.system(big ? .title2 : .headline, design: .rounded, weight: .black))
-      .monospacedDigit()
-      .foregroundStyle(Theme.ink)
-      .contentTransition(reduceMotion ? .identity : .numericText(value: Double(value)))
-      .scaleEffect(bump && !reduceMotion ? 1.16 : 1)
-      .animation(.spring(duration: 0.22), value: value)
-      .animation(.spring(duration: 0.18), value: bump)
+    CountUp(value: Double(value), font: .system(big ? .title2 : .headline, design: .rounded, weight: .black), hot: hot)
+      .scaleEffect(reduceMotion ? 1 : 1 + bump)
+      .shadow(color: hot ? Theme.sun.opacity(0.9) : .clear, radius: 8)
+      .animation(reduceMotion ? nil : .easeOut(duration: 0.42), value: value)
+      .animation(.spring(duration: 0.2, bounce: 0.55), value: bump)
       .lineLimit(1)
       .minimumScaleFactor(0.6)
       .onChange(of: value) { old, new in
         guard new > old else { return }
-        bump = true
-        Task { try? await Task.sleep(for: .milliseconds(120)); bump = false }
+        let gain = new - old
+        bump = 0.12 + min(0.22, CGFloat(gain) / 4000)
+        hot = gain >= 600
+        Task {
+          try? await Task.sleep(for: .milliseconds(130))
+          bump = 0
+          try? await Task.sleep(for: .milliseconds(260))
+          hot = false
+        }
       }
+  }
+}
+
+/// Draws a number that SwiftUI can animate through, so a jump in score reads as a quick count-up.
+private struct CountUp: View, Animatable {
+  var value: Double
+  let font: Font
+  let hot: Bool
+  var animatableData: Double { get { value } set { value = newValue } }
+  var body: some View {
+    Text(Int(value.rounded()).formatted())
+      .font(font)
+      .monospacedDigit()
+      .foregroundStyle(hot ? Theme.sun : Theme.ink)
   }
 }
 

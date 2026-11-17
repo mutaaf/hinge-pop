@@ -747,7 +747,7 @@ final class FeelLayer {
     counterBreak = max(0, counterBreak - dt * 1.6)
     let visible = counterFade > 0.02 || counterBreak > 0.02
     for n in gaugeNodes { n.isHidden = !visible }
-    guard visible else { return }
+    guard visible else { gaugeTicks.forEach { $0.isHidden = true }; return }
     let at = CGPoint(x: area.width / 2, y: area.height - top - 30)
     let tier = ComboTier.tier(value)
     let broke = counterBreak > 0 && !showing
