@@ -292,6 +292,9 @@ struct PlayerCluster: View {
             Capsule().fill(i < hud.meter ? color : .white.opacity(0.16)).frame(height: 9)
           }
         }
+        // One crossing from losing a shield: the filled segments glow red, so the danger reads at a glance.
+        .shadow(color: hud.meter >= max - 1 && hud.meter > 0 ? Theme.red.opacity(0.85) : .clear, radius: 5)
+        .animation(.easeOut(duration: 0.2), value: hud.meter)
       }
       .frame(minHeight: compact ? 22 : Theme.target)
       .contentShape(Rectangle())
