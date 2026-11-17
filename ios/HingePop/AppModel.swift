@@ -16,6 +16,15 @@ final class AppModel {
     arcadeFrom = wave
     route = .play(.arcade(seed: UInt64(Date().timeIntervalSince1970)))
   }
+  /// Goes to a screen (RootView animates the change; the button styles give the tap its tick).
+  func go(_ to: Route) { route = to }
+  /// The level the journey last left from, so arriving there glides on to the next stop like a trip.
+  var journeyFrom: Int?
+  /// Days in a row with a daily played (today's still counts as open until midnight).
+  var dailyStreak: Int {
+    let c = Calendar.current.dateComponents([.year, .month, .day], from: Date())
+    return progress.dailyStreak(year: c.year ?? 2026, month: c.month ?? 1, day: c.day ?? 1)
+  }
   /// This version's update card, when there's one to show.
   var updateNotes: UpdateNotes?
   /// The card was forced with -whatsNew (debug only), so closing it doesn't record the version.

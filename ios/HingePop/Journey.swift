@@ -231,13 +231,13 @@ struct JourneyView: View {
 
   private func topBar(realmsButton: Bool) -> some View {
     HStack(spacing: 10) {
-      Button { app.route = .home } label: {
+      Button { app.go(.home) } label: {
         Image(systemName: "chevron.left").font(.title3.weight(.heavy)).foregroundStyle(Theme.ink)
           .frame(width: Theme.target, height: Theme.target)
           .background(Circle().fill(Theme.panel)).overlay(Circle().stroke(Theme.panelEdge))
           .contentShape(Circle())
       }
-      .buttonStyle(.plain)
+      .buttonStyle(PressStyle(scale: 0.9))
       .accessibilityLabel("Back")
       Text("Journey").font(.game(.title2, .black)).foregroundStyle(Theme.ink).lineLimit(1).minimumScaleFactor(0.7)
         .accessibilityAddTraits(.isHeader)

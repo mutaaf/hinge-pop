@@ -26,7 +26,8 @@ extension Font {
   static func game(_ style: Font.TextStyle, _ weight: Font.Weight = .bold) -> Font { .system(style, design: .rounded, weight: weight) }
 }
 
-/// A chunky, glossy game button. Always at least the minimum touch target.
+/// A chunky, glossy game button. Always at least the minimum touch target. It squashes under the finger
+/// and springs back, with a light tick.
 struct ChunkyStyle: ButtonStyle {
   var colors: [Color] = [Color(red: 1, green: 0.84, blue: 0.3), Theme.orange]
   var text = Color(red: 0.2, green: 0.08, blue: 0.1)
@@ -41,11 +42,11 @@ struct ChunkyStyle: ButtonStyle {
           Capsule().fill(LinearGradient(colors: colors, startPoint: .top, endPoint: .bottom))
           Capsule().fill(.white.opacity(0.22)).padding(.horizontal, 8).padding(.top, 4).padding(.bottom, 28)
         }
+        .shadow(color: colors.last!.opacity(configuration.isPressed ? 0.2 : 0.45), radius: configuration.isPressed ? 4 : 10, y: configuration.isPressed ? 1 : 4)
       )
       .overlay(Capsule().stroke(.black.opacity(0.25), lineWidth: 1))
       .contentShape(Capsule())
-      .scaleEffect(configuration.isPressed ? 0.97 : 1)
-      .animation(.easeOut(duration: 0.1), value: configuration.isPressed)
+      .modifier(Pressed(on: configuration.isPressed, scale: 0.95))
   }
 }
 
@@ -56,9 +57,35 @@ struct QuietStyle: ButtonStyle {
       .foregroundStyle(Theme.ink)
       .padding(.horizontal, 16)
       .frame(maxWidth: .infinity, minHeight: 52)
-      .background(Capsule().fill(Theme.panel.opacity(configuration.isPressed ? 0.6 : 0.92)))
-      .overlay(Capsule().stroke(Theme.panelEdge, lineWidth: 1.5))
+      .background(Capsule().fill(Theme.panel.opacity(configuration.isPressed ? 0.7 : 0.92)))
+      .overlay(Capsule().stroke(configuration.isPressed ? Theme.cyan.opacity(0.8) : Theme.panelEdge, lineWidth: 1.5))
       .contentShape(Capsule())
+      .modifier(Pressed(on: configuration.isPressed, scale: 0.96))
+  }
+}
+
+/// Press physics for any custom button label: squash, brighten, spring back.
+struct PressStyle: ButtonStyle {
+  var scale: CGFloat = 0.95
+  func makeBody(configuration: Configuration) -> some View {
+    configuration.label
+      .brightness(configuration.isPressed ? 0.05 : 0)
+      .modifier(Pressed(on: configuration.isPressed, scale: scale))
+  }
+}
+
+/// The shared squash: a quick dip on press and a bouncy return, plus the tap haptic on touch-down.
+/// Reduce Motion keeps the haptic and drops the movement.
+struct Pressed: ViewModifier {
+  let on: Bool
+  var scale: CGFloat = 0.95
+  @Environment(\.accessibilityReduceMotion) private var reduceMotion
+  @Environment(\.isEnabled) private var enabled
+  func body(content: Content) -> some View {
+    content
+      .scaleEffect(on && !reduceMotion ? scale : 1)
+      .animation(on ? .easeOut(duration: 0.08) : .spring(duration: 0.35, bounce: 0.55), value: on)
+      .onChange(of: on) { _, down in if down && enabled { Haptics.shared.tap() } }
   }
 }
 
