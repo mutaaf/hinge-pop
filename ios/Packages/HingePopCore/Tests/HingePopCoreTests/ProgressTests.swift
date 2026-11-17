@@ -228,4 +228,16 @@ final class ArcadeProgressTests: XCTestCase {
     c.continueArcade(from: 10)
     XCTAssertEqual(c.startWave, 1, "only arcade continues")
   }
+
+  func testDailyStreakCountsDaysInARow() {
+    var p = GameProgress()
+    XCTAssertEqual(p.dailyStreak(year: 2026, month: 11, day: 17), 0)
+    // Across a month end, and a loss (score 0) still counts as played.
+    for (m, d) in [(10, 30), (10, 31), (11, 1), (11, 2)] { p.dailyBest[GameProgress.dailyKey(year: 2026, month: m, day: d)] = 0 }
+    XCTAssertEqual(p.dailyStreak(year: 2026, month: 11, day: 2), 4, "today played")
+    XCTAssertEqual(p.dailyStreak(year: 2026, month: 11, day: 3), 4, "today still open keeps yesterday's run")
+    XCTAssertEqual(p.dailyStreak(year: 2026, month: 11, day: 4), 0, "a missed day ends it")
+    p.dailyBest["2026-11-4"] = 900
+    XCTAssertEqual(p.dailyStreak(year: 2026, month: 11, day: 4), 1)
+  }
 }
