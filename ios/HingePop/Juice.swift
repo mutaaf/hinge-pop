@@ -176,7 +176,7 @@ final class FeelLayer {
     // Layered sines rather than random jitter: it reads as a shove, not as dropped frames.
     let dx = s * (sin(t * 53) * 0.6 + sin(t * 31 + 1.3) * 0.4) + kick.dx
     let dy = s * (cos(t * 61) * 0.6 + sin(t * 37 + 0.4) * 0.4) + kick.dy
-    let scale = 1 + CGFloat(punchAmount)
+    let scale = 1 + CGFloat(punchAmount) + CGFloat(beatPulse * fever) * 0.007
     // Zoom about the punch point, so it stays put while everything else leans in.
     let zx = -punchAt.x * (scale - 1), zy = -punchAt.y * (scale - 1)
     return (CGPoint(x: origin.x + dx + zx, y: origin.y + dy + zy), scale)
@@ -210,6 +210,21 @@ final class FeelLayer {
   /// Called on each heartbeat, so the scene can play the haptic and thump.
   var onHeartbeat: (Double) -> Void = { _ in }
 
+  /// The glass cracks at a point. It stays under Reduce Motion (it says you got bitten), just without the snap-in.
+  func crack(at p: CGPoint, size: CGFloat, color: UIColor) {
+    guard crackTexture != nil else { return }
+    let n = cracks[nextCrack]
+    crackAges[nextCrack] = 0
+    nextCrack = (nextCrack + 1) % cracks.count
+    n.size = CGSize(width: size, height: size)
+    n.position = p
+    n.zRotation = .random(in: 0...(2 * .pi))
+    n.color = color
+    n.isHidden = false
+    n.alpha = reduceMotion ? 0.6 : 1
+    n.setScale(reduceMotion ? 1 : 0.7)
+  }
+
   func flash(_ amount: Double, _ color: UIColor = .white) {
     flashNode.color = color
     flashA = max(flashA, amount * (reduceMotion ? 0.35 : 1))
@@ -242,6 +257,29 @@ final class FeelLayer {
   private var counterPunch = 0.0
   private var counterFade = 0.0
   private var counterBreak = 0.0
+  /// The fever gauge under the combo number (see `drawCounter`).
+  private let gaugeBack = SKSpriteNode()
+  private let gaugeFill = SKSpriteNode()
+  private let gaugeHot = SKSpriteNode()
+  private var gaugeTicks: [SKSpriteNode] = []
+  private var gaugeShown = 0.0
+  private var gaugePunch = 0.0
+  private var gaugeNodes: [SKNode] = []
+  /// Set by the scene each frame: the combo's top (where fever starts), and fever's time left and length.
+  var comboMax = 10.0
+  var feverLeft = 0.0
+  var feverTime = 5.0
+
+  // MARK: Cracks
+
+  /// A villain's bite cracks the glass. Two reused sprites, fading out.
+  var crackTexture: SKTexture? { didSet { cracks.forEach { $0.texture = crackTexture } } }
+  private var cracks: [SKSpriteNode] = []
+  private var crackAges: [Double] = [1, 1]
+  private var nextCrack = 0
+  /// Fever's beat, 0...1 within each beat.
+  private var beatPhase = 0.0
+  private(set) var beatPulse = 0.0
 
   // MARK: Hinge chromatic burst
 
@@ -288,6 +326,9 @@ final class FeelLayer {
         vec3 rb = 0.55 + 0.45 * cos(6.2831 * (fract(along * 0.6 - u_t * 0.3) + vec3(0.0, 0.33, 0.67)));
         float f = (exp(-edge * 12.0) * 0.7 + vig * 0.08) * u_fever;
         col += rb * f; a += f * 0.35;
+        // A colour grade over the whole screen while fever runs, so the world itself looks different.
+        vec3 grade = 0.5 + 0.5 * cos(6.2831 * (u_t * 0.15 + vec3(0.0, 0.33, 0.67)));
+        col += grade * 0.07 * u_fever; a += 0.035 * u_fever;
       }
       if (u_mask.w > 0.5) {
         float p = u_mask.x > 0.5 ? uv.x : 1.0 - uv.y;
@@ -339,6 +380,39 @@ final class FeelLayer {
     counter.isHidden = true
     overlay.addChild(counter)
     counterBar.anchorPoint = CGPoint(x: 0, y: 0.5)
+    let cap = Self.capsule()
+    for n in [gaugeBack, gaugeFill] {
+      n.texture = cap
+      n.centerRect = CGRect(x: 0.4, y: 0.2, width: 0.2, height: 0.6)
+      n.colorBlendFactor = 1
+      n.zPosition = 10.5
+      n.isHidden = true
+      overlay.addChild(n)
+    }
+    gaugeBack.color = UIColor(red: 0.05, green: 0.02, blue: 0.12, alpha: 1)
+    gaugeFill.anchorPoint = CGPoint(x: 0, y: 0.5)
+    gaugeHot.texture = dot
+    gaugeHot.blendMode = .add
+    gaugeHot.colorBlendFactor = 1
+    gaugeHot.zPosition = 10.7
+    gaugeHot.isHidden = true
+    overlay.addChild(gaugeHot)
+    for _ in ComboTier.steps {
+      let t = SKSpriteNode(color: UIColor(red: 0.05, green: 0.02, blue: 0.12, alpha: 1), size: CGSize(width: 2, height: 8))
+      t.zPosition = 10.6
+      t.isHidden = true
+      overlay.addChild(t)
+      gaugeTicks.append(t)
+    }
+    gaugeNodes = [counter, counterBar, counterBack, counterGlow, gaugeBack, gaugeFill, gaugeHot]
+    for _ in 0..<2 {
+      let c = SKSpriteNode()
+      c.zPosition = 11.5
+      c.colorBlendFactor = 0.55
+      c.isHidden = true
+      overlay.addChild(c)
+      cracks.append(c)
+    }
 
     for _ in 0..<2 {
       var nodes: [SKSpriteNode] = []
@@ -409,6 +483,8 @@ final class FeelLayer {
     confettiLive = false
     for i in chromas.indices { chromas[i].age = 1; chromas[i].nodes.forEach { $0.isHidden = true } }
     for n in calloutPool { n.removeAllActions(); n.isHidden = true }
+    for i in cracks.indices { crackAges[i] = 1; cracks[i].isHidden = true }
+    gaugeShown = 0; feverLeft = 0; beatPhase = 0; beatPulse = 0
     for n in [plate, bannerEyebrow, bannerTitle, bannerSub] { n.removeAllActions(); n.isHidden = true }
     spotlight.isHidden = true
     later.removeAll()
@@ -617,9 +693,22 @@ final class FeelLayer {
       var r: CGFloat = 0, g: CGFloat = 0, b: CGFloat = 0
       warnColor.getRed(&r, green: &g, blue: &b, alpha: nil)
       uWarnColor.vectorFloat3Value = .init(Float(r), Float(g), Float(b))
-      uFever.floatValue = Float(fever)
+      uFever.floatValue = Float(fever * (0.7 + 0.5 * beatPulse))
       uTime.floatValue = reduceMotion ? 0 : Float(clock.truncatingRemainder(dividingBy: 100))
       uMask.vectorFloat4Value = redNow > 0.005 ? redMask : vector_float4(0, 0.5, 1, 0)
+    }
+    // Fever's beat: 2.4 a second, a sharp attack and a quick fall. Off under Reduce Motion.
+    if fever > 0.01 && !reduceMotion {
+      beatPhase += dt * 2.4
+      if beatPhase >= 1 { beatPhase -= 1 }
+      beatPulse = exp(-beatPhase * 7)
+    } else { beatPhase = 0; beatPulse = 0 }
+    for i in cracks.indices where crackAges[i] < 1 {
+      crackAges[i] = min(1, crackAges[i] + dt / 1.1)
+      let t = crackAges[i], n = cracks[i]
+      if !reduceMotion { n.setScale(CGFloat(min(1, 0.7 + t * 12 * 0.3))) }
+      n.alpha = CGFloat(pow(1 - t, 1.6)) * (reduceMotion ? 0.6 : 1)
+      if t >= 1 { n.isHidden = true }
     }
     drawCounter(dt: dt, combo: combo, top: top)
     drawChroma(dt: vdt)
@@ -638,46 +727,95 @@ final class FeelLayer {
 
   private func drawCounter(dt: Double, combo: (value: Double, left: Double, window: Double)?, top: CGFloat) {
     let value = combo?.value ?? 1
+    let fevering = combo != nil && feverLeft > 0
     if value != counterShown {
       if value > counterShown {
         let tier = ComboTier.tier(value)
         counter.showText("x" + Self.comboText(value), height: 22 + CGFloat(min(tier, 6)) * 2.2, color: ComboTier.color(tier))
         counterPunch = 1
         counterBreak = 0
+        gaugePunch = 1
       } else if counterShown >= 2 {
         counterBreak = 1
       }
       counterShown = value
     }
     counterPunch = max(0, counterPunch - dt * 6)
-    let showing = value > 1 && combo != nil
+    gaugePunch = max(0, gaugePunch - dt * 5)
+    let showing = (value > 1 || fevering) && combo != nil
     counterFade += ((showing ? 1 : 0) - counterFade) * min(1, dt * (showing ? 14 : 5))
     counterBreak = max(0, counterBreak - dt * 1.6)
     let visible = counterFade > 0.02 || counterBreak > 0.02
-    for n in [counter, counterBar, counterBack, counterGlow] as [SKNode] { n.isHidden = !visible }
+    for n in gaugeNodes { n.isHidden = !visible }
     guard visible else { return }
     let at = CGPoint(x: area.width / 2, y: area.height - top - 30)
     let tier = ComboTier.tier(value)
-    let color = counterBreak > 0 && !showing ? UIColor(red: 1, green: 0.35, blue: 0.4, alpha: 1) : ComboTier.color(tier)
-    counter.position = CGPoint(x: at.x, y: at.y - CGFloat(counterBreak > 0 && !showing ? (1 - counterBreak) * 14 : 0))
+    let broke = counterBreak > 0 && !showing
+    // Fever runs the gauge through the rainbow; otherwise it wears the combo's colour.
+    let hue = CGFloat((clock * 0.45).truncatingRemainder(dividingBy: 1))
+    let color = broke ? UIColor(red: 1, green: 0.35, blue: 0.4, alpha: 1)
+      : fevering ? UIColor(hue: hue, saturation: 0.6, brightness: 1, alpha: 1) : ComboTier.color(tier)
+    counter.position = CGPoint(x: at.x, y: at.y - CGFloat(broke ? (1 - counterBreak) * 14 : 0))
     counter.setScale(reduceMotion ? 1 : 1 + CGFloat(counterPunch) * 0.4)
-    counter.alpha = CGFloat(showing ? counterFade : counterBreak) * 0.95
-    let width: CGFloat = 70
+    let a = CGFloat(showing ? counterFade : counterBreak) * 0.95
+    counter.alpha = a
+
+    // The fever gauge: fills as the combo climbs toward its top, where fever starts; in fever it drains with
+    // the time left. Notches mark where each callout lands.
+    let width = min(190, max(120, area.width * 0.4)), h: CGFloat = 11
+    let span = max(0.5, comboMax - 1)
+    let charge = fevering ? max(0, min(1, feverLeft / max(0.1, feverTime))) : max(0, min(1, (value - 1) / span))
+    gaugeShown += (charge - gaugeShown) * min(1, dt * (fevering ? 30 : 16))
+    let gy = at.y - 24
+    gaugeBack.size = CGSize(width: width + 4, height: h + 4)
+    gaugeBack.position = CGPoint(x: at.x, y: gy)
+    gaugeBack.alpha = a * 0.85
+    let fillW = max(h, width * CGFloat(gaugeShown))
+    gaugeFill.size = CGSize(width: fillW, height: h)
+    gaugeFill.position = CGPoint(x: at.x - width / 2, y: gy)
+    gaugeFill.color = color
+    gaugeFill.alpha = a * (gaugeShown > 0.005 ? 1 : 0)
+    // A hot spot rides the front of the fill; it throbs faster as fever gets close.
+    let near = fevering ? 1 : max(0, (gaugeShown - 0.6) / 0.4)
+    let throb = reduceMotion ? 0.7 : 0.6 + 0.4 * sin(clock * (8 + near * 16))
+    gaugeHot.position = CGPoint(x: at.x - width / 2 + fillW - h * 0.4, y: gy)
+    gaugeHot.size = CGSize(width: h * (3.4 + CGFloat(gaugePunch) * 3), height: h * (3.4 + CGFloat(gaugePunch) * 3))
+    gaugeHot.color = color
+    gaugeHot.alpha = a * CGFloat(gaugeShown > 0.01 ? (0.35 + 0.5 * throb * (0.4 + near)) : 0)
+    for (i, n) in gaugeTicks.enumerated() {
+      let step = ComboTier.steps[i].at
+      let u = (step - 1) / span
+      n.isHidden = !visible || fevering || u >= 0.99
+      n.size = CGSize(width: 2, height: h - 3)
+      n.position = CGPoint(x: at.x - width / 2 + width * CGFloat(u), y: gy)
+      n.alpha = a * (gaugeShown >= u ? 0.45 : 0.3)
+    }
+    // The combo window: a thin line under the gauge that runs out before the combo does.
     let left = combo.map { $0.window > 0 ? max(0, min(1, $0.left / $0.window)) : 0 } ?? 0
-    counterBack.size = CGSize(width: width, height: 4)
-    counterBack.position = CGPoint(x: at.x, y: at.y - 20)
-    counterBar.size = CGSize(width: max(0.5, width * CGFloat(left)), height: 4)
-    counterBar.position = CGPoint(x: at.x - width / 2, y: at.y - 20)
+    counterBack.size = CGSize(width: width, height: 3)
+    counterBack.position = CGPoint(x: at.x, y: gy - 11)
+    counterBar.size = CGSize(width: max(0.5, width * CGFloat(fevering ? 1 : left)), height: 3)
+    counterBar.position = CGPoint(x: at.x - width / 2, y: gy - 11)
     counterBar.color = color
     counterBar.colorBlendFactor = 1
-    counterBack.alpha = counter.alpha * 0.8
-    counterBar.alpha = counter.alpha
+    counterBack.alpha = a * 0.6
+    counterBar.alpha = a * 0.9
     // The glow grows with the tier and breathes faster as the combo window runs out.
     let breathe = reduceMotion ? 1 : 0.8 + 0.2 * sin(clock * (6 + (1 - left) * 14))
     counterGlow.color = color
-    counterGlow.size = CGSize(width: 120 + CGFloat(tier) * 22, height: 64 + CGFloat(tier) * 8)
-    counterGlow.position = at
-    counterGlow.alpha = counter.alpha * CGFloat(0.12 + Double(tier) * 0.07) * CGFloat(breathe) + CGFloat(counterPunch) * 0.3
+    counterGlow.size = CGSize(width: width * 1.4 + CGFloat(tier) * 22, height: 76 + CGFloat(tier) * 8 + (fevering ? 30 : 0))
+    counterGlow.position = CGPoint(x: at.x, y: at.y - 10)
+    counterGlow.alpha = a * CGFloat(0.12 + Double(tier) * 0.06 + (fevering ? 0.25 : 0)) * CGFloat(breathe) + CGFloat(counterPunch) * 0.3
+  }
+
+  /// A white capsule, nine-sliced so it stretches to any length with round ends.
+  static func capsule() -> SKTexture {
+    let w = 32, h = 16
+    let ctx = CGContext(data: nil, width: w, height: h, bitsPerComponent: 8, bytesPerRow: 0, space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)!
+    ctx.setFillColor(UIColor.white.cgColor)
+    ctx.addPath(CGPath(roundedRect: CGRect(x: 0, y: 0, width: w, height: h), cornerWidth: 8, cornerHeight: 8, transform: nil))
+    ctx.fillPath()
+    return SKTexture(cgImage: ctx.makeImage()!)
   }
 
   static func comboText(_ v: Double) -> String { v.rounded() == v ? String(Int(v)) : String(format: "%.1f", v) }

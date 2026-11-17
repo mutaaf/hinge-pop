@@ -19,6 +19,8 @@ final class Haptics {
     case combo, comboTop, win, lose, power, fever, overtime, lastOne
     /// Villains: one arriving (a low warning), one biting, and a Doom ending the run.
     case villain, villainHit, doom
+    /// The snap has recharged; a star landing at the end of a cleared level.
+    case snapReady, star
   }
 
   private var engine: CHHapticEngine?
@@ -66,9 +68,9 @@ final class Haptics {
 
   private func fallback(_ cue: Cue) {
     switch cue {
-    case .pop, .chain: light.impactOccurred(intensity: 0.6)
+    case .pop, .chain, .snapReady: light.impactOccurred(intensity: 0.6)
     case .split: light.impactOccurred()
-    case .bigSplit, .bossHit, .combo, .power, .lastOne: rigid.impactOccurred()
+    case .bigSplit, .bossHit, .combo, .power, .lastOne, .star: rigid.impactOccurred()
     case .crossing, .windup, .overtime, .villain: soft.impactOccurred()
     case .heartbeat: soft.impactOccurred(intensity: 0.7)
     case .snap, .clap, .bossStagger, .bossSlam, .bossIntro: heavy.impactOccurred()
@@ -164,6 +166,8 @@ final class Haptics {
     case .lastOne: return [tick(0, 0.5, 0.9)]
     case .villain: return [tick(0, 0.55, 0.1), tick(0.16, 0.7, 0.1)]
     case .villainHit: return [tick(0, 1, 0.5), hum(0, 0.3, 0.9, 0.3), tick(0.09, 0.9, 0.7)]
+    case .snapReady: return [tick(0, 0.45, 1), tick(0.06, 0.6, 1)]
+    case .star: return [tick(0, 0.75, 0.85)]
     case .doom: return [tick(0, 1, 0.2), hum(0, 0.9, 1, 0.05), tick(0.3, 0.9, 0.1), tick(0.6, 0.7, 0.1)]
     }
   }
