@@ -155,7 +155,7 @@ async function ship(buildNumber) {
 
   if (process.env.BETA_EXTERNAL === "1") {
     const g = await group(a.id, EXTERNAL, false);
-    await api("POST", `/v1/betaGroups/${g.id}/relationships/builds`, { data: [{ type: "builds", id: b.id }] });
+    // Submit first: since Nov 2026 the group refuses (404) a new version's build until it has a Beta App Review submission.
     try {
       await api("POST", "/v1/betaAppReviewSubmissions", { data: { type: "betaAppReviewSubmissions", relationships: { build: { data: { type: "builds", id: b.id } } } } });
       console.log(`✓ submitted for Beta App Review; “${EXTERNAL}” gets it once approved`);
@@ -163,6 +163,7 @@ async function ship(buildNumber) {
       if (e.status === 409) console.log(`• Beta App Review: ${e.message.split("→")[1].trim()}`);
       else throw e;
     }
+    await api("POST", `/v1/betaGroups/${g.id}/relationships/builds`, { data: [{ type: "builds", id: b.id }] });
   }
 }
 
