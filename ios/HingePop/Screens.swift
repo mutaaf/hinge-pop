@@ -57,6 +57,7 @@ struct RootView: View {
       guard Debug.has("-landscape"), let scene = UIApplication.shared.connectedScenes.first as? UIWindowScene else { return }
       scene.requestGeometryUpdate(.iOS(interfaceOrientations: .landscapeRight))
     }
+    .task { await Debug.snapshotIfAsked() }
     #endif
   }
   private var isPlaying: Bool { if case .play = app.route { true } else { false } }
