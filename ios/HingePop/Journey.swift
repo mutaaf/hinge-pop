@@ -151,6 +151,9 @@ struct JourneyView: View {
   /// A row to bring to the middle of the screen, and whether to glide there.
   @State private var jump: (id: String, animated: Bool)? = nil
   @State private var jumpCount = 0
+  /// The stop the trip just reached, which gives a little hop when it arrives.
+  @State private var arrivedAt: Int?
+  @Environment(\.accessibilityReduceMotion) private var reduceMotion
   @ScaledMetric(relativeTo: .headline) private var rowScaled: CGFloat = 96
 
   var body: some View {
@@ -231,13 +234,13 @@ struct JourneyView: View {
 
   private func topBar(realmsButton: Bool) -> some View {
     HStack(spacing: 10) {
-      Button { app.route = .home } label: {
+      Button { app.go(.home) } label: {
         Image(systemName: "chevron.left").font(.title3.weight(.heavy)).foregroundStyle(Theme.ink)
           .frame(width: Theme.target, height: Theme.target)
           .background(Circle().fill(Theme.panel)).overlay(Circle().stroke(Theme.panelEdge))
           .contentShape(Circle())
       }
-      .buttonStyle(.plain)
+      .buttonStyle(PressStyle(scale: 0.9))
       .accessibilityLabel("Back")
       Text("Journey").font(.game(.title2, .black)).foregroundStyle(Theme.ink).lineLimit(1).minimumScaleFactor(0.7)
         .accessibilityAddTraits(.isHeader)
@@ -282,6 +285,7 @@ struct JourneyView: View {
           .padding(.bottom, 120)
         }
         .scrollIndicators(.hidden)
+        .environment(\.journeyArrival, arrivedAt)
         .overlay(alignment: .bottomTrailing) {
           Button {
             jump = (JourneyRow.level(app.progress.nextUp).id, true); jumpCount += 1
@@ -304,11 +308,20 @@ struct JourneyView: View {
           let gate = p.isGated(p.unlocked) ? Worlds.world(ofLevel: p.unlocked).map { JourneyRow.realm($0.realm).id } : nil
           let here = gate ?? JourneyRow.level(p.nextUp).id
           let anchor: UnitPoint = gate == nil ? .center : .top
-          reader.scrollTo(here, anchor: anchor)
+          // Back from a level: land on the stop you just played, then travel on to the next one, like a trip.
+          let from = app.journeyFrom.flatMap { $0 < p.nextUp && p.nextUp - $0 <= 12 && gate == nil ? JourneyRow.level($0).id : nil }
+          app.journeyFrom = nil
+          let start = from ?? here
+          reader.scrollTo(start, anchor: anchor)
           for _ in 0..<2 {
             try? await Task.sleep(for: .milliseconds(80))
-            reader.scrollTo(here, anchor: anchor)
+            reader.scrollTo(start, anchor: anchor)
           }
+          guard from != nil else { return }
+          try? await Task.sleep(for: .milliseconds(reduceMotion ? 0 : 350))
+          withAnimation(reduceMotion ? nil : .smooth(duration: 0.9)) { reader.scrollTo(here, anchor: anchor) }
+          try? await Task.sleep(for: .milliseconds(reduceMotion ? 0 : 700))
+          arrivedAt = p.nextUp
         }
         .onChange(of: jumpCount) { _, _ in
           guard let jump else { return }
@@ -326,6 +339,11 @@ struct JourneyView: View {
       }
     }
   }
+}
+
+extension EnvironmentValues {
+  /// The level the journey's trip just arrived at, if any.
+  @Entry var journeyArrival: Int? = nil
 }
 
 /// One row of the journey. Reads progress itself, so a row only redraws when what it shows changes.
@@ -514,6 +532,8 @@ struct LevelStop: View {
   let jump: (String) -> Void
   @ScaledMetric(relativeTo: .headline) private var node: CGFloat = 58
   @State private var pulse = false
+  @State private var hop = false
+  @Environment(\.journeyArrival) private var arrival
 
   var body: some View {
     let p = app.progress
@@ -551,6 +571,12 @@ struct LevelStop: View {
             Circle().fill(.white.opacity(open ? 0.32 : 0.08)).frame(width: size * 0.6, height: size * 0.28).offset(y: -size * 0.24)
             Circle().stroke(current ? Theme.cyan : .white.opacity(open ? 0.9 : 0.3), lineWidth: current ? 4 : 2).frame(width: size, height: size)
           }
+          if stars == 3 && !gated {
+            // Three stars: the stop wears a gold halo, so finished stretches of the path glow.
+            Circle().stroke(LinearGradient(colors: [Color(red: 1, green: 0.95, blue: 0.6), Theme.sun, Theme.orange], startPoint: .top, endPoint: .bottom), lineWidth: 3)
+              .frame(width: size + 9, height: size + 9)
+              .shadow(color: Theme.sun.opacity(0.85), radius: 7)
+          }
           if gated {
             ArtImage(item: .glyph(.lock), size: size * 0.46)
           } else {
@@ -567,6 +593,7 @@ struct LevelStop: View {
         }
         .frame(width: size, height: size)
         .shadow(color: open ? c[0].opacity(0.55) : .clear, radius: 10)
+        .scaleEffect(hop ? 1.28 : 1)
         .overlay(alignment: .topTrailing) {
           if let grade = p.grade(level), !gated {
             GradeStamp(grade: grade, size: 26).offset(x: 8, y: -6).allowsHitTesting(false)
@@ -605,6 +632,14 @@ struct LevelStop: View {
       guard current, !reduceMotion else { return }
       withAnimation(.easeOut(duration: 1.6).repeatForever(autoreverses: false)) { pulse = true }
     }
+    .onChange(of: arrival) { _, reached in
+      // The trip arrives here: a hop and a happy tick.
+      guard reached == level else { return }
+      Haptics.shared.good()
+      guard !reduceMotion else { return }
+      withAnimation(.spring(duration: 0.25, bounce: 0.5)) { hop = true }
+      Task { try? await Task.sleep(for: .milliseconds(220)); withAnimation(.spring(duration: 0.45, bounce: 0.6)) { hop = false } }
+    }
   }
 
   private var label: String {
@@ -630,6 +665,7 @@ struct LevelStop: View {
     .background(Capsule().fill(LinearGradient(colors: [Color(red: 1, green: 0.88, blue: 0.4), Theme.orange], startPoint: .top, endPoint: .bottom)))
     .overlay(Capsule().stroke(.white.opacity(0.6), lineWidth: 1))
     .shadow(color: Theme.sun.opacity(0.6), radius: 10)
+    .modifier(Bob(amount: 3, period: 1.4))
     .allowsHitTesting(false)
     .accessibilityHidden(true)
   }
@@ -664,6 +700,7 @@ struct WorldBanner: View {
     let p = app.progress
     let stars = p.worldStars(world.number)
     let reached = p.unlocked >= world.levels.lowerBound
+    let here = world.levels.contains(p.nextUp)
     let c = world.biome.aurora
     VStack(alignment: .leading, spacing: 8) {
       HStack(alignment: .firstTextBaseline) {
@@ -684,7 +721,21 @@ struct WorldBanner: View {
         }
       }
       Text(world.name).font(.game(.title2, .black)).foregroundStyle(Theme.ink).fixedSize(horizontal: false, vertical: true)
+        .shadow(color: c[0].opacity(0.6), radius: 10)
       Text(world.teaches).font(.game(.footnote, .semibold)).foregroundStyle(Theme.muted).fixedSize(horizontal: false, vertical: true)
+      if reached {
+        // The world's stars as a bar in its own colours.
+        GeometryReader { g in
+          ZStack(alignment: .leading) {
+            Capsule().fill(.white.opacity(0.1))
+            Capsule().fill(LinearGradient(colors: [c[0], c[1], Theme.sun], startPoint: .leading, endPoint: .trailing))
+              .frame(width: max(6, g.size.width * Double(stars) / 30))
+              .shadow(color: c[0].opacity(0.7), radius: 4)
+          }
+        }
+        .frame(height: 6)
+        .accessibilityHidden(true)
+      }
       ViewThatFits(in: .horizontal) {
         HStack(spacing: 6) { chips }
         VStack(alignment: .leading, spacing: 6) { chips }
@@ -700,8 +751,16 @@ struct WorldBanner: View {
             .blendMode(.plusLighter)
         }
     }
-    .overlay(RoundedRectangle(cornerRadius: 22, style: .continuous).stroke(LinearGradient(colors: [c[0], c[1].opacity(0.4)], startPoint: .topLeading, endPoint: .bottomTrailing), lineWidth: 1.5))
-    .shadow(color: .black.opacity(0.4), radius: 16, y: 8)
+    .overlay(RoundedRectangle(cornerRadius: 22, style: .continuous).stroke(LinearGradient(colors: [c[0], c[1].opacity(0.4)], startPoint: .topLeading, endPoint: .bottomTrailing), lineWidth: here ? 2.5 : 1.5))
+    .overlay(alignment: .topLeading) {
+      if here {
+        Text("YOU'RE HERE").font(.game(.caption2, .black)).tracking(1.2).foregroundStyle(Theme.night)
+          .padding(.horizontal, 9).padding(.vertical, 4)
+          .background(Capsule().fill(Theme.cyan))
+          .offset(x: 14, y: -11)
+      }
+    }
+    .shadow(color: here ? c[0].opacity(0.5) : .black.opacity(0.4), radius: 16, y: 8)
     .opacity(reached ? 1 : 0.82)
     .accessibilityElement(children: .ignore)
     .accessibilityLabel(a11y)

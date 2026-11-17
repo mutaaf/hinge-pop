@@ -66,12 +66,39 @@ struct ArcadeView: View {
       if log.runs > 0 {
         Text("Last run: wave \(log.lastWave), \(log.lastScore.formatted()) points").font(.game(.footnote, .semibold)).foregroundStyle(Theme.muted)
       }
+      nextCheckpoint(log)
     }
     .padding(18)
     .frame(maxWidth: .infinity)
     .background(RoundedRectangle(cornerRadius: 24).fill(Theme.panel.opacity(0.88)))
     .overlay(RoundedRectangle(cornerRadius: 24).stroke(Theme.cyan.opacity(0.6), lineWidth: 1.5))
     .accessibilityElement(children: .combine)
+  }
+
+  /// The next checkpoint to reach, as a bar: something to chase on the next run.
+  @ViewBuilder private func nextCheckpoint(_ log: ArcadeLog) -> some View {
+    let next = (log.checkpoint / Arcade.every + 1) * Arcade.every
+    let base = max(1, log.checkpoint)
+    let reach = min(1, max(0, Double(log.bestWave - base + 1) / Double(next - base + 1)))
+    VStack(spacing: 5) {
+      HStack {
+        Text("NEXT CHECKPOINT").font(.game(.caption2, .heavy)).tracking(1.5).foregroundStyle(Theme.muted)
+        Spacer()
+        Text("Wave \(next) · \(Arcade.stage(next).name)").font(.game(.caption, .heavy)).foregroundStyle(Theme.sun).lineLimit(1).minimumScaleFactor(0.8)
+      }
+      GeometryReader { g in
+        ZStack(alignment: .leading) {
+          Capsule().fill(.white.opacity(0.1))
+          Capsule().fill(LinearGradient(colors: [Theme.cyan, Theme.sun], startPoint: .leading, endPoint: .trailing))
+            .frame(width: max(8, g.size.width * reach))
+            .shadow(color: Theme.cyan.opacity(0.6), radius: 4)
+        }
+      }
+      .frame(height: 8)
+    }
+    .padding(.top, 6)
+    .accessibilityElement(children: .ignore)
+    .accessibilityLabel("Next checkpoint: wave \(next), \(Arcade.stage(next).name)")
   }
 
   private func ladder(_ log: ArcadeLog) -> some View {
@@ -83,12 +110,12 @@ struct ArcadeView: View {
         Button { app.playArcade(from: stage.wave) } label: {
           HStack(spacing: 12) {
             Text("\(stage.wave)").font(.system(size: 20, weight: .black, design: .rounded)).monospacedDigit()
-              .foregroundStyle(open ? Theme.night : Theme.muted)
+              .foregroundStyle(open ? Theme.night : Theme.muted.opacity(0.8))
               .frame(width: 46, height: 46)
               .background(Circle().fill(open ? AnyShapeStyle(LinearGradient(colors: [Theme.sun, Theme.orange], startPoint: .top, endPoint: .bottom)) : AnyShapeStyle(Theme.panel)))
               .overlay(Circle().stroke(open ? Theme.sun : Theme.panelEdge, lineWidth: 1.5))
             VStack(alignment: .leading, spacing: 2) {
-              Text(stage.name).font(.game(.headline, .heavy)).foregroundStyle(open ? Theme.ink : Theme.muted)
+              Text(stage.name).font(.game(.headline, .heavy)).foregroundStyle(open ? Theme.ink : Theme.ink.opacity(0.8))
               Text(open ? stage.nod : "Reach wave \(stage.wave) to unlock").font(.game(.caption, .semibold)).foregroundStyle(Theme.muted)
             }
             Spacer()
@@ -96,10 +123,11 @@ struct ArcadeView: View {
               .font(.title2).foregroundStyle(open ? Theme.cyan : Theme.panelEdge).accessibilityHidden(true)
           }
           .padding(10)
-          .background(RoundedRectangle(cornerRadius: 18).fill(Theme.panel.opacity(current ? 0.95 : 0.7)))
+          .background(RoundedRectangle(cornerRadius: 18).fill(Theme.panel.opacity(current ? 0.95 : open ? 0.82 : 0.9)))
           .overlay(RoundedRectangle(cornerRadius: 18).stroke(current ? Theme.cyan : Theme.panelEdge.opacity(0.5), lineWidth: current ? 2 : 1))
+          .contentShape(RoundedRectangle(cornerRadius: 18))
         }
-        .buttonStyle(.plain)
+        .buttonStyle(PressStyle(scale: 0.97))
         .disabled(!open)
         .accessibilityLabel(open ? "Start from wave \(stage.wave), \(stage.name)" : "Wave \(stage.wave), \(stage.name), locked")
       }

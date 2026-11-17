@@ -120,6 +120,9 @@ struct ResultOverlay: View {
   @State private var ticked = 0
   @State private var settled = false
   @State private var details: String? = nil
+  /// A tap on the card skips the show and lands everything at once.
+  @State private var skip = false
+  @State private var burst = false
 
   private var won: Bool { session.game.status == .won }
 
@@ -150,12 +153,9 @@ struct ResultOverlay: View {
               Text("LEVEL \(n)").font(.game(.caption, .heavy)).tracking(2).foregroundStyle(.white.opacity(0.9))
               if g.difficulty == .overdrive { OverdriveTag(big: true) }
             }
-            Text("Cleared!").font(.game(.title, .black)).foregroundStyle(.white)
+            Text("Cleared!").font(.game(.title, .black)).foregroundStyle(.white).shadow(color: .black.opacity(0.6), radius: 4, y: 1)
             HStack(spacing: 4) {
-              ForEach(0..<3, id: \.self) { i in
-                if i < starsIn { AuroraAssemble(item: .glyph(.starOn), size: 34, count: 160) }
-                else { ArtImage(item: .glyph(.starOff), size: 34) }
-              }
+              ForEach(0..<3, id: \.self) { i in StarSlam(lit: i < starsIn, size: 36) }
             }
             .accessibilityElement().accessibilityLabel("\(g.stars) of 3 stars")
           }
@@ -168,6 +168,10 @@ struct ResultOverlay: View {
           .foregroundStyle(LinearGradient(colors: [.white, Theme.sun], startPoint: .top, endPoint: .bottom))
           .contentTransition(.numericText(value: Double(shown)))
           .minimumScaleFactor(0.6).lineLimit(1)
+          .scaleEffect(burst && !reduceMotion ? 1.06 : 1, anchor: .leading)
+          .background(alignment: .leading) {
+            if session.resultWasBest, settled { BestBurst().frame(width: 220, height: 220).offset(x: -40).allowsHitTesting(false) }
+          }
           .frame(maxWidth: .infinity, alignment: .leading)
         let notes = winNotes(g)
         if !notes.isEmpty {
@@ -185,7 +189,11 @@ struct ResultOverlay: View {
       }
       .padding(16)
       .frame(maxWidth: .infinity)
+      .clipped()
     }
+    .contentShape(Rectangle())
+    .onTapGesture { skip = true }
+    .accessibilityAction(named: "Skip") { skip = true }
     VStack(spacing: 6) {
       ForEach(Array(session.challenges.enumerated()), id: \.offset) { i, c in
         ChallengeRow(challenge: c, state: state(i), shown: ticked > i)
@@ -239,24 +247,65 @@ struct ResultOverlay: View {
   }
 
   @ViewBuilder private func winActions(level n: Int, grade: Grade) -> some View {
-    if app.progress.pendingCheer != nil {
-      // A world just finished: its moment plays on the way out.
-      Button("Celebrate") { app.route = .map }.buttonStyle(ChunkyStyle())
-    } else if app.progress.isOpen(n + 1) {
-      Button("Level \(n + 1)") { session.nextLevel() }.buttonStyle(ChunkyStyle())
-    } else {
-      Button("Find stars to win") { app.route = .play(.campaign(app.progress.nextUp)) }.buttonStyle(ChunkyStyle())
-    }
+    let retry = grade != .s || app.progress.challengesDone(n).contains(false)
     HStack(spacing: 10) {
-      if grade != .s || app.progress.challengesDone(n).contains(false) {
+      if retry {
         Button { session.restart() } label: {
-          Label(grade != .s ? "Retry for S" : "Retry", systemImage: "arrow.counterclockwise")
+          VStack(spacing: 1) {
+            Image(systemName: "arrow.counterclockwise").font(.system(size: 18, weight: .black))
+            Text(grade != .s ? "For S" : "Retry").font(.game(.caption, .heavy)).lineLimit(1).minimumScaleFactor(0.8)
+          }
         }
         .buttonStyle(QuietStyle())
+        .frame(width: 92)
+        .accessibilityLabel(grade != .s ? "Retry for S" : "Retry")
         .accessibilityIdentifier("retry")
       }
-      Button("Journey") { app.route = .map }.buttonStyle(QuietStyle())
+      next(level: n)
     }
+    Button { app.journeyFrom = n; app.go(.map) } label: {
+      Label("Journey", systemImage: "map.fill").font(.game(.subheadline, .heavy)).foregroundStyle(Theme.muted)
+        .frame(maxWidth: .infinity, minHeight: Theme.target)
+        .contentShape(Rectangle())
+    }
+    .buttonStyle(PressStyle())
+  }
+
+  /// The way on: big, bright and the default. It says what's next (a new world, a boss) in a word or two.
+  @ViewBuilder private func next(level n: Int) -> some View {
+    if app.progress.pendingCheer != nil {
+      // A world just finished: its moment plays on the way out.
+      Button { app.journeyFrom = n; app.go(.map) } label: { Label("Celebrate", systemImage: "party.popper.fill") }
+        .buttonStyle(ChunkyStyle())
+        .modifier(Beckon(on: settled))
+    } else if app.progress.isOpen(n + 1) {
+      Button { session.nextLevel() } label: {
+        HStack(spacing: 10) {
+          VStack(alignment: .leading, spacing: 0) {
+            Text("Level \(n + 1)").font(.game(.title3, .black))
+            if let hint = nextHint(n + 1) {
+              Text(hint).font(.game(.caption, .heavy)).opacity(0.85).lineLimit(1).minimumScaleFactor(0.8)
+            }
+          }
+          Image(systemName: "play.fill").font(.system(size: 18, weight: .black))
+        }
+      }
+      .buttonStyle(ChunkyStyle())
+      .modifier(Beckon(on: settled))
+      .accessibilityLabel("Level \(n + 1)")
+      .accessibilityHint(nextHint(n + 1) ?? "")
+    } else {
+      Button("Find stars to win") { app.go(.play(.campaign(app.progress.nextUp))) }
+        .buttonStyle(ChunkyStyle())
+    }
+  }
+
+  /// A new world or a boss ahead, in a few words.
+  private func nextHint(_ level: Int) -> String? {
+    guard level <= Campaign.finalAuthored, let w = Worlds.world(ofLevel: level) else { return nil }
+    if level % 10 == 0 { return Journey.bossName(w.boss) }
+    if level % 10 == 1 { return "New world: \(w.name)" }
+    return nil
   }
 
   // MARK: Campaign: a loss
@@ -277,7 +326,7 @@ struct ResultOverlay: View {
           // A villain finished it: it takes the stage, with its line.
           VillainLoss(kind: foe)
         } else {
-          Text(cause.headline).font(.game(.title, .black)).foregroundStyle(.white)
+          Text(cause.headline).font(.game(.title, .black)).foregroundStyle(.white).shadow(color: .black.opacity(0.7), radius: 4, y: 1)
             .multilineTextAlignment(.center).fixedSize(horizontal: false, vertical: true)
             .accessibilityIdentifier("lossReason")
         }
@@ -288,15 +337,22 @@ struct ResultOverlay: View {
       .padding(16)
       .frame(maxWidth: .infinity)
     }
-    Button { session.restart() } label: { Label("Retry", systemImage: "arrow.counterclockwise") }
+    SoClose(fraction: g.clearedFraction, boss: g.spec.isBoss && g.bubbles.contains { $0.kind == .boss }, shown: settled || reduceMotion)
+    Button { session.restart() } label: { Label("Retry", systemImage: "arrow.counterclockwise").font(.game(.title3, .black)) }
       .buttonStyle(ChunkyStyle())
+      .modifier(Beckon(on: true))
       .accessibilityIdentifier("retry")
     VStack(spacing: 5) {
       ForEach(Array(session.challenges.enumerated()), id: \.offset) { i, c in
         ChallengeRow(challenge: c, state: app.progress.challengesDone(n).indices.contains(i) && app.progress.challengesDone(n)[i] ? .had : .missed, compact: true)
       }
     }
-    Button("Journey") { app.route = .map }.buttonStyle(QuietStyle())
+    Button { app.journeyFrom = n; app.go(.map) } label: {
+      Label("Journey", systemImage: "map.fill").font(.game(.subheadline, .heavy)).foregroundStyle(Theme.muted)
+        .frame(maxWidth: .infinity, minHeight: Theme.target)
+        .contentShape(Rectangle())
+    }
+    .buttonStyle(PressStyle())
   }
 
   // MARK: Arcade, daily and two players
@@ -378,40 +434,160 @@ struct ResultOverlay: View {
     }
     guard session.isCampaign, won else {
       await countUp(to: target, steps: session.isCampaign ? 10 : 24)
-      settled = true
+      try? await Task.sleep(for: .milliseconds(150))
+      withAnimation(.easeOut(duration: 0.4)) { settled = true }
       #if DEBUG
       Debug.ready("result-settled")
       #endif
       return
     }
     await countUp(to: target, steps: 20)
-    for s in 0..<g.stars {
-      try? await Task.sleep(for: .milliseconds(200))
-      starsIn = s + 1
+    for s in 0..<g.stars where !skip {
+      try? await Task.sleep(for: .milliseconds(230))
+      withAnimation(.spring(duration: 0.38, bounce: 0.55)) { starsIn = s + 1 }
+      Haptics.shared.tap()
       Sound.shared.blip(660 + Double(s) * 220, 0.12)
     }
-    try? await Task.sleep(for: .milliseconds(240))
-    withAnimation(.spring(duration: 0.32, bounce: 0.5)) { stamped = true }
+    if !skip { try? await Task.sleep(for: .milliseconds(260)) }
+    withAnimation(.spring(duration: 0.32, bounce: 0.5)) { starsIn = g.stars; stamped = true }
     Haptics.shared.hit()
     Sound.shared.blip(session.grade == .s ? 1320 : 880, 0.16)
-    try? await Task.sleep(for: .milliseconds(380))
+    if !skip { try? await Task.sleep(for: .milliseconds(380)) }
     for i in 0..<count {
       ticked = i + 1
-      if state(i) == .new { Haptics.shared.tap(); Sound.shared.blip(990 + Double(i) * 160, 0.1) }
-      try? await Task.sleep(for: .milliseconds(320))
+      if state(i) == .new && !skip { Haptics.shared.tap(); Sound.shared.blip(990 + Double(i) * 160, 0.1) }
+      if !skip { try? await Task.sleep(for: .milliseconds(300)) }
     }
     withAnimation(.easeOut(duration: 0.25)) { settled = true }
+    if session.resultWasBest {
+      Haptics.shared.good()
+      withAnimation(.spring(duration: 0.3, bounce: 0.6)) { burst = true }
+      try? await Task.sleep(for: .milliseconds(260))
+      withAnimation(.spring(duration: 0.4)) { burst = false }
+    }
     #if DEBUG
     Debug.ready("result-settled")
     #endif
   }
 
   private func countUp(to target: Int, steps: Int) async {
-    for i in 1...steps {
+    for i in 1...steps where !skip {
       try? await Task.sleep(for: .milliseconds(28))
       let k = Double(i) / Double(steps)
       withAnimation(.linear(duration: 0.03)) { shown = Int(Double(target) * (1 - pow(1 - k, 3))) }
     }
     shown = target
+  }
+}
+
+// MARK: - Pieces of the show
+
+/// A star that slams into its slot: big, then down with a bounce and a ring of light.
+struct StarSlam: View {
+  let lit: Bool
+  var size: CGFloat = 34
+  @Environment(\.accessibilityReduceMotion) private var reduceMotion
+  var body: some View {
+    ZStack {
+      ArtImage(item: .glyph(.starOff), size: size)
+      if lit {
+        Circle().stroke(Theme.sun, lineWidth: 2).frame(width: size, height: size)
+          .modifier(Ring(go: !reduceMotion))
+        ArtImage(item: .glyph(.starOn), size: size)
+          .shadow(color: Theme.sun.opacity(0.8), radius: 6)
+          .transition(reduceMotion ? .opacity : .scale(scale: 2.4).combined(with: .opacity))
+      }
+    }
+    .frame(width: size, height: size)
+  }
+  /// The ring flies out once and fades.
+  private struct Ring: ViewModifier {
+    let go: Bool
+    @State private var out = false
+    func body(content: Content) -> some View {
+      content.scaleEffect(out ? 1.9 : 0.8).opacity(go ? (out ? 0 : 0.9) : 0)
+        .onAppear { guard go else { return }; withAnimation(.easeOut(duration: 0.5)) { out = true } }
+    }
+  }
+}
+
+/// Sun rays turning slowly behind a new best. Still under Reduce Motion.
+struct BestBurst: View {
+  @Environment(\.accessibilityReduceMotion) private var reduceMotion
+  @State private var turn = false
+  @State private var shown = false
+  var body: some View {
+    Canvas { g, size in
+      let c = CGPoint(x: size.width / 2, y: size.height / 2), r = min(size.width, size.height) / 2
+      for i in 0..<14 {
+        let a = Double(i) / 14 * 2 * .pi
+        var p = Path()
+        p.move(to: c)
+        p.addLine(to: CGPoint(x: c.x + cos(a - 0.09) * r, y: c.y + sin(a - 0.09) * r))
+        p.addLine(to: CGPoint(x: c.x + cos(a + 0.09) * r, y: c.y + sin(a + 0.09) * r))
+        p.closeSubpath()
+        g.fill(p, with: .radialGradient(Gradient(colors: [Theme.sun.opacity(0.55), .clear]), center: c, startRadius: 0, endRadius: r))
+      }
+    }
+    .rotationEffect(.degrees(turn ? 360 : 0))
+    .scaleEffect(shown ? 1 : 0.2)
+    .opacity(shown ? 1 : 0)
+    .blendMode(.plusLighter)
+    .accessibilityHidden(true)
+    .onAppear {
+      withAnimation(reduceMotion ? nil : .spring(duration: 0.5, bounce: 0.4)) { shown = true }
+      guard !reduceMotion else { return }
+      withAnimation(.linear(duration: 14).repeatForever(autoreverses: false)) { turn = true }
+    }
+  }
+}
+
+/// How close a lost run came: a bar that fills to the share of the level done, and a word for it.
+struct SoClose: View {
+  let fraction: Double
+  let boss: Bool
+  let shown: Bool
+  var body: some View {
+    let pct = Int((fraction * 100).rounded(.down))
+    let word = fraction >= 0.85 ? "So close!" : fraction >= 0.6 ? "Nearly there" : fraction >= 0.3 ? "Good start" : "Warming up"
+    let hot = fraction >= 0.85
+    VStack(alignment: .leading, spacing: 6) {
+      HStack {
+        Text(word).font(.game(.headline, .black)).foregroundStyle(hot ? Theme.sun : Theme.ink)
+        Spacer(minLength: 6)
+        Text(boss ? "Boss \(pct)% down" : "\(pct)% cleared").font(.game(.subheadline, .heavy)).monospacedDigit().foregroundStyle(Theme.ink)
+      }
+      GeometryReader { geo in
+        ZStack(alignment: .leading) {
+          Capsule().fill(.white.opacity(0.12))
+          Capsule().fill(LinearGradient(colors: hot ? [Theme.sun, Theme.orange] : [Theme.cyan, Theme.violet], startPoint: .leading, endPoint: .trailing))
+            .frame(width: max(12, geo.size.width * (shown ? fraction : 0)))
+            .animation(.spring(duration: 0.9, bounce: 0.2), value: shown)
+          // The finish line.
+          Rectangle().fill(.white.opacity(0.8)).frame(width: 2).frame(maxWidth: .infinity, alignment: .trailing)
+        }
+      }
+      .frame(height: 12)
+    }
+    .padding(12)
+    .background(RoundedRectangle(cornerRadius: 16, style: .continuous).fill(.white.opacity(0.05)))
+    .accessibilityElement(children: .ignore)
+    .accessibilityLabel("\(word) \(boss ? "Boss \(pct) percent down" : "\(pct) percent cleared")")
+    .accessibilityIdentifier("soClose")
+  }
+}
+
+/// The default button breathes a little glow, so it's clear where the next tap goes. Still under Reduce Motion.
+struct Beckon: ViewModifier {
+  let on: Bool
+  @Environment(\.accessibilityReduceMotion) private var reduceMotion
+  @State private var glow = false
+  func body(content: Content) -> some View {
+    content
+      .shadow(color: Theme.sun.opacity(on && glow ? 0.75 : 0.25), radius: on && glow ? 18 : 8)
+      .onAppear {
+        guard !reduceMotion else { return }
+        withAnimation(.easeInOut(duration: 1.1).repeatForever(autoreverses: true)) { glow = true }
+      }
   }
 }

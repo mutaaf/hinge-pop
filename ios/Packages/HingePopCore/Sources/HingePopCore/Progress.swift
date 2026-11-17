@@ -87,6 +87,29 @@ public struct GameProgress: Codable, Equatable, Sendable {
 
   public var totalStars: Int { stars.values.reduce(0, +) }
 
+  // MARK: Daily streak (read from the days in `dailyBest`, so it needs nothing new in the save)
+
+  /// A day's key in `dailyBest`: "2026-11-7", unpadded.
+  public static func dailyKey(year: Int, month: Int, day: Int) -> String { "\(year)-\(month)-\(day)" }
+
+  /// Days in a row with a daily played, counting back from today, or from yesterday while today's is still open.
+  public func dailyStreak(year: Int, month: Int, day: Int) -> Int {
+    var cal = Calendar(identifier: .gregorian)
+    cal.timeZone = TimeZone(identifier: "UTC")!
+    guard var date = cal.date(from: DateComponents(year: year, month: month, day: day)) else { return 0 }
+    func key(_ d: Date) -> String {
+      let c = cal.dateComponents([.year, .month, .day], from: d)
+      return Self.dailyKey(year: c.year ?? 0, month: c.month ?? 0, day: c.day ?? 0)
+    }
+    if dailyBest[key(date)] == nil { date = cal.date(byAdding: .day, value: -1, to: date)! }
+    var n = 0
+    while dailyBest[key(date)] != nil, n < 10_000 {
+      n += 1
+      date = cal.date(byAdding: .day, value: -1, to: date)!
+    }
+    return n
+  }
+
   // MARK: Mastery: challenges, grades and medals
 
   /// Challenges earned, per level: bit i is `Challenges.for(level:)[i]`. Optional so older saves load.

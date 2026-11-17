@@ -26,7 +26,7 @@ final class ArtTests: XCTestCase {
     func testEverythingElseRenders() {
         for k in PowerKind.allCases { XCTAssertEqual(Art.power(k, size: 40, scale: 2).width, 80, k.rawValue) }
         for k in UIGlyph.allCases { XCTAssertEqual(Art.glyph(k, size: 44, scale: 3).height, 132, k.rawValue) }
-        var fx: [FXKind] = [.popBurst, .shockwave, .particleStar]
+        var fx: [FXKind] = [.popBurst, .shockwave, .particleStar, .shard, .crack, .glint]
         fx += (0..<Art.confettiVariants).map { .confetti($0) }
         for k in fx {
             let i = Art.fx(k, size: 32, scale: 2)

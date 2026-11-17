@@ -235,6 +235,7 @@ for (i, (k, n)) in arenaNames.enumerated() {
     label(n, x: x + 65, y: 1214, size: 14, center: true)
 }
 let fxList: [(FXKind, String)] = [(.popBurst, "Pop Burst"), (.shockwave, "Shockwave"), (.particleStar, "Particle Star")]
+for k in [FXKind.shard, .crack, .glint] { writePNG(Art.fx(k, size: 128, scale: 2), "fx-\(k).png") }
 for (i, (k, n)) in fxList.enumerated() {
     let x = 650 + CGFloat(i) * 200
     put(Art.fx(k, size: 170, scale: scale), x: x, y: 966, w: 170, h: 170)

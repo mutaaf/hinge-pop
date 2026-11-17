@@ -112,6 +112,28 @@ final class GameScene: SKScene {
   private let ribbonSnap = SKUniform(name: "u_sp", vectorFloat2: .init(0.5, 1))
   private var snapAge = 1.0
   private var snapAt: Float = 0.5
+  /// The snap's recharge, drawn on the line itself: the light fills in from both ends and flares when ready.
+  private let ribbonCharge = SKUniform(name: "u_charge", float: 1)
+  private let ribbonReady = SKUniform(name: "u_ready", float: 0)
+  /// A crossing burns a red flare into the line where it got through: position along the ribbon, age.
+  private let ribbonHurt = SKUniform(name: "u_hp", vectorFloat2: .init(0.5, 1))
+  private var readyFlare = 0.0
+  private var hurtAge = 1.0
+  private var hurtAt: Float = 0.5
+  /// Film shards, glow puffs and flung streak pieces fly in the world; stars and shield pieces in the still overlay.
+  private var debris: Debris!
+  private var overDebris: Debris!
+  private var shardTex: SKTexture?
+  private var glintTex: SKTexture?
+  private var starTex: SKTexture?
+  /// For a moment after a snap, flung bubbles leave streaks behind them.
+  private var streakUntil = -1.0
+  private var lastStreak = 0.0
+  private var streakFrom: [Int: CGPoint] = [:]
+  /// Fever's beat: the screen breathes on it while fever runs.
+  private var feverBeat = 0.0
+  /// Stars flying to the top when a level is cleared, and how many have landed.
+  private var starsLanded = 0
 
   init(scale: CGFloat) {
     displayScale = scale
@@ -198,11 +220,30 @@ final class GameScene: SKScene {
       off += sw * 0.16 * sin(sd * 90.0);
       float dc = (uv.x - 0.5 - off) * u_core;
       float core = exp(-dc * dc) * (1.0 + sw * 1.5);
+      // Recharge: the light fills in from both ends toward the middle, with a bright bead at the front.
+      float fromEnd = 1.0 - abs(uv.y - 0.5) * 2.0;
+      float filled = u_charge >= 0.999 ? 1.0 : 1.0 - smoothstep(u_charge - 0.02, u_charge + 0.02, fromEnd);
+      float fd = (fromEnd - u_charge) * 40.0;
+      float front = u_charge >= 0.999 ? 0.0 : exp(-fd * fd);
+      a *= 0.4 + 0.6 * filled;
+      core *= 0.45 + 0.55 * filled;
+      core += front * exp(-dc * dc * 0.15) * 1.4;
+      // Ready: a flash that runs out from the middle to both ends.
+      float rd = fromEnd - u_ready;
+      float ready = u_ready * (exp(-rd * rd * 40.0) * 1.5 + 0.35) * exp(-c * c * 6.0);
+      // A crossing: a red flare where it got through.
+      float hd = (uv.y - u_hp.x) * 7.0;
+      float hurt = exp(-hd * hd) * (1.0 - u_hp.y) * (1.0 - u_hp.y);
+      float hx = exp(-c * c * 5.0);
       col = col * a + vec3(1.0) * core * 0.95;
+      col = mix(col, vec3(1.0, 0.16, 0.26) * (a + core + 1.1 * hx), clamp(hurt, 0.0, 1.0));
+      a += hurt * 1.0 * hx;
+      col += vec3(0.6, 0.95, 1.0) * ready;
+      a += ready * 0.6;
       gl_FragColor = vec4(col, min(1.0, a + core));
     }
     """)
-    shader.uniforms = [ribbonTime, ribbonGlow, ribbonColor, ribbonAmp, ribbonCore, ribbonSnap]
+    shader.uniforms = [ribbonTime, ribbonGlow, ribbonColor, ribbonAmp, ribbonCore, ribbonSnap, ribbonCharge, ribbonReady, ribbonHurt]
     ribbon.shader = shader
     ribbon.blendMode = .add
     ribbon.zPosition = 1
@@ -263,12 +304,15 @@ final class GameScene: SKScene {
       emitters.append(e)
     }
     feel = FeelLayer(scene: self, dot: dot, scale: scale)
+    debris = Debris(parent: world, count: 220, z: 6.3)
+    overDebris = Debris(parent: feel.overlay, count: 40, z: 16)
+    overDebris.onLand = { [unowned self] tag, at in self.starLanded(tag, at: at) }
     feel.onHeartbeat = { [unowned self] danger in
       Haptics.shared.play(.heartbeat)
       Sound.shared.blip(danger >= 1 ? 62 : 55, 0.14, .sine, gain: 0.12, fall: 0.3)
     }
     // Pools filled up front, so the first busy moment of a level never makes a node.
-    for _ in 0..<48 { spareSprites.append(SKSpriteNode()) }
+    for _ in 0..<160 { spareSprites.append(SKSpriteNode()) }
     for _ in 0..<32 { let n = ScoreNode(); n.reserve(8); spareScores.append(n) }
     for _ in 0..<24 { sparePuppets.append(BubbleNode()) }
     feel.counter.reserve(6)
@@ -364,6 +408,15 @@ final class GameScene: SKScene {
     snapFlare = max(0, snapFlare - dt * 2)
     snapAge = min(1, snapAge + rdt / 0.42)
     ribbonSnap.vectorFloat2Value = .init(snapAt, Float(snapAge))
+    readyFlare = max(0, readyFlare - rdt / 0.45)
+    ribbonReady.floatValue = Float(readyFlare)
+    hurtAge = min(1, hurtAge + rdt / 0.7)
+    ribbonHurt.vectorFloat2Value = .init(hurtAt, Float(hurtAge))
+    if let g = session.game {
+      // The readiest player's recharge (solo: yours). Full when no one is cooling down.
+      let cd = max(0.1, g.tuning.snapCooldown)
+      ribbonCharge.floatValue = Float(g.players.map { 1 - min(1, $0.snapLeft / cd) }.max() ?? 1)
+    }
     // The camera: shake, shoves and zoom punches, all from the feel layer. The backdrop stays put.
     let (at, zoom) = feel.camera(origin: worldOrigin)
     world.position = at
@@ -382,6 +435,9 @@ final class GameScene: SKScene {
     lap(2)
     #endif
     drawBubbles(game, alpha: alpha)
+    drawStreaks(game)
+    debris.update(visualDt)
+    overDebris.update(rdt)
     #if DEBUG
     lap(3)
     #endif
@@ -421,6 +477,8 @@ final class GameScene: SKScene {
     comboTiers = [0, 0]
     overtime = 0; feverNow = 0
     recentSplits.removeAll()
+    debris.reset(); overDebris.reset()
+    streakUntil = -1; streakFrom.removeAll(); readyFlare = 0; hurtAge = 1; starsLanded = 0; feverBeat = 0
     world.setScale(1); world.speed = 1
     twists.reset(game, arena: session?.arena ?? game.spec.arena)
     prewarm(game)
@@ -452,6 +510,9 @@ final class GameScene: SKScene {
       for k in PowerKind.allCases { _ = Art.power(k, size: power, scale: scale) }
       for k in [FXKind.popBurst, .particleStar] { _ = Art.fx(k, size: 96, scale: scale) }
       _ = Art.fx(.shockwave, size: 128, scale: scale)
+      for k in [FXKind.shard, .glint] { _ = Art.fx(k, size: 64, scale: scale) }
+      _ = Art.fx(.crack, size: 512, scale: scale)
+      _ = Art.glyph(.starOn, size: 72, scale: scale)
       for i in 0..<Art.confettiVariants { _ = Art.fx(.confetti(i), size: 24, scale: scale) }
       // The art is cached now, so these textures are cheap to make on the main thread.
       await MainActor.run { [weak self] in
@@ -459,6 +520,10 @@ final class GameScene: SKScene {
         let bits = (0..<Art.confettiVariants).map { self.fxTexture(.confetti($0), size: 24) }
         self.feel.dress(confetti: bits, ring: self.fxTexture(.shockwave, size: 128))
         _ = self.fxTexture(.popBurst, size: 96)
+        self.shardTex = self.fxTexture(.shard, size: 64)
+        self.glintTex = self.fxTexture(.glint, size: 64)
+        self.starTex = SKTexture(cgImage: Art.glyph(.starOn, size: 72, scale: scale))
+        self.feel.crackTexture = self.fxTexture(.crack, size: 512)
       }
     }
   }
@@ -644,7 +709,7 @@ final class GameScene: SKScene {
     ribbonColor.vectorFloat3Value = .init(Float(r), Float(g), Float(b))
     ribbonTime.floatValue = reduceMotion ? 0 : Float(clock.truncatingRemainder(dividingBy: 1000))
     // A recharging snap dims the line, so you can see at a glance whether it's ready.
-    let cooling = game.players.allSatisfy { $0.snapLeft > 0 } ? 0.62 : 1
+    let cooling = game.players.allSatisfy { $0.snapLeft > 0 } ? 0.85 : 1
     ribbonGlow.floatValue = Float((0.85 + pulse * 0.7 + meter * 0.12 + glow * 0.4) * cooling + snapFlare * 1.6 + twists.hingeBoost)
     let width = (84 + CGFloat(pulse) * 60 + CGFloat(glow) * 34 + CGFloat(snapFlare) * 150) * CGFloat(max(1, min(1.6, game.scale)))
     // The light runs edge to edge, past the safe area. Only play stops there.
@@ -803,9 +868,11 @@ final class GameScene: SKScene {
       }
       // Squash along the direction of the hit, keeping the face upright (or turned to its player).
       let q = reduceMotion ? 0 : CGFloat(b.sq) * 0.16
+      // A slow jelly breath of its own, so a crowd of bubbles never looks pasted on. Bigger ones wobble slower.
+      let breath = reduceMotion ? 0 : CGFloat(sin(clock * (3.4 - Double(b.size) * 0.35 + Double(b.id % 5) * 0.21) + Double(b.id) * 1.7)) * 0.022
       node.squash.zRotation = -CGFloat(b.sqA)
-      node.squash.xScale = (1 - q) * (1 - flipDip)
-      node.squash.yScale = (1 + q) * (1 - flipDip * 0.4)
+      node.squash.xScale = (1 - q) * (1 - flipDip) * (1 + breath)
+      node.squash.yScale = (1 + q) * (1 - flipDip * 0.4) * (1 - breath)
       node.sprite.zRotation = CGFloat(b.sqA) + node.face
       // A hit flashes the bubble white for a moment (bosses, armour).
       if node.flash > 0 {
@@ -1048,21 +1115,165 @@ final class GameScene: SKScene {
   ])
   private static let bossHitAction = SKAction.sequence([.scale(to: 0.9, duration: 0.03), .scale(to: 1.04, duration: 0.06), .scale(to: 1, duration: 0.05)])
 
-  /// Every pop is layered: the bubble squashes and blows out, a white core flashes, the burst ring and the
-  /// biome's sparks fly, and bigger bubbles add glitter and a tinted shockwave. All of it scales with size.
-  private func popFX(at p: CGPoint, r: CGFloat, size: Int) {
+  /// Every pop is layered: the bubble squashes and blows out, a white core flashes, a soft halo in the bubble's
+  /// own colour blooms, curls of its film fly off and tumble, the burst ring and the biome's sparks fly, and
+  /// bigger bubbles add glitter and a tinted shockwave. All of it scales with size, and grows with the combo.
+  private func popFX(at p: CGPoint, r: CGFloat, size: Int, kind: ActorKind? = nil) {
     guard !reduceMotion else { return }
     let palette = (session?.arena ?? .classic).sparkColors
+    let tier = ComboTier.tier(maxCombo)
+    let heat = 1 + CGFloat(tier) * 0.08
+    let tint = kind.map(Self.tint) ?? palette[size % palette.count]
     ghost(at: p, r: r)
     let core = sprite(fxTextures["softDot"], size: CGSize(width: r * 1.3, height: r * 1.3), at: p, z: 6.5, add: true)
     play(core, Self.coreAction)
+    // The halo: the bubble's colour, lingering a beat longer than the white core.
+    debris.emit(fxTextures["softDot"], at: p, life: 0.26, size: CGSize(width: r * 3.6 * heat, height: r * 3.6 * heat),
+                scale: (0.55, 1.25), alpha: 0.75, color: tint, add: true)
     let pop = sprite(fxTexture(.popBurst, size: 96), size: CGSize(width: r * 2.3, height: r * 2.3), at: p, z: 6)
     pop.zRotation = .random(in: 0...(2 * .pi))
     play(pop, Self.popAction)
+    shards(at: p, r: r, count: [12, 9, 7, 5][max(0, min(3, size))] + min(6, tier), tint: tint, heat: heat)
     let counts = [30, 20, 13, 10]
-    sparks(at: p, r: r, count: counts[max(0, min(3, size))], color: palette[size % palette.count])
-    if size <= 1 { sparks(at: p, r: r, count: size == 0 ? 16 : 9, color: .white, fast: true) }
-    if size <= 2 { shockwave(at: p, r: r * (size == 0 ? 2.1 : size == 1 ? 1.5 : 1.1), tint: palette[(size + 1) % palette.count]) } else { ripple(p) }
+    sparks(at: p, r: r, count: counts[max(0, min(3, size))] + tier * 2, color: palette[size % palette.count])
+    if size <= 1 || tier >= 3 { sparks(at: p, r: r, count: size == 0 ? 16 : 9, color: tier >= 3 ? ComboTier.color(tier) : .white, fast: true) }
+    if size <= 2 || tier >= 4 {
+      shockwave(at: p, r: r * (size == 0 ? 2.1 : size == 1 ? 1.5 : 1.1) * heat, tint: tier >= 4 ? ComboTier.color(tier) : palette[(size + 1) % palette.count])
+    } else { ripple(p) }
+    // Fever pops throw a rainbow glint.
+    if feverNow > 0 {
+      let hue = CGFloat((clock * 0.6).truncatingRemainder(dividingBy: 1))
+      debris.emit(glintTex, at: p, spin: 3, rotation: .random(in: 0...1), life: 0.32, size: CGSize(width: r * 2.6, height: r * 2.6),
+                  scale: (1.2, 0.2), color: UIColor(hue: hue, saturation: 0.55, brightness: 1, alpha: 1), add: true)
+    }
+  }
+
+  /// Curls of bubble film thrown out of a pop. They tumble, fall and shrink, mostly in the bubble's colour.
+  private func shards(at p: CGPoint, r: CGFloat, count: Int, tint: UIColor, heat: CGFloat = 1, gravity: CGFloat = -900) {
+    guard !reduceMotion, shardTex != nil else { return }
+    let start = Double.random(in: 0...(2 * .pi))
+    for i in 0..<count {
+      let a = start + Double(i) / Double(count) * 2 * .pi + .random(in: -0.35...0.35)
+      let dir = CGVector(dx: cos(a), dy: sin(a))
+      let speed = r * .random(in: 4.2...8.5) * heat
+      let k = CGFloat.random(in: 0.65...1.2)
+      debris.emit(shardTex, at: CGPoint(x: p.x + dir.dx * r * 0.55, y: p.y + dir.dy * r * 0.55),
+                  v: CGVector(dx: dir.dx * speed, dy: dir.dy * speed), spin: .random(in: -16...16), rotation: CGFloat(a) - .pi / 2,
+                  life: .random(in: 0.34...0.62), gravity: gravity, drag: 2.6, size: CGSize(width: r * 0.62 * k, height: r * 0.62 * k),
+                  scale: (1, 0.35), color: i % 4 == 0 ? .white : tint)
+    }
+  }
+
+  /// Each kind's own colour, for its shards and halo.
+  static func tint(_ kind: ActorKind) -> UIColor {
+    switch kind {
+    case .basic: UIColor(red: 0.35, green: 0.78, blue: 1, alpha: 1)
+    case .fast: UIColor(red: 1, green: 0.4, blue: 0.82, alpha: 1)
+    case .armored: UIColor(red: 0.66, green: 0.72, blue: 0.86, alpha: 1)
+    case .magnetic: UIColor(red: 0.62, green: 0.45, blue: 1, alpha: 1)
+    case .repel: UIColor(red: 1, green: 0.42, blue: 0.3, alpha: 1)
+    case .golden: UIColor(red: 1, green: 0.84, blue: 0.32, alpha: 1)
+    case .frozen: UIColor(red: 0.66, green: 0.92, blue: 1, alpha: 1)
+    case .boss: UIColor(red: 0.74, green: 0.4, blue: 1, alpha: 1)
+    }
+  }
+
+  /// After a snap, everything it flung leaves a streak in its own colour, so you can see the throw.
+  private func drawStreaks(_ game: Game) {
+    guard clock < streakUntil, !reduceMotion else { if !streakFrom.isEmpty { streakFrom.removeAll() }; return }
+    guard clock - lastStreak >= 1.0 / 45 else { return }
+    lastStreak = clock
+    let fast = game.tuning.speeds[1] * game.scale * 1.8
+    for b in game.bubbles where b.kind != .boss {
+      guard let n = bubbleNodes[b.id], (b.vx * b.vx + b.vy * b.vy).squareRoot() > fast else { streakFrom[b.id] = nil; continue }
+      if let from = streakFrom[b.id], hypot(from.x - n.position.x, from.y - n.position.y) > 2 {
+        let t = sprite(fxTextures["softDot"], size: .zero, at: .zero, z: 4.8, add: true)
+        place(t, from: from, to: n.position, thickness: CGFloat(b.r) * 1.5)
+        t.color = Self.tint(b.kind)
+        t.colorBlendFactor = 1
+        t.alpha = 0.7
+        play(t, Self.streakAction)
+      }
+      streakFrom[b.id] = n.position
+    }
+  }
+  private static let streakAction = SKAction.group([.fadeOut(withDuration: 0.28), .scaleY(to: 0.3, duration: 0.28)])
+
+  /// The snap's pressure front: two walls of light run off the line, one each way, as the bubbles are thrown.
+  private func snapFronts(_ game: Game, strength: CGFloat) {
+    guard !reduceMotion else { return }
+    let lineAt = game.vertical ? CGFloat(game.hinge) : y(game.hinge)
+    let length = (game.vertical ? area.height : area.width) * 1.1
+    let reach = CGFloat(game.tuning.snapReach * game.scale) * 1.6 * strength
+    for dir: CGFloat in [-1, 1] {
+      let at = game.vertical ? CGPoint(x: lineAt, y: area.height / 2) : CGPoint(x: area.width / 2, y: lineAt)
+      let n = sprite(fxTextures["softDot"], size: game.vertical ? CGSize(width: 46, height: length) : CGSize(width: length, height: 46), at: at, z: 4.5, add: true)
+      n.color = UIColor(red: 0.55, green: 0.95, blue: 1, alpha: 1)
+      n.colorBlendFactor = 1
+      n.alpha = 0.85
+      play(n, Self.frontAction(vertical: game.vertical, dir: dir, reach: reach))
+    }
+  }
+  private static var fronts: [Int: SKAction] = [:]
+  /// One cached action per direction and reach (reach is rounded, so a level reuses the same few).
+  private static func frontAction(vertical: Bool, dir: CGFloat, reach: CGFloat) -> SKAction {
+    let key = (vertical ? 1 : 0) + (dir > 0 ? 2 : 0) + Int((reach / 10).rounded()) * 4
+    if let a = fronts[key] { return a }
+    let r = (reach / 10).rounded() * 10
+    let move = SKAction.moveBy(x: vertical ? dir * r : 0, y: vertical ? 0 : dir * r, duration: 0.36)
+    move.timingMode = .easeOut
+    let a = SKAction.group([move, .fadeOut(withDuration: 0.36), vertical ? .scaleX(to: 2.4, duration: 0.36) : .scaleY(to: 2.4, duration: 0.36)])
+    fronts[key] = a
+    return a
+  }
+
+  /// Shield pieces burst out of the HUD's shield row and fall away (solo only; the row sits top left).
+  private func shieldShatter(_ game: Game, lost index: Int) {
+    guard !reduceMotion, !game.versus, shardTex != nil else { return }
+    let at = CGPoint(x: 24 + CGFloat(index) * 26, y: y(game.top) - 6)
+    for i in 0..<12 {
+      let a = -Double.pi / 2 + .random(in: -1.3...1.3)
+      let speed = CGFloat.random(in: 160...420)
+      overDebris.emit(shardTex, at: at, v: CGVector(dx: cos(a) * speed, dy: sin(a) * speed * 0.6 + 120), spin: .random(in: -14...14),
+                      rotation: .random(in: 0...6), life: .random(in: 0.6...0.95), gravity: -1100, drag: 1.2,
+                      size: CGSize(width: 18, height: 18), scale: (1.1, 0.4),
+                      color: i % 3 == 0 ? .white : UIColor(red: 0.4, green: 0.86, blue: 1, alpha: 1))
+    }
+    overDebris.emit(glintTex, at: at, spin: 2, life: 0.35, size: CGSize(width: 90, height: 90), scale: (0.6, 1.4),
+                    color: UIColor(red: 1, green: 0.4, blue: 0.45, alpha: 1), add: true)
+  }
+
+  /// Level clear: the stars you earned burst out of the last pop and fly up to the top, one after another.
+  private func flyStars(_ game: Game) {
+    guard !game.versus, game.status == .won, starTex != nil else { return }
+    switch game.mode { case .campaign, .daily: break; default: return }
+    let n = game.stars
+    guard n > 0 else { return }
+    let top = max(area.height * 0.7, y(game.top) - 70)
+    let from = CGPoint(x: min(max(40, lastPopPoint.x), area.width - 40), y: min(max(40, lastPopPoint.y), area.height - 40))
+    for i in 0..<n {
+      let off = Double(i) - Double(n - 1) / 2
+      let home = CGPoint(x: area.width / 2 + CGFloat(off) * 64, y: top)
+      if reduceMotion {
+        overDebris.emit(starTex, at: home, life: 1.1, size: CGSize(width: 54, height: 54), tag: i)
+        continue
+      }
+      let a = Double.pi / 2 + off * 0.7
+      let speed = CGFloat.random(in: 340...420)
+      overDebris.emit(starTex, at: from, v: CGVector(dx: cos(a) * speed, dy: sin(a) * speed), spin: 10, life: 0.62 + Double(i) * 0.16,
+                      gravity: -500, drag: 3, size: CGSize(width: 58, height: 58), scale: (0.5, 1.15), home: home, homeAt: 0.28 + Double(i) * 0.12, tag: i)
+    }
+  }
+
+  /// A star arrives: it rings, flares and holds a moment.
+  private func starLanded(_ tag: Int, at p: CGPoint) {
+    guard !reduceMotion else { return }
+    starsLanded += 1
+    overDebris.emit(starTex, at: p, life: 0.9, size: CGSize(width: 58, height: 58), scale: (1.35, 1), color: .white)
+    overDebris.emit(glintTex, at: p, spin: 1.5, life: 0.4, size: CGSize(width: 130, height: 130), scale: (0.4, 1.3),
+                    color: UIColor(red: 1, green: 0.86, blue: 0.4, alpha: 1), add: true)
+    Haptics.shared.play(.star)
+    Sound.shared.blip(880 * pow(1.26, Double(tag)), 0.14, .sine, gain: 0.12)
   }
 
   /// Bubbles that left the game this frame, found by id once per frame.
@@ -1293,6 +1504,9 @@ final class GameScene: SKScene {
     feel.fever = feverNow
     drawLastOne(game, session: session)
     let combo: (Double, Double, Double)? = solo && session.overlay != .tour ? (p0.combo, p0.comboT, game.tuning.comboWindow) : nil
+    feel.comboMax = game.tuning.comboMax
+    feel.feverTime = game.tuning.feverTime
+    feel.feverLeft = p0.fever
     feel.update(dt: dt, area: area, scene: size, origin: worldOrigin, combo: combo, top: CGFloat(game.top))
   }
 
@@ -1420,6 +1634,13 @@ final class GameScene: SKScene {
     Sound.shared.crack(big: clap)
   }
 
+  /// Where a world point sits along the ribbon (its texture's v), for flares on the line.
+  private func ribbonU(_ p: CGPoint) -> Float {
+    guard let game = session?.game else { return 0.5 }
+    let length = game.vertical ? area.height - CGFloat(game.top) + worldOrigin.y : size.width
+    return game.vertical ? Float((p.y + worldOrigin.y) / max(1, length)) : Float(1 - (p.x + worldOrigin.x) / max(1, length))
+  }
+
   /// A rising combo: a callout at each threshold, with its own colour, a chime and a tap.
   private func comboCheck(at p: CGPoint) {
     guard let game = session?.game else { return }
@@ -1431,6 +1652,13 @@ final class GameScene: SKScene {
         let turn = facing(player: i), lift = up(turn)
         feel.callout(step.word, at: CGPoint(x: p.x + lift.dx * 70, y: p.y + lift.dy * 70), color: step.color, size: 0.8 + CGFloat(tier) * 0.06, facing: turn)
         feel.flash(0.05 + Double(tier) * 0.015, step.color)
+        // Higher rungs ring out from the pop that reached them.
+        if tier >= 3 && !reduceMotion {
+          shockwave(at: p, r: 50 + CGFloat(tier) * 14, tint: step.color)
+          debris.emit(glintTex, at: p, spin: 2.5, life: 0.36, size: CGSize(width: 110 + CGFloat(tier) * 16, height: 110 + CGFloat(tier) * 16),
+                      scale: (0.4, 1.3), color: step.color, add: true)
+          feel.punch(0.006 + Double(tier) * 0.002, at: p)
+        }
         bloom = max(bloom, 0.3 + Double(tier) * 0.1)
         Haptics.shared.play(tier == ComboTier.steps.count ? .comboTop : .combo)
         #if DEBUG
@@ -1507,12 +1735,17 @@ final class GameScene: SKScene {
     case let .split(x, gy, r, size, points, kind):
       let p = CGPoint(x: x, y: y(gy))
       recentSplits.append((p, CGFloat(r)))
-      popFX(at: p, r: CGFloat(r), size: size)
+      popFX(at: p, r: CGFloat(r), size: size, kind: kind)
       scoreText(points, at: p, color: kind == .golden ? UIColor(red: 1, green: 0.85, blue: 0.3, alpha: 1) : .white)
       sound.pop(size: size, combo: maxCombo)
       haptic.play(size == 0 ? .bigSplit : .split)
       // Big splits land with a freeze-frame and a knock; medium ones just a nudge.
-      if size == 0 { feel.hitStop(0.045); feel.shake(0.3) } else if size == 1 { feel.shake(0.12) }
+      // Big splits land with a freeze-frame, a knock and a lean in; medium ones a nudge. A hot combo hits harder.
+      let kick = 1 + Double(ComboTier.tier(maxCombo)) * 0.1
+      if size == 0 {
+        feel.hitStop(0.045); feel.shake(0.3 * kick); feel.punch(0.012, at: p)
+        feel.shove(CGVector(dx: .random(in: -1...1) * 6, dy: .random(in: -1...1) * 6))
+      } else if size == 1 { feel.shake(0.12 * kick); feel.shove(CGVector(dx: .random(in: -1...1) * 3, dy: .random(in: -1...1) * 3)) }
       #if DEBUG
       freeze("pop", after: 0.06)
       #endif
@@ -1520,7 +1753,7 @@ final class GameScene: SKScene {
       comboCheck(at: p)
     case let .pop(x, gy, r, size, points, kind):
       let p = CGPoint(x: x, y: y(gy))
-      popFX(at: p, r: CGFloat(r) * 1.2, size: size)
+      popFX(at: p, r: CGFloat(r) * 1.2, size: size, kind: kind)
       scoreText(points, at: p, color: kind == .golden ? UIColor(red: 1, green: 0.85, blue: 0.3, alpha: 1) : .white)
       sound.pop(size: size, combo: maxCombo)
       haptic.play(.pop)
@@ -1539,7 +1772,8 @@ final class GameScene: SKScene {
       let link = CGPoint(x: x, y: y(gy))
       if let last = lastChain, clock - lastChainClock < 0.05 { arc(from: last, to: link) }
       lastChain = link; lastChainClock = clock
-      popFX(at: link, r: CGFloat(r) * 1.3, size: 3)
+      // Each link of a chain lands a little bigger than the last.
+      popFX(at: link, r: CGFloat(r) * 1.3 * (1 + CGFloat(min(count, 10)) * 0.05), size: 3)
       scoreText(points, at: link, color: UIColor(red: 0.55, green: 1, blue: 0.75, alpha: 1))
       sound.blip((880 * Sound.ladder(1 + Double(min(count, 12)) * 0.5)).rounded(), 0.08)
       haptic.play(.chain)
@@ -1553,6 +1787,10 @@ final class GameScene: SKScene {
       feel.vignette(0.3, mask: half(player))
       sound.blip(150, 0.17, .saw, gain: 0.16); sound.thump(110, gain: 0.12)
       haptic.play(.crossing)
+      // The line burns red where it got through, and bits of the bubble's film scatter across it.
+      hurtAt = ribbonU(CGPoint(x: x, y: y(gy)))
+      hurtAge = 0
+      shards(at: CGPoint(x: x, y: y(gy)), r: CGFloat(r) * 0.7, count: 6, tint: UIColor(red: 1, green: 0.35, blue: 0.42, alpha: 1))
     case let .gatePass(x, gy, r):
       shockwave(at: CGPoint(x: x, y: y(gy)), r: CGFloat(r) * 0.7, tint: UIColor(red: 0.3, green: 1, blue: 0.62, alpha: 1))
       sound.blip(760, 0.09, .sine, gain: 0.14)
@@ -1619,7 +1857,17 @@ final class GameScene: SKScene {
         ripple(game.vertical ? CGPoint(x: CGFloat(game.hinge), y: y(along)) : CGPoint(x: CGFloat(along), y: y(game.hinge)))
       }
       snapFX(along: along, flung: flung, clap: false, player: snapper)
+      streakUntil = clock + 0.45
+      if let game = session?.game { snapFronts(game, strength: 1) }
     case .snapReady:
+      // Charged: a flash runs out along the line from the middle, with a crisp double tick.
+      readyFlare = 1
+      haptic.play(.snapReady)
+      if let game = session?.game, !reduceMotion {
+        let mid = game.vertical ? CGPoint(x: CGFloat(game.hinge), y: y((game.top + game.h) / 2)) : CGPoint(x: area.width / 2, y: y(game.hinge))
+        debris.emit(glintTex, at: mid, spin: 2, life: 0.4, size: CGSize(width: 120, height: 120), scale: (0.5, 1.4),
+                    color: UIColor(red: 0.6, green: 0.95, blue: 1, alpha: 1), add: true)
+      }
       sound.blip(880, 0.08, .sine, gain: 0.08)
     case let .rushStart(side):
       rushFlash = 1
@@ -1660,6 +1908,8 @@ final class GameScene: SKScene {
         ripple(mid)
       }
       snapFX(along: 0, flung: flung, clap: true)
+      streakUntil = clock + 0.5
+      if let game = session?.game { snapFronts(game, strength: 1.6) }
       sound.blip(1200 + Double(min(flung, 6)) * 80, 0.16, .square, gain: 0.08)
     case let .bossWindup(x, gy, r):
       shockwave(at: CGPoint(x: x, y: y(gy)), r: CGFloat(r), tint: UIColor(red: 1, green: 0.25, blue: 0.3, alpha: 1))
@@ -1727,6 +1977,7 @@ final class GameScene: SKScene {
       }
       sound.blip(80, 0.4, .square, gain: 0.2); sound.thump(48, gain: 0.3)
       haptic.play(.shieldLost)
+      if let game = session?.game, game.players.indices.contains(player) { shieldShatter(game, lost: game.players[player].shields) }
       #if DEBUG
       freeze("shield", after: 0.12)
       #endif
@@ -1780,7 +2031,7 @@ final class GameScene: SKScene {
       if kind.tier == .doom { feel.warnPulse(0.8, color: tint) } else { feel.warnPulse(0.35, color: tint) }
       sound.blip(kind.tier == .doom ? 110 : 180, 0.45, .saw, gain: 0.12, fall: -0.5); sound.blip(kind.tier == .doom ? 116 : 190, 0.45, .saw, gain: 0.08, fall: -0.5)
       haptic.play(.villain)
-    case let .villainStruck(kind, x, gy, r, _, _):
+    case let .villainStruck(kind, x, gy, r, player, _):
       let p = CGPoint(x: x, y: y(gy)), tint = kind.uiTint
       burst(at: p, r: CGFloat(r), particles: 10)
       sparks(at: p, r: CGFloat(r) * 1.2, count: 34, color: tint, fast: true)
@@ -1789,6 +2040,12 @@ final class GameScene: SKScene {
       feel.punch(0.04, at: p)
       sound.blip(90, 0.3, .square, gain: 0.18, fall: -0.6); sound.crack()
       haptic.play(.villainHit)
+      // A bite: the glass cracks where it struck, everything jolts and catches, and the edges flush crimson.
+      feel.crack(at: p, size: CGFloat(r) * (kind.tier == .brute ? 9 : 7), color: tint)
+      feel.shake(kind.tier == .brute ? 0.85 : 0.6)
+      feel.hitStop(0.07, force: true)
+      feel.vignette(kind.tier == .brute ? 0.85 : 0.6, mask: half(player))
+      shards(at: p, r: CGFloat(r), count: 10, tint: tint)
       #if DEBUG
       freeze("villain", after: 0.1)
       #endif
@@ -1815,6 +2072,7 @@ final class GameScene: SKScene {
       }
       sound.thump(40, gain: 0.35); sound.blip(70, 1.1, .saw, gain: 0.2, fall: -0.7)
       haptic.play(.doom)
+      feel.crack(at: p, size: max(area.width, area.height) * 1.1, color: tint)
       #if DEBUG
       freeze("doom", after: 0.15)
       #endif
@@ -1885,6 +2143,7 @@ final class GameScene: SKScene {
           self.ripple(CGPoint(x: self.area.width * p.x, y: self.area.height * p.y))
         }
         self.feel.confetti()
+        if let game = self.session?.game { self.flyStars(game) }
       }
     } else {
       feel.vignette(1)

@@ -10,7 +10,9 @@ public enum ArenaKind: String, CaseIterable, Sendable {
     case candy, dunes, storm, crystal, haunted, circuit, jungle, clouds, clockwork
 }
 public enum UIGlyph: String, CaseIterable, Sendable { case shieldOn, shieldOff, starOn, starOff, play, pause, settings, lock }
-public enum FXKind: Hashable, Sendable { case popBurst, shockwave, particleStar, confetti(Int) }
+/// `shard` is a curl of bubble film flung from a pop, `crack` a screen crack from a villain's bite, `glint` a
+/// four-point flare for stars and sparkles. All three are white, so the game tints them at draw time.
+public enum FXKind: Hashable, Sendable { case popBurst, shockwave, particleStar, confetti(Int), shard, crack, glint }
 
 public enum Art {
     /// Number of distinct confetti pieces. `FXKind.confetti(n)` wraps, so any Int is valid.
