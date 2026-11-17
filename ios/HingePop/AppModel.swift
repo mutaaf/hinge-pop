@@ -185,13 +185,19 @@ enum Debug {
 
   /// -snap <file.png> [-snapSize WxH] [-snapAfter s]: draws the window to a PNG after a moment, then quits.
   /// For looking at screens without a simulator (a Mac Catalyst debug build runs it on the desktop).
-  @MainActor static func snapshotIfAsked() async {
+  @MainActor static func snapshotIfAsked(_ app: AppModel) async {
     guard let path = string("-snap") else { return }
     let scene = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first
     if let size = string("-snapSize")?.split(separator: "x").compactMap({ Double($0) }), size.count == 2, let scene {
       let s = CGSize(width: size[0], height: size[1])
       scene.sizeRestrictions?.minimumSize = s
       scene.sizeRestrictions?.maximumSize = s
+      // A resize mid-game pauses it (it reads as turning the device), so a game starts over at the new size.
+      if case .play(let mode) = app.route {
+        app.route = .home
+        try? await Task.sleep(for: .milliseconds(400))
+        app.route = .play(mode)
+      }
     }
     try? await Task.sleep(for: .seconds(Double(string("-snapAfter") ?? "") ?? 3))
     guard let window = scene?.windows.first(where: \.isKeyWindow) ?? scene?.windows.first else { exit(2) }
