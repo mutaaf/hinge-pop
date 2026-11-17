@@ -16,6 +16,15 @@ final class AppModel {
     arcadeFrom = wave
     route = .play(.arcade(seed: UInt64(Date().timeIntervalSince1970)))
   }
+  /// Goes to a screen (RootView animates the change; the button styles give the tap its tick).
+  func go(_ to: Route) { route = to }
+  /// The level the journey last left from, so arriving there glides on to the next stop like a trip.
+  var journeyFrom: Int?
+  /// Days in a row with a daily played (today's still counts as open until midnight).
+  var dailyStreak: Int {
+    let c = Calendar.current.dateComponents([.year, .month, .day], from: Date())
+    return progress.dailyStreak(year: c.year ?? 2026, month: c.month ?? 1, day: c.day ?? 1)
+  }
   /// This version's update card, when there's one to show.
   var updateNotes: UpdateNotes?
   /// The card was forced with -whatsNew (debug only), so closing it doesn't record the version.
@@ -172,6 +181,31 @@ enum Debug {
     let url = dir.appendingPathComponent("hingepop.ready")
     let text = ((try? String(contentsOf: url, encoding: .utf8)) ?? "") + token + "\n"
     try? text.write(to: url, atomically: true, encoding: .utf8)
+  }
+
+  /// -snap <file.png> [-snapSize WxH] [-snapAfter s]: draws the window to a PNG after a moment, then quits.
+  /// For looking at screens without a simulator (a Mac Catalyst debug build runs it on the desktop).
+  @MainActor static func snapshotIfAsked(_ app: AppModel) async {
+    guard let path = string("-snap") else { return }
+    let scene = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first
+    if let size = string("-snapSize")?.split(separator: "x").compactMap({ Double($0) }), size.count == 2, let scene {
+      let s = CGSize(width: size[0], height: size[1])
+      scene.sizeRestrictions?.minimumSize = s
+      scene.sizeRestrictions?.maximumSize = s
+      // A resize mid-game pauses it (it reads as turning the device), so a game starts over at the new size.
+      if case .play(let mode) = app.route {
+        app.route = .home
+        try? await Task.sleep(for: .milliseconds(400))
+        app.route = .play(mode)
+      }
+    }
+    try? await Task.sleep(for: .seconds(Double(string("-snapAfter") ?? "") ?? 3))
+    guard let window = scene?.windows.first(where: \.isKeyWindow) ?? scene?.windows.first else { exit(2) }
+    let image = UIGraphicsImageRenderer(bounds: window.bounds).image { _ in
+      window.drawHierarchy(in: window.bounds, afterScreenUpdates: true)
+    }
+    try? image.pngData()?.write(to: URL(fileURLWithPath: path))
+    exit(0)
   }
 }
 #endif

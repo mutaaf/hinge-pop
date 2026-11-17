@@ -228,4 +228,25 @@ final class ArcadeProgressTests: XCTestCase {
     c.continueArcade(from: 10)
     XCTAssertEqual(c.startWave, 1, "only arcade continues")
   }
+
+  func testDailyStreakCountsDaysInARow() {
+    var p = GameProgress()
+    XCTAssertEqual(p.dailyStreak(year: 2026, month: 11, day: 17), 0)
+    // Across a month end, and a loss (score 0) still counts as played.
+    for (m, d) in [(10, 30), (10, 31), (11, 1), (11, 2)] { p.dailyBest[GameProgress.dailyKey(year: 2026, month: m, day: d)] = 0 }
+    XCTAssertEqual(p.dailyStreak(year: 2026, month: 11, day: 2), 4, "today played")
+    XCTAssertEqual(p.dailyStreak(year: 2026, month: 11, day: 3), 4, "today still open keeps yesterday's run")
+    XCTAssertEqual(p.dailyStreak(year: 2026, month: 11, day: 4), 0, "a missed day ends it")
+    p.dailyBest["2026-11-4"] = 900
+    XCTAssertEqual(p.dailyStreak(year: 2026, month: 11, day: 4), 1)
+  }
+
+  func testClearedFractionRunsFromNothingToAll() {
+    let g = Game(mode: .campaign(12), width: 390, height: 760, top: 70, seed: 5)
+    XCTAssertLessThan(g.clearedFraction, 0.05, "nothing popped yet")
+    g.clearScene()
+    XCTAssertEqual(g.clearedFraction, 1, accuracy: 0.001, "an empty arena with nothing to come is all done")
+    let boss = Game(mode: .campaign(10), width: 390, height: 760, top: 70, seed: 5)
+    XCTAssertEqual(boss.clearedFraction, 0, accuracy: 0.001, "an untouched boss")
+  }
 }
