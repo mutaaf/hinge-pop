@@ -8,6 +8,9 @@ func drawFX(_ k: FXKind, _ c: CGContext) {
     case .shockwave: drawShockwave(c)
     case .particleStar: drawParticle(c)
     case .confetti(let n): drawConfetti(n, c)
+    case .shard: drawShard(c)
+    case .crack: drawCrack(c)
+    case .glint: drawGlint(c)
     }
 }
 
@@ -86,4 +89,78 @@ private func drawConfetti(_ n: Int, _ c: CGContext) {
             c.stroke(shape, lo.alpha(0.7), 0.028)
         }
     }
+}
+
+/// A curl of bubble film: a thin crescent, bright along its outer edge like the rim of the bubble it came from.
+private func drawShard(_ c: CGContext) {
+    let p = CGMutablePath()
+    p.move(to: P(0.1, 0.62))
+    p.addQuadCurve(to: P(0.9, 0.62), control: P(0.5, 0.06))
+    p.addQuadCurve(to: P(0.1, 0.62), control: P(0.5, 0.34))
+    p.closeSubpath()
+    c.glow(.white, P(0.5, 0.42), 0.46, 0.22)
+    c.fillLinear(p, grad([(0, C.white), (0.45, C.white.alpha(0.86)), (1, C.white.alpha(0.5))]), P(0.5, 0.2), P(0.5, 0.62))
+    let rim = CGMutablePath()
+    rim.move(to: P(0.16, 0.58))
+    rim.addQuadCurve(to: P(0.84, 0.58), control: P(0.5, 0.1))
+    c.stroke(rim, C.white, 0.035)
+    c.glow(.white, P(0.42, 0.33), 0.09, 1)
+}
+
+/// Glass struck from the centre: straight rays that kink and fork as they run out, rings of chords between
+/// them like a web, and a crushed ring at the point of impact.
+private func drawCrack(_ c: CGContext) {
+    var d = Dice(77)
+    let centre = mid
+    c.glow(.white, centre, 0.14, 0.5)
+    let rays = 9
+    var paths: [[CGPoint]] = []
+    for i in 0..<rays {
+        var a = CGFloat(i) / CGFloat(rays) * 2 * .pi + d.range(-0.2, 0.2)
+        var at = P(centre.x + cos(a) * 0.06, centre.y + sin(a) * 0.06)
+        var pts = [at]
+        let reach = d.range(0.36, 0.47)
+        var r: CGFloat = 0.06
+        while r < reach {
+            let step = d.range(0.06, 0.11)
+            a += d.range(-0.14, 0.14)
+            at = P(at.x + cos(a) * step, at.y + sin(a) * step)
+            pts.append(at)
+            r += step
+            if r > 0.16, d.unit() < 0.35 {
+                let b = a + (d.unit() < 0.5 ? 1 : -1) * d.range(0.35, 0.7)
+                let s = d.range(0.06, 0.12)
+                c.stroke(polyline([at, P(at.x + cos(b) * s, at.y + sin(b) * s)]), C.white.alpha(0.7), 0.004, join: .miter)
+            }
+        }
+        paths.append(pts)
+    }
+    for pts in paths {
+        c.stroke(polyline(pts), C.white.alpha(0.28), 0.016, join: .miter)
+        c.stroke(polyline(pts), C.white, 0.0065, join: .miter)
+    }
+    // Chords between neighbouring rays: the web.
+    for ringAt in [2, 3] {
+        for i in 0..<rays {
+            let a = paths[i], b = paths[(i + 1) % rays]
+            guard a.count > ringAt, b.count > ringAt, d.unit() < 0.8 else { continue }
+            c.stroke(polyline([a[ringAt], b[ringAt]]), C.white.alpha(0.6), 0.004, join: .miter)
+        }
+    }
+    var ring: [CGPoint] = []
+    for k in 0...12 {
+        let a = CGFloat(k) / 12 * 2 * .pi
+        let r = 0.06 + d.range(-0.012, 0.012)
+        ring.append(P(centre.x + cos(a) * r, centre.y + sin(a) * r))
+    }
+    c.stroke(polyline(ring), C.white, 0.007, join: .miter)
+    c.glow(.white, centre, 0.045, 1)
+}
+
+/// A four-point flare with a soft halo: stars landing, sparkles, the ready flash on the line.
+private func drawGlint(_ c: CGContext) {
+    c.glow(.white, mid, 0.42, 0.45)
+    c.fill(polygon(starPoints(mid, 0.48, 0.05, 4)), C.white)
+    c.fill(polygon(starPoints(mid, 0.24, 0.04, 4, rot: 45)), C.white.alpha(0.8))
+    c.glow(.white, mid, 0.12, 1)
 }
