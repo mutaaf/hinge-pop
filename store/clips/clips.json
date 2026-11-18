@@ -1,0 +1,314 @@
+{
+  "_doc": "Short-form clips (npm run clips; scripts/clips.mjs). Segments cut takes from a mark ('won', 'snapGo-0.4') for a length at a speed; caption times are seconds or '<segment>:<mark>[+-s]'. Caption lines: at most 2, at most 5 words, *word* = accent. Every caption must say what the web game really does (no villains: they are native only; no guest stars: the clip page has them cut). No scores, no dashes.",
+  "size": {
+    "width": 1080,
+    "height": 1920
+  },
+  "style": {
+    "fonts": [
+      {
+        "family": "Titan One",
+        "file": "site/fonts/titan-one.woff2",
+        "weight": 400
+      }
+    ],
+    "font": "'Titan One', sans-serif",
+    "weight": 400,
+    "size": 104,
+    "minSize": 86,
+    "stroke": 18,
+    "tracking": "0.01em",
+    "accent": "#ffc93c",
+    "captionTop": 300
+  },
+  "endCard": {
+    "markImage": "site/art/logo.webp",
+    "kicker": "Play free at",
+    "url": "mutaafaziz.com/hingepop",
+    "pill": "#4fd8ff",
+    "pillText": "#140a2e",
+    "sub": "In your browser. No download.",
+    "wash": "radial-gradient(120% 70% at 45% 40%, rgba(20,10,46,.15) 0%, rgba(20,10,46,.75) 100%)",
+    "seconds": 1.8
+  },
+  "clips": [
+    {
+      "id": "hp-snap",
+      "hook": "the snap: a drag off the hinge flings the bubbles back",
+      "segments": [
+        {
+          "take": "snap",
+          "from": "snapGo-0.4",
+          "to": "snapGo+1.6"
+        },
+        {
+          "take": "snap",
+          "from": "live",
+          "to": "won+1.8",
+          "speed": 1.2
+        }
+      ],
+      "captions": [
+        {
+          "lines": [
+            "*Snap* the hinge",
+            "fling them back"
+          ],
+          "start": 0,
+          "end": "1:live+1.2"
+        },
+        {
+          "lines": [
+            "Tap or swipe to *split*"
+          ],
+          "start": "1:live+1.2",
+          "end": "1:snapGo-0.4"
+        },
+        {
+          "lines": [
+            "Too close? *Snap* it"
+          ],
+          "start": "1:snapGo-0.4",
+          "end": "1:snapGo+1.8"
+        },
+        {
+          "lines": [
+            "Keep them off the *hinge*"
+          ],
+          "start": "1:snapGo+1.8",
+          "end": "1:won-0.2"
+        },
+        {
+          "lines": [
+            "Every bubble *cleared*"
+          ],
+          "start": "1:won-0.2"
+        }
+      ]
+    },
+    {
+      "id": "hp-cleared",
+      "hook": "the payoff: the last bubbles go and the level-cleared card tallies up",
+      "segments": [
+        {
+          "take": "chain",
+          "from": "won+0.3",
+          "to": "won+2.4"
+        },
+        {
+          "take": "chain",
+          "from": "menu+0.2",
+          "to": "won+1.2"
+        }
+      ],
+      "captions": [
+        {
+          "lines": [
+            "Clear the *whole* level"
+          ],
+          "start": 0,
+          "end": "1:live+0.6"
+        },
+        {
+          "lines": [
+            "Split the *big* ones"
+          ],
+          "start": "1:live+0.6",
+          "end": "1:live+3.4"
+        },
+        {
+          "lines": [
+            "Keep tapping for *combos*"
+          ],
+          "start": "1:live+3.4",
+          "end": "1:combo10-0.2"
+        },
+        {
+          "lines": [
+            "Combo goes up to *x10*"
+          ],
+          "start": "1:combo10-0.2",
+          "end": "1:won-0.2"
+        },
+        {
+          "lines": [
+            "Every bubble *cleared*"
+          ],
+          "start": "1:won-0.2"
+        }
+      ]
+    },
+    {
+      "id": "hp-swipe",
+      "hook": "a fast rush of swipes mid-level, the screen full of splits",
+      "segments": [
+        {
+          "take": "swipe",
+          "from": "combo10-0.6",
+          "to": "combo10+1.4"
+        },
+        {
+          "take": "swipe",
+          "from": "live",
+          "to": "won+1.6",
+          "speed": 1.15
+        }
+      ],
+      "captions": [
+        {
+          "lines": [
+            "Swipe *through* them all"
+          ],
+          "start": 0,
+          "end": "1:live+1.6"
+        },
+        {
+          "lines": [
+            "Your swipe *aims* the pieces"
+          ],
+          "start": "1:live+1.6",
+          "end": "1:live+5.2"
+        },
+        {
+          "lines": [
+            "New *world* every ten levels"
+          ],
+          "start": "1:live+5.2",
+          "end": "1:live+8.8"
+        },
+        {
+          "lines": [
+            "Don't let them *cross*"
+          ],
+          "start": "1:live+8.8",
+          "end": "1:won-0.2"
+        },
+        {
+          "lines": [
+            "Level 35 *cleared*"
+          ],
+          "start": "1:won-0.2"
+        }
+      ]
+    },
+    {
+      "id": "hp-faceoff",
+      "hook": "the two-player result first: one half wins, the other loses",
+      "segments": [
+        {
+          "take": "versus",
+          "from": "ended+1.1",
+          "to": "ended+2.8"
+        },
+        {
+          "take": "versus",
+          "from": "live",
+          "to": "ended+0.3",
+          "speed": 1.3
+        }
+      ],
+      "captions": [
+        {
+          "lines": [
+            "*Two* players",
+            "one screen"
+          ],
+          "start": 0,
+          "end": "1:live+1.2",
+          "at": "low"
+        },
+        {
+          "lines": [
+            "Lay the phone *flat*"
+          ],
+          "start": "1:live+1.2",
+          "end": "1:live+5.5"
+        },
+        {
+          "lines": [
+            "One half *each*"
+          ],
+          "start": "1:live+5.5",
+          "end": "1:live+10"
+        },
+        {
+          "lines": [
+            "Misses land on your *rival*"
+          ],
+          "start": "1:live+10",
+          "end": "1:ended-1.4"
+        },
+        {
+          "lines": [
+            "Then hit *Rematch*"
+          ],
+          "start": "1:ended-1.4"
+        }
+      ]
+    },
+    {
+      "id": "hp-worlds",
+      "hook": "a world tour: magma, frost, space, neon, classic",
+      "segments": [
+        {
+          "take": "magma",
+          "from": "live+2",
+          "to": "live+5.2",
+          "speed": 1.15
+        },
+        {
+          "take": "frost",
+          "from": "live+2",
+          "to": "live+5.2",
+          "speed": 1.15
+        },
+        {
+          "take": "swipe",
+          "from": "live+2",
+          "to": "live+5.2",
+          "speed": 1.15
+        },
+        {
+          "take": "snap",
+          "from": "snapGo-1.2",
+          "to": "snapGo+2",
+          "speed": 1.15
+        },
+        {
+          "take": "chain",
+          "from": "won-1",
+          "to": "won+1.4"
+        }
+      ],
+      "captions": [
+        {
+          "lines": [
+            "Seven *worlds* of bubbles"
+          ],
+          "start": 0,
+          "end": "1:live+2"
+        },
+        {
+          "lines": [
+            "New *world* every ten levels"
+          ],
+          "start": "1:live+2",
+          "end": "3:snapGo-1.2"
+        },
+        {
+          "lines": [
+            "Each one a bit *faster*"
+          ],
+          "start": "3:snapGo-1.2",
+          "end": "4:won-1"
+        },
+        {
+          "lines": [
+            "How far can *you* go?"
+          ],
+          "start": "4:won-1"
+        }
+      ]
+    }
+  ]
+}
