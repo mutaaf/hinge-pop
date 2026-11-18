@@ -7,7 +7,7 @@ import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync } from 'node
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import vm from 'node:vm';
-import { EDITS, FORBIDDEN, PORTALS, editGame, portalHtml } from '../scripts/portal-html.mjs';
+import { EDITS, FORBIDDEN, HOME_URL, PORTALS, editGame, homeAnchor, portalHtml, withoutHomeLink } from '../scripts/portal-html.mjs';
 import { artFiles, gate } from '../scripts/portal-build.mjs';
 import { GD_GAME_ID, GD_GAME_ID_PLACEHOLDER, MIDGAME_GAP_MS } from '../portal/config.js';
 
@@ -31,7 +31,13 @@ test('an edit that no longer matches fails the build loudly', () => {
 for (const portal of PORTALS) {
   test(`${portal}: the page carries nothing forbidden, and the game is all there`, () => {
     const html = portalHtml(src, portal, cfg);
-    for (const [re, what] of FORBIDDEN) assert.doesNotMatch(html, re, what);
+    for (const [re, what] of FORBIDDEN) assert.doesNotMatch(withoutHomeLink(html, portal), re, what);
+    // The one link back: itch.io and Newgrounds only, once, a new tab on a tap; none on the ad portals.
+    if (HOME_URL[portal]) {
+      assert.equal(html.split(homeAnchor(portal)).length - 1, 1);
+      assert.match(homeAnchor(portal), /^<a href="https:\/\/mutaafaziz\.com\/\?utm_source=[^"]+" target="_blank" rel="noopener">More games at mutaafaziz\.com<\/a>$/);
+      assert.equal((html.match(/<a\s/g) || []).length, 1);
+    } else assert.doesNotMatch(html, /mutaafaziz|<a\s/i);
     assert.ok(html.includes(`data-portal="${portal}"`));
     for (const id of ['id="stage"', 'id="panel"', 'id="tour"', 'id="duel"', 'id="hp-game"', '// SIM START', '// SIM END']) assert.ok(html.includes(id), id);
     assert.equal((html.match(/__hpPortal\./g) || []).length >= 8, true);
@@ -65,7 +71,7 @@ test('no guest name, line or art reaches a portal page, and its game script stil
     const game = html.split('<script type="text/plain" id="hp-game">')[1].split('</script>')[0];
     assert.doesNotThrow(() => new vm.Script(game), 'the game script parses');
   }
-  for (const dir of ['store/portals/crazygames', 'store/portals/gamedistribution']) {
+  for (const dir of ['store/portals/crazygames', 'store/portals/gamedistribution', 'store/portals/itch', 'store/portals/newgrounds']) {
     for (const f of readdirSync(dir).filter((n) => n.endsWith('.txt'))) assert.doesNotMatch(readFileSync(join(dir, f), 'utf8'), GUEST_NAMES, `${dir}/${f}`);
   }
   assert.match(src, GUEST_NAMES, 'the web game keeps its guests');

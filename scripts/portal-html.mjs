@@ -16,7 +16,30 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
-export const PORTALS = ['crazygames', 'gamedistribution'];
+export const PORTALS = ['crazygames', 'gamedistribution', 'itch', 'newgrounds'];
+// The portals with an ad SDK. itch.io and Newgrounds load none: no ads, no SDK, saves in localStorage.
+export const SDK_PORTALS = ['crazygames', 'gamedistribution'];
+
+// The one link back home, only where the portal's rules allow it (store/portals/SUBMIT.md, "The link back"): a small
+// line under the menu's folds that opens mutaafaziz.com in a new tab when the player taps it. Never a redirect, never
+// a pop-up of its own, never during play. CrazyGames and GameDistribution get no link at all.
+export const HOME_URL = {
+  itch: 'https://mutaafaziz.com/?utm_source=itch.io&amp;utm_medium=game&amp;utm_campaign=hingepop',
+  newgrounds: 'https://mutaafaziz.com/?utm_source=newgrounds&amp;utm_medium=game&amp;utm_campaign=hingepop',
+};
+export const homeAnchor = (portal) => (HOME_URL[portal]
+  ? `<a href="${HOME_URL[portal]}" target="_blank" rel="noopener">More games at mutaafaziz.com</a>`
+  : '');
+/** The text with the portal's one allowed home link taken out (once), for the forbidden-text checks. */
+export function withoutHomeLink(text, portal) {
+  const a = homeAnchor(portal);
+  return a ? text.replace(a, () => '') : text;
+}
+// Only with the link: the line itself, shown on the menu only (the sheet's How to play fold is up there, o.rules).
+const HOME_EDITS = (portal) => [
+  ['home link', '<span>?</span></button></div>\n        </details>\n      </div>', `<span>?</span></button></div>\n        </details>\n        <p class="portal-more" id="portalMore" hidden>${homeAnchor(portal)}</p>\n      </div>`],
+  ['home link on the menu only', "    $('settings').hidden = !o.toggles;", "    $('settings').hidden = !o.toggles;\n    $('portalMore').hidden = !o.rules;"],
+];
 
 // [what it is, exact text in index.html, replacement]. Each must occur exactly once.
 export const EDITS = [
@@ -80,12 +103,14 @@ export const FORBIDDEN = [
 const PORTAL_CSS = `.hp-portal-busy { position: fixed; inset: 0; z-index: 1000; display: grid; place-items: center; background: rgba(20, 10, 46, .72); }
 .hp-portal-busy i { width: 40px; height: 40px; border-radius: 50%; border: 4px solid rgba(247, 245, 255, .25); border-top-color: #4fd8ff; animation: hp-spin .8s linear infinite; }
 @keyframes hp-spin { to { transform: rotate(360deg); } }
-@media (prefers-reduced-motion: reduce) { .hp-portal-busy i { animation-duration: 3s; } }`;
+@media (prefers-reduced-motion: reduce) { .hp-portal-busy i { animation-duration: 3s; } }
+.portal-more { margin: 18px 0 4px; text-align: center; font: 500 13px var(--body); opacity: .72; }
+.portal-more a { color: inherit; text-underline-offset: 3px; }`;
 
 /** Applies EDITS to the game's index.html source; throws naming the edit that no longer matches once. */
-export function editGame(src) {
+export function editGame(src, portal = '') {
   let out = src;
-  for (const [what, from, to] of EDITS) {
+  for (const [what, from, to] of [...EDITS, ...(HOME_URL[portal] ? HOME_EDITS(portal) : [])]) {
     const n = out.split(from).length - 1;
     if (n !== 1) throw new Error(`portal edit "${what}": expected its text once in index.html, found ${n}. Update scripts/portal-html.mjs.`);
     out = out.replace(from, () => to);
@@ -103,7 +128,7 @@ export function editGame(src) {
 /** The whole portal index.html for one portal, from index.html's source and portal/config.js's values. */
 export function portalHtml(src, portal, cfg) {
   if (!PORTALS.includes(portal)) throw new Error(`unknown portal ${portal}`);
-  const edited = editGame(src);
+  const edited = editGame(src, portal);
   const split = edited.indexOf('<div id="stage">');
   const scriptAt = edited.indexOf('<script>');
   const scriptEnd = edited.lastIndexOf('</script>');

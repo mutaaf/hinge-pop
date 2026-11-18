@@ -2,6 +2,13 @@
 // The portals' store art, made from the game itself (store/portals/, SUBMIT.md). Build first: npm run build:crazygames.
 //
 //   node scripts/portal-art.mjs [--covers] [--video] [--level N]
+//   node scripts/portal-art.mjs --listings     itch.io and Newgrounds (build first: npm run build:itch)
+//
+// Listings (--listings): itch.io's cover is 630×500 (itch.io/docs/creators/getting-started: a 315:250 ratio, 315×250 at
+// least, 630×500 better), plus screenshots, 3 to 5 of them, any size; these are frames of the game with its own
+// interface on, nothing added. Newgrounds publishes no icon size; its game pages serve each icon at 16:9 (720×405 and
+// 480×270, measured on picon.ngfiles.com 2026-11-18), and its small icon crops the centre, so the icons are 16:9 with
+// the logo in the middle. Same frames, same rule as the covers: only the logo on them.
 //
 // Covers (docs.crazygames.com/requirements/game-covers, as COLD GAS read them on 2026-11-13): 1920×1080 (16:9),
 // 800×1200 (2:3), 800×800 (1:1), with the game's title and nothing else on them (no borders, no "Play", no store
@@ -21,14 +28,15 @@ import { chromium } from 'playwright';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const args = process.argv.slice(2);
-const want = { covers: args.includes('--covers') || !args.includes('--video'), video: args.includes('--video') || !args.includes('--covers') };
+const listings = args.includes('--listings');
+const want = listings ? { covers: false, video: false } : { covers: args.includes('--covers') || !args.includes('--video'), video: args.includes('--video') || !args.includes('--covers') };
 const LEVEL = args.includes('--level') ? Number(args[args.indexOf('--level') + 1]) : 34;
 const OUT = join(ROOT, 'store/portals/crazygames'), GD = join(ROOT, 'store/portals/gamedistribution');
-const GAME = join(ROOT, 'dist-portals/crazygames/game');
+const GAME = join(ROOT, `dist-portals/${listings ? 'itch' : 'crazygames'}/game`);
 const TMP = join(ROOT, 'dist-portals/art-tmp');
 const PORT = 4831, FPS = 30;
 const TYPES = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.woff2': 'font/woff2', '.webp': 'image/webp', '.png': 'image/png', '.txt': 'text/plain' };
-if (!existsSync(join(GAME, 'index.html'))) { console.error('build first: npm run build:crazygames'); process.exit(2); }
+if (!existsSync(join(GAME, 'index.html'))) { console.error(`build first: npm run build:${listings ? 'itch' : 'crazygames'}`); process.exit(2); }
 mkdirSync(OUT, { recursive: true });
 mkdirSync(GD, { recursive: true });
 rmSync(TMP, { recursive: true, force: true });
@@ -57,7 +65,7 @@ const CLOCK = `(() => {
 })()`;
 const HIDE_UI = '#hud, #coach, #coach2, #panel, #tip, #spot { opacity: 0 !important; }';
 
-async function openGame({ w, h, level }) {
+async function openGame({ w, h, level, play = true }) {
   const ctx = await browser.newContext({ viewport: { width: w / 2, height: h / 2 }, deviceScaleFactor: 2 });
   await ctx.route(/crazygames\.com/, (r) => r.abort());   // no SDK here: the art is the game alone
   await ctx.addInitScript((lv) => localStorage.setItem('hinge-pop-prefs', JSON.stringify({ toured: true, touredTwo: true, level: lv, taught: { tap: 1, cross: 1, small: 1 }, soundOn: false })), level);
@@ -68,6 +76,7 @@ async function openGame({ w, h, level }) {
   await page.waitForTimeout(600);   // the arena backdrop
   await page.evaluate(CLOCK);
   await page.evaluate(() => window.__clock.start());
+  if (!play) { await page.evaluate(() => window.__clock.advance(1000)); return { ctx, page }; }
   await page.click('#play');
   await page.waitForTimeout(400);   // the arena for this level loads
   return { ctx, page };
@@ -124,15 +133,15 @@ async function rawFrame({ w, h, name, seconds = 2.6 }) {
 
 // The logo over a frame, at an exact size. Only the title (the portals' rule).
 const LOGO = execFileSync('sips', ['-s', 'format', 'png', join(ROOT, 'site/art/logo.webp'), '--out', join(TMP, 'logo.png')]) && readFileSync(join(TMP, 'logo.png')).toString('base64');
-async function composite({ raw, w, h, out }) {
+async function composite({ raw, w, h, out, centred = false }) {
   const img = readFileSync(raw).toString('base64');
   const portrait = h > w, square = h === w;
-  const logoW = portrait ? w * 0.7 : square ? w * 0.5 : Math.min(w * 0.36, h * 0.62 * (1000 / 860));
+  const logoW = centred ? Math.min(w * 0.6, h * 0.62 * (1000 / 860)) : portrait ? w * 0.7 : square ? w * 0.5 : Math.min(w * 0.36, h * 0.62 * (1000 / 860));
   const html = `<!doctype html><html><head><style>
     html, body { margin: 0; width: ${w}px; height: ${h}px; overflow: hidden; background: #140a2e; }
     .bg { position: absolute; inset: 0; background: url(data:image/png;base64,${img}) center / cover no-repeat; }
-    .scrim { position: absolute; inset: 0; background: radial-gradient(${portrait ? '80% 30% at 50% 23%' : square ? '60% 35% at 50% 75%' : '35% 60% at 24% 50%'}, rgba(20,10,46,.55), rgba(20,10,46,0) 70%); }
-    img { position: absolute; left: ${portrait || square ? 50 : 24}%; top: ${portrait ? 23 : square ? 75 : 50}%; width: ${Math.round(logoW)}px; transform: translate(-50%, -50%); filter: drop-shadow(0 ${Math.round(logoW * 0.02)}px ${Math.round(logoW * 0.05)}px rgba(0,0,0,.45)); }
+    .scrim { position: absolute; inset: 0; background: radial-gradient(${centred ? '45% 55% at 50% 50%' : portrait ? '80% 30% at 50% 23%' : square ? '60% 35% at 50% 75%' : '35% 60% at 24% 50%'}, rgba(20,10,46,.55), rgba(20,10,46,0) 70%); }
+    img { position: absolute; left: ${centred || portrait || square ? 50 : 24}%; top: ${centred ? 50 : portrait ? 23 : square ? 75 : 50}%; width: ${Math.round(logoW)}px; transform: translate(-50%, -50%); filter: drop-shadow(0 ${Math.round(logoW * 0.02)}px ${Math.round(logoW * 0.05)}px rgba(0,0,0,.45)); }
   </style></head><body><div class="bg"></div><div class="scrim"></div><img src="data:image/png;base64,${LOGO}"></body></html>`;
   const page = await browser.newPage({ viewport: { width: w, height: h }, deviceScaleFactor: 1 });
   await page.setContent(html);
@@ -143,8 +152,10 @@ async function composite({ raw, w, h, out }) {
 }
 
 const raws = {};
-raws.landscape = await rawFrame({ w: 1920, h: 1080, name: 'landscape' });
-raws.portrait = await rawFrame({ w: 1080, h: 1620, name: 'portrait' });
+if (!listings) {
+  raws.landscape = await rawFrame({ w: 1920, h: 1080, name: 'landscape' });
+  raws.portrait = await rawFrame({ w: 1080, h: 1620, name: 'portrait' });
+}
 if (want.covers) {
   raws.square = await rawFrame({ w: 800, h: 800, name: 'square', seconds: 1.4 });
   await composite({ raw: raws.landscape, w: 1920, h: 1080, out: join(OUT, 'cover-landscape-1920x1080.png') });
@@ -182,6 +193,30 @@ async function video({ w, h, name, cover }) {
 if (want.video) {
   await video({ w: 1920, h: 1080, name: 'landscape-1920x1080', cover: raws.landscape });
   await video({ w: 1080, h: 1620, name: 'portrait-1080x1620', cover: raws.portrait });
+}
+
+// --- itch.io and Newgrounds listings ---
+// A screenshot with the game's own interface on: the menu, or `seconds` of the bot playing level `level`.
+async function uiShot({ w, h, out, level = LEVEL, seconds = 0, menuOnly = false }) {
+  const { ctx, page } = await openGame({ w, h, level, play: !menuOnly });
+  moves = 0;
+  for (let i = 0; i < seconds * FPS; i++) { if (i % 7 === 0) await act(page); await step(page); }
+  await page.screenshot({ path: out });
+  await ctx.close();
+}
+if (listings) {
+  const ITCH = join(ROOT, 'store/portals/itch'), NG = join(ROOT, 'store/portals/newgrounds');
+  mkdirSync(ITCH, { recursive: true });
+  mkdirSync(NG, { recursive: true });
+  const land = await rawFrame({ w: 1920, h: 1080, name: 'landscape' });
+  await composite({ raw: land, w: 630, h: 500, out: join(ITCH, 'cover-630x500.png'), centred: true });
+  await composite({ raw: land, w: 1440, h: 810, out: join(NG, 'icon-1440x810.png'), centred: true });
+  await composite({ raw: land, w: 720, h: 405, out: join(NG, 'icon-720x405.png'), centred: true });
+  await uiShot({ w: 1920, h: 1080, out: join(ITCH, 'screenshot-1-menu-1920x1080.png'), menuOnly: true });
+  await uiShot({ w: 1920, h: 1080, out: join(ITCH, 'screenshot-2-level-34-1920x1080.png'), seconds: 3 });
+  await uiShot({ w: 1920, h: 1080, out: join(ITCH, 'screenshot-3-level-12-1920x1080.png'), level: 12, seconds: 5 });
+  await uiShot({ w: 1080, h: 1920, out: join(ITCH, 'screenshot-4-phone-1080x1920.png'), level: 21, seconds: 2.4 });
+  console.log('itch.io cover and screenshots →', ITCH, '\nNewgrounds icons →', NG);
 }
 
 await browser.close();

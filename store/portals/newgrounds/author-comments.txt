@@ -1,0 +1,7 @@
+Hinge Pop is a free arcade game about one glowing line. There are no ads in this version and it sends nothing anywhere. Your level, best score and settings stay on your device.
+
+Works with mouse or touch, on a computer, phone or tablet. Two players can share one screen.
+
+How AI was used: I built Hinge Pop with AI coding assistants (Claude) writing much of the code under my direction. The bubbles, arenas and logo are drawn in code, not AI images. The thumbnail and screenshots are real frames from the game.
+
+More games at mutaafaziz.com
