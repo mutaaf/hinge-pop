@@ -418,7 +418,7 @@ export function landing(links) {
       <div><h3>In the app</h3><p>All 8 bubbles, 6 villains, 5 power-ups, 8 guest stars, 800 levels in 80 worlds plus Infinity, Normal and Overdrive, Arcade with checkpoints, Daily, Face Off for two, and the real fold on iPhone Duo.</p></div>
       <div><h3>On this page</h3><p>Basic bubbles only, endless levels and two players on one screen. It is free to play here, right now.</p></div>
     </div>
-    <p class="promise l" style="--d:2vh">No account. No ads. No analytics. Your progress stays on your device.</p>
+    <p class="promise l" style="--d:2vh">No account. No ads. Anonymous usage stats only. Your progress stays on your device.</p>
     <p class="links l" style="--d:1vh"><a href="privacy/">Privacy</a><a href="support/">Support</a></p>
     <p class="cue"><a href="#play" data-jump>Or keep scrolling and play the web version right here.</a></p>
   </div>
