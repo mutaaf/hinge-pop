@@ -17,7 +17,9 @@
     "sync:aurora": "node scripts/sync-aurora.mjs",
     "build:crazygames": "node scripts/portal-build.mjs crazygames",
     "build:gamedistribution": "node scripts/portal-build.mjs gamedistribution",
-    "build:portals": "node scripts/portal-build.mjs crazygames && node scripts/portal-build.mjs gamedistribution"
+    "build:itch": "node scripts/portal-build.mjs itch",
+    "build:newgrounds": "node scripts/portal-build.mjs newgrounds",
+    "build:portals": "node scripts/portal-build.mjs crazygames && node scripts/portal-build.mjs gamedistribution && node scripts/portal-build.mjs itch && node scripts/portal-build.mjs newgrounds"
   },
   "devDependencies": {
     "playwright": "1.64.1"

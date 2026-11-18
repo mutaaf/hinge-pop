@@ -2,9 +2,10 @@
 // Plays a portal build the way a portal hosts it: the game's files on one origin, under a deep folder (relative paths
 // only), inside a sandboxed <iframe> on a page from another origin. Build first (npm run build:<portal>).
 //
-//   node scripts/portal-playtest.mjs <crazygames|gamedistribution> [--blocked] [--phone] [--headed]
+//   node scripts/portal-playtest.mjs <crazygames|gamedistribution|itch|newgrounds> [--blocked] [--phone] [--headed]
 //
 // --blocked  the portal's SDK host is refused (an ad blocker): the game must play exactly the same, with no ads
+//            (CrazyGames and GameDistribution only: itch.io and Newgrounds load no SDK at all)
 // --phone    390×844 touch, every input a real tap
 //
 // A fresh player: Play opens the tour, Skip tour starts level 1, which is cleared by real taps and swipes on the
@@ -19,6 +20,7 @@ import { existsSync, readFileSync, statSync } from 'node:fs';
 import { dirname, extname, join, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { chromium, devices } from 'playwright';
+import { HOME_URL, SDK_PORTALS } from './portal-html.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const [portal = 'crazygames', ...flags] = process.argv.slice(2);
@@ -30,6 +32,7 @@ const SDK_HOSTS = { crazygames: /(^|\.)crazygames\.com$/, gamedistribution: /(^|
 const TYPES = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.json': 'application/json', '.txt': 'text/plain',
   '.svg': 'image/svg+xml', '.woff2': 'font/woff2', '.webp': 'image/webp', '.png': 'image/png' };
 
+if (blocked && !SDK_PORTALS.includes(portal)) { console.error(`--blocked: ${portal} loads no SDK to block`); process.exit(2); }
 if (!existsSync(join(GAME_DIR, 'index.html'))) { console.error(`no build at ${GAME_DIR}: npm run build:${portal}`); process.exit(2); }
 
 const missing = [];
@@ -74,10 +77,14 @@ page.on('console', (m) => {
   if (blocked && /ERR_BLOCKED_BY_CLIENT|net::ERR_FAILED/.test(m.text())) return;   // the refused SDK itself
   errors.push(`console: ${m.text()} @ ${where}`);
 });
+let homeClicked = false;   // the home link's own new tab, opened on purpose at the end (itch.io, Newgrounds)
+const otherServers = [];   // itch.io and Newgrounds: the game asks no other server for anything
 page.on('request', (r) => {
   const u = new URL(r.url());
+  if (homeClicked) return;
+  if (!SDK_PORTALS.includes(portal) && !/^(data|blob):/.test(u.protocol) && ![`127.0.0.1:${GAME_PORT}`, `localhost:${HOST_PORT}`].includes(u.host)) otherServers.push(r.url());
   if (/mutaafaziz|boxoffice|posthog/i.test(r.url()) || /\/ads\/v1/.test(u.pathname)) forbidden.push(r.url());
-  if (SDK_HOSTS[portal].test(u.hostname)) sdkRequests.push(r.url());
+  if (SDK_HOSTS[portal]?.test(u.hostname)) sdkRequests.push(r.url());
 });
 if (blocked) await ctx.route((url) => SDK_HOSTS[portal].test(new URL(url).hostname), (route) => route.abort('blockedbyclient'));
 
@@ -104,7 +111,12 @@ const adCalls = () => frame.evaluate(() => window.__calls.filter((c) => c.starts
 
 await frame.waitForFunction(() => window.hingePop.mode === 'menu', null, { timeout: 30_000 });
 check(await frame.locator('#play').isVisible(), 'menu up, Play visible');
-check((await frame.locator('a').count()) === 0, 'no links anywhere in the game');
+const links = await frame.evaluate(() => [...document.querySelectorAll('a')].map((a) => ({ href: a.href, target: a.target, text: a.textContent.trim() })));
+if (HOME_URL[portal]) {
+  check(links.length === 1 && /^https:\/\/mutaafaziz\.com\/\?utm_source=/.test(links[0].href) && links[0].target === '_blank' && links[0].text === 'More games at mutaafaziz.com',
+    `one link in the game, to mutaafaziz.com in a new tab (${links.map((l) => l.href).join(' ') || 'none'})`);
+  check(await frame.locator('#portalMore').isVisible(), 'the home link shows on the menu');
+} else check(links.length === 0, 'no links anywhere in the game');
 check(await frame.evaluate(() => getComputedStyle(document.body).userSelect === 'none'), 'user-select: none');
 
 // Clears the level in play with real input: taps on the bubbles, and a swipe through one now and then.
@@ -159,6 +171,7 @@ check((await adCalls()).length === 0, 'no ad when leaving the first result');
 await press('#pause');
 await frame.waitForFunction(() => window.hingePop.mode === 'paused', null, { timeout: 5_000 });
 if (live && portal === 'crazygames') check(await playingIs(false), 'pause: gameplay stopped');
+if (HOME_URL[portal]) check(!(await frame.locator('#portalMore').isVisible()), 'the home link is not on the pause sheet');
 check((await adCalls()).length === 0, 'no ad on pause');
 await press('#play');
 await clearLevel(2);
@@ -192,6 +205,17 @@ if (portal === 'crazygames' && live) {
   check(sdkLogs.some((t) => /gameplay\s*stop/i.test(t)), 'SDK gameplayStop fired (its own log)');
   check(sdkLogs.some((t) => /loading\s*stop/i.test(t)), 'SDK loadingStop fired (its own log)');
 }
+// The home link: hidden in play, back on the menu, and a tap opens a new tab while the game stays put.
+if (HOME_URL[portal]) {
+  await ctx.route(/mutaafaziz\.com/, (r) => r.fulfill({ status: 200, contentType: 'text/html', body: '<!doctype html><title>home</title>' }));
+  homeClicked = true;
+  const [tab] = await Promise.all([ctx.waitForEvent('page', { timeout: 10_000 }).catch(() => null), press('#portalMore a')]);
+  const url = tab ? tab.url() : '';
+  check(/^https:\/\/mutaafaziz\.com\/\?utm_source=/.test(url), `the home link opened a new tab (${url || 'none'})`);
+  check((await mode()) === 'menu', 'the game is still on its menu in the frame');
+  if (tab) await tab.close();
+}
+if (!SDK_PORTALS.includes(portal)) check(otherServers.length === 0, `no request to any other server${otherServers.length ? `: ${otherServers.slice(0, 5).join(' ')}` : ''}`);
 if (blocked) check(sdkRequests.length > 0, `the SDK was asked for and refused (${sdkRequests.length} request(s))`);
 check(forbidden.length === 0, `no request to mutaafaziz.com or for analytics${forbidden.length ? `: ${forbidden.slice(0, 5).join(' ')}` : ''}`);
 check(missing.length === 0, `no missing files${missing.length ? `: ${missing.slice(0, 5).join(' ')}` : ''}`);

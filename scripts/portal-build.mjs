@@ -1,20 +1,22 @@
 #!/usr/bin/env node
-// npm run build:crazygames | build:gamedistribution: a portal build (store/portals/SUBMIT.md).
+// npm run build:crazygames | build:gamedistribution | build:itch | build:newgrounds: a portal build (store/portals/SUBMIT.md).
 //
-//   node scripts/portal-build.mjs <crazygames|gamedistribution> [--no-zip]
+//   node scripts/portal-build.mjs <crazygames|gamedistribution|itch|newgrounds> [--no-zip]
 //
 // 1. index.html for the portal (scripts/portal-html.mjs): relative paths, the portal's SDK, no analytics, no
 //    embedding, saves through the portal. The live build (npm run build, dist/) is not touched.
 // 2. Beside it only the art the game loads and its two fonts, with their licence (SIL OFL 1.1 asks that it travels
 //    with the fonts). No landing page, privacy or support page, no store links.
 // 3. Gates the result: no forbidden text in any text file (portal-html.mjs FORBIDDEN), every art file the game names
-//    is present, and the size and file count inside the portals' limits.
+//    is present, and the size and file count inside the portals' limits. itch.io and Newgrounds carry one exception: the
+//    single "More games at mutaafaziz.com" link in index.html (portal-html.mjs HOME_URL), which must be there exactly
+//    once; any other link, mention of the site or outbound address still fails.
 // 4. Zips it: dist-portals/hinge-pop-<portal>.zip, index.html at the zip's root.
 import { execFileSync } from 'node:child_process';
 import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { dirname, join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { FORBIDDEN, PORTALS, editGame, portalHtml } from './portal-html.mjs';
+import { FORBIDDEN, HOME_URL, PORTALS, editGame, homeAnchor, portalHtml, withoutHomeLink } from './portal-html.mjs';
 import { GD_GAME_ID, GD_GAME_ID_PLACEHOLDER, MIDGAME_GAP_MS, SDK_WAIT_MS } from '../portal/config.js';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
@@ -41,7 +43,7 @@ function walk(dir) {
   return out;
 }
 
-export function gate(dir, art) {
+export function gate(dir, art, portal = '') {
   const problems = [];
   if (!existsSync(join(dir, 'index.html'))) problems.push('no index.html at the top');
   for (const f of art) if (!existsSync(join(dir, 'art', f))) problems.push(`art/${f} missing`);
@@ -51,7 +53,12 @@ export function gate(dir, art) {
   for (const f of files) {
     bytes += statSync(f).size;
     if (!/\.(html|js|css|json|txt|svg)$/.test(f)) continue;
-    const text = readFileSync(f, 'utf8');
+    let text = readFileSync(f, 'utf8');
+    if (HOME_URL[portal] && relative(dir, f) === 'index.html') {
+      const n = text.split(homeAnchor(portal)).length - 1;
+      if (n !== 1) problems.push(`index.html: the home link appears ${n} times (expected 1)`);
+      text = withoutHomeLink(text, portal);
+    }
     for (const [re, what] of FORBIDDEN) {
       if (f.endsWith('OFL.txt') && /outbound|device/.test(what)) continue;   // the licence text names its own site
       const m = text.match(re);
@@ -86,11 +93,11 @@ function main() {
   mkdirSync(join(game, 'art'), { recursive: true });
   mkdirSync(join(game, 'fonts'), { recursive: true });
   writeFileSync(join(game, 'index.html'), portalHtml(src, portal, { gdGameId, gdPlaceholder: GD_GAME_ID_PLACEHOLDER, sdkWaitMs: SDK_WAIT_MS, midgameGapMs: MIDGAME_GAP_MS }));
-  const art = artFiles(editGame(src));
+  const art = artFiles(editGame(src, portal));
   for (const f of art) copyFileSync(join(ROOT, 'site/art', f), join(game, 'art', f));
   for (const f of FONTS) copyFileSync(join(ROOT, 'site/fonts', f), join(game, 'fonts', f));
   writeFileSync(join(game, 'fonts', 'OFL.txt'), licence());
-  const { problems, files, bytes } = gate(game, art);
+  const { problems, files, bytes } = gate(game, art, portal);
   if (problems.length) { console.error(`portal build ${portal}: ${problems.length} problem(s)\n  ${problems.join('\n  ')}`); process.exit(1); }
   console.log(`portal build ${portal}: ${files} files, ${mb(bytes)} unzipped → ${relative(ROOT, game)}`);
   if (portal === 'gamedistribution' && gdGameId === GD_GAME_ID_PLACEHOLDER) {
