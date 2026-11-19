@@ -135,7 +135,7 @@ h1 { margin: 0; font: 400 clamp(28px, 9vw, 36px)/1.05 var(--display); letter-spa
 .actions .secondary { background: transparent; color: var(--fg); border: 1px solid var(--line); }
 @media (hover: hover) { .actions .secondary:hover { background: rgba(255, 255, 255, .05); } }
 /* Levels: a grid of bubbles, one per level reached. Cleared ones keep their best; the furthest glows; the next few wait, locked. */
-.levels { position: relative; display: grid; grid-template-columns: repeat(auto-fill, minmax(54px, 1fr)); gap: 8px; max-height: min(46vh, 330px); overflow-y: auto; padding: 4px; margin: -4px; overscroll-behavior: contain; }
+.levels { position: relative; display: grid; grid-template-columns: repeat(auto-fill, minmax(54px, 1fr)); gap: 8px; max-height: min(46vh, 330px); overflow-y: auto; padding: 10px; margin: -10px; overscroll-behavior: contain; }
 .lv { position: relative; display: grid; place-content: center; justify-items: center; gap: 1px; aspect-ratio: 1; min-height: var(--target); min-width: var(--target); padding: 0; border-radius: 50%; border: 2px solid var(--line); background: #2d1b5e; color: var(--fg); font: 600 11px var(--body); font-variant-numeric: tabular-nums; cursor: pointer; transition: transform .12s var(--ease); }
 .lv b { font: 400 19px/1 var(--display); letter-spacing: 0; }
 .lv small { font: inherit; line-height: 1.1; color: var(--hinge); }
@@ -1397,7 +1397,7 @@ function createSim(opts) {
     level = progress.reached;
     newSim({ level });
     const actions = [{ id: 'two', label: '2 Players', run: playVersus }];
-    if (progress.reached > 1) actions.push({ id: 'levels', label: 'Levels', run: levels });
+    if (progress.reached > 1) actions.push({ id: 'pickLevel', label: 'Levels', run: levels });
     actions.push({ id: 'play', label: level > 1 ? 'Play level ' + level : 'Play', primary: true, run: playLevel });
     showPanel({ heading: 'Hinge Pop', sub: 'Split the bubbles. Snap the hinge. Save your shields.', rules: true, toggles: true, actions, logo: true });
   }
@@ -1513,7 +1513,8 @@ function createSim(opts) {
     const total = p.score;
     if (won) {
       const done = level;
-      progress = recordWin(progress, done, p.score - levelStart);
+      // The level's own points: a clean clear's bonus also lifted the score carried in, so take that back out.
+      progress = recordWin(progress, done, p.score - Math.round(levelStart * (sim.cleanBonus ? CFG.cleanBonus : 1)));
       level = progress.level;
       runScore = p.score;
       writeStore({ level, reached: progress.reached, scores: progress.scores, best });

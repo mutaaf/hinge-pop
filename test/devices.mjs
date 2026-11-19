@@ -196,6 +196,20 @@ for (const [name, width, height] of DEVICES) {
   await page.evaluate(() => { const s = window.hingePop.sim; s.ready = 0; let g = 0; while (s.bubbles.length && g++ < 500) s.tap(s.bubbles[0]); });
   await page.waitForTimeout(800);
   await walk(ctx, page, 'versus-result');
+
+  // The level picker, far into the game: the furthest level is in view and focused, and a tile starts its level.
+  // Runs after `seen` on the reload, so this save wins.
+  await page.addInitScript(() => { const scores = {}; for (let n = 1; n < 57; n++) scores[n] = n * 1370; localStorage.setItem('hinge-pop-prefs', JSON.stringify({ toured: true, touredTwo: true, level: 57, reached: 57, scores })); });
+  await page.reload();
+  await page.waitForTimeout(150);
+  await page.tap('#pickLevel');
+  await walk(ctx, page, 'levels');
+  const pick = await page.evaluate(() => { const now = document.querySelector('#levels .now'), r = now.getBoundingClientRect(), box = document.getElementById('levels').getBoundingClientRect(); return { now: now.dataset.level, focused: document.activeElement === now, inView: r.top >= Math.max(0, box.top) - 1 && r.bottom <= Math.min(innerHeight, box.bottom) + 1 }; });
+  if (pick.now !== '57' || !pick.focused || !pick.inView) problems.push('picker: ' + JSON.stringify(pick));
+  await page.tap('#levels .lv[data-level="56"]');
+  await page.waitForTimeout(100);
+  const picked = await page.evaluate(() => ({ mode: window.hingePop.mode, level: window.hingePop.sim.level }));
+  if (picked.mode !== 'play' || picked.level !== 56) problems.push('picked tile: ' + JSON.stringify(picked));
   await ctx.close();
 
   // First-run tour, with real touches at every step.
