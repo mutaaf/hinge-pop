@@ -31,6 +31,7 @@ final class GameScene: SKScene {
   private let calmNode = SKSpriteNode(color: .white, size: CGSize(width: 10, height: 10))
   private let calmLine = SKUniform(name: "u_line", float: 0.5)
   private let calmAxis = SKUniform(name: "u_axis", float: 0)
+  private var arenaCalm: SKShader?
   /// The biome bubbles are dressed for (`Art.bubble(..., biome:)`).
   private var skin: ArenaKind?
   private var energy = 0.0
@@ -204,6 +205,20 @@ final class GameScene: SKScene {
     calm.uniforms = [calmLine, calmAxis]
     calmNode.shader = calm
     calmNode.zPosition = -15
+    // Once the art is in, the same calm is applied while the art itself is drawn, which saves a full-screen
+    // blended pass every frame (the separate calm sprite then hides).
+    let calmArt = SKShader(source: """
+    void main() {
+      vec4 c = texture2D(u_texture, v_tex_coord);
+      vec2 uv = vec2(v_tex_coord.x, 1.0 - v_tex_coord.y);
+      float d = u_axis > 0.5 ? abs(uv.x - u_line) : abs(uv.y - u_line);
+      float near = 1.0 - smoothstep(0.0, 0.45, d);
+      float a = 0.2 + 0.32 * near * near;
+      gl_FragColor = vec4(c.rgb * (1.0 - a) + vec3(0.02, 0.01, 0.06) * a, 1.0);
+    }
+    """)
+    calmArt.uniforms = [calmLine, calmAxis]
+    arenaCalm = calmArt
     let shader = SKShader(source: """
     void main() {
       vec2 uv = v_tex_coord;
@@ -584,6 +599,9 @@ final class GameScene: SKScene {
         self.arenaNode.texture = SKTexture(cgImage: image)
         self.arenaNode.size = box
         self.arenaNode.color = .white
+        self.arenaNode.shader = self.arenaCalm
+        self.arenaNode.blendMode = .replace
+        self.calmNode.isHidden = true
       }
     }
   }

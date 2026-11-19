@@ -349,8 +349,14 @@ final class Session {
 
   private func syncHUD() {
     guard let game else { return }
-    let next = game.players.map { PlayerHUD(shields: $0.shields, meter: $0.meter, score: $0.score, streak: $0.streak, combo: $0.combo, overcharge: ($0.overcharge * 2).rounded(.up) / 2) }
-    if next != hud { hud = next }
+    // Compared in place first: this runs every frame, and building the array each time showed up in profiles.
+    func row(_ p: Player) -> PlayerHUD {
+      PlayerHUD(shields: p.shields, meter: p.meter, score: p.score, streak: p.streak, combo: p.combo, overcharge: (p.overcharge * 2).rounded(.up) / 2)
+    }
+    let shown = hud
+    var same = shown.count == game.players.count
+    if same { for i in shown.indices where shown[i] != row(game.players[i]) { same = false; break } }
+    if !same { hud = game.players.map(row) }
     let boss = game.bubbles.first { $0.kind == .boss }
     let phases = max(1, game.spec.bossPhases), hits = game.bossHitsPerPhase
     let left = boss.map { Double(phases * hits - $0.bossPhase * hits - $0.bossHits) / Double(phases * hits) }
