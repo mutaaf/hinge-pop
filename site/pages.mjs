@@ -491,6 +491,7 @@ export const privacy = () => docPage({
   <li>There are no accounts, so there is nothing to sign up for or log in to. There are no ads.</li>
   <li>Up to version 0.4.0, the app collects nothing and sends nothing about you or how you play to anyone, including us.</li>
   <li>From version 0.4.1, the app sends a few usage counts to our own relay at mutaafaziz.com, which forwards them to PostHog: the app opened, a level started or finished (its mode, level, difficulty, score, time, crossings and whether it was won), and the guided tour finished or skipped. They carry a random id made on your device, the app's version, and nothing else: no name, no location, no advertising id, nothing you type. Our relay drops cookies and cuts the last part off your IP address before anything is forwarded, and no location is worked out from it. Counts are sent between levels, never during play.</li>
+  <li>From version 0.5.1, the same switch also covers a few health counts, so we can find crashes and slow spots: how smooth a level ran (frame times, dropped frames, whether the phone was hot or in Low Power Mode), and Apple's daily app report (launch times, hangs, memory, and crash type codes). Only numbers: never what was on screen, file names or anything you typed.</li>
   <li>To stop them, open Settings, then Privacy, and turn off Share usage stats. That deletes the random id and any counts not yet sent. Deleting the app does the same.</li>
 </ul>
 <h2>Usage analytics on this website</h2>
@@ -528,7 +529,7 @@ export const support = () => docPage({
 <h3>Are the levels infinite?</h3>
 <p>Yes. The app has 800 levels across 80 worlds in ten realms, each world ending on a boss, and then Infinity, which generates levels that keep climbing. It also has Arcade, with a checkpoint every five waves, and Daily. The web game has its own endless run of levels with basic bubbles.</p>
 <h3>Is it family friendly?</h3>
-<p>It is cartoon bubbles with faces, and nothing worse than a pop. There are no accounts, ads, chat or links to strangers, and the game collects nothing. It does not have an age rating of its own yet, so please judge it for your family by playing a level.</p>
+<p>It is cartoon bubbles with faces, and nothing worse than a pop. There are no accounts, ads, chat or links to strangers, and the game collects no personal information. It does not have an age rating of its own yet, so please judge it for your family by playing a level.</p>
 <h3>Can I customize it?</h3>
 <p>In settings you can turn Swipe to slice, Hinge grace and Sound on or off, on both the app and the web. The app adds Haptics, and four arena backdrops to choose from once you reach their chapters.</p>
 <h3>Does the web game use the fold on my foldable?</h3>

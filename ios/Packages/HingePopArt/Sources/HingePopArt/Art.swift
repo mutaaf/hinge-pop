@@ -144,6 +144,18 @@ public enum Art {
     /// Enough for every arena and sprite the app can hold at once. Oldest goes first past this.
     private static let byteLimit = 384 * 1024 * 1024
 
+    /// Memory warning: drops the cached arena backdrops (the big full-screen images; textures already made keep
+    /// their own copy, and a backdrop is redrawn off the main thread when next needed). Sprites stay, so play never
+    /// has to render one mid-level.
+    public static func purgeArenas() {
+        lock.lock(); defer { lock.unlock() }
+        order.removeAll { key in
+            guard case .arena = key.item, let gone = images.removeValue(forKey: key) else { return false }
+            bytes -= gone.bytesPerRow * gone.height
+            return true
+        }
+    }
+
     private static func px(_ v: CGFloat, _ scale: CGFloat) -> Int { max(Int((v * scale).rounded()), 1) }
 
     private static func cached(_ item: Item, _ w: CGFloat, _ h: CGFloat, _ scale: CGFloat, _ render: () -> CGImage) -> CGImage {

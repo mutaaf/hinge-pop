@@ -359,6 +359,7 @@ No ads, no accounts, no in-app purchases and no tracking. Your progress stays on
 
 USAGE COUNTS (NEW IN 0.4.1)
 First-party, no SDK. A few counts (session start; a level started or finished with its mode, level, score, time, crossings and whether it was won; the guided tour finished or skipped) and a random install id go to our own relay at mutaafaziz.com/boxoffice, which strips cookies, cuts the IP and forwards them to our analytics project (PostHog). Batched between levels, never during play. Settings > Privacy > Share usage stats turns them off and deletes the id. App Privacy: Product Interaction and Device ID, Analytics, linked, not tracking. No IDFA, no ATT prompt, no ads. This is the app's only network use.
+Health counts (from 0.5.1), under the same switch and relay: per-level frame times and dropped frames, thermal state and Low Power Mode, and MetricKit's daily numbers (launch times, hangs, memory, crash exception codes). Numbers only; no stack traces, file paths or text.
 
 CHANGES SINCE THE PREVIOUS SUBMISSION (guideline 4.3 feedback)
 1. New core mechanic, Snap the Hinge. Drag a finger off the glowing line and it cracks like a whip, flinging nearby bubbles away, with a 7 second recharge. The guided tour teaches it.

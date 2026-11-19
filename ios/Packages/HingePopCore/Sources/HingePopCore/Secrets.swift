@@ -126,16 +126,18 @@ public enum Secrets {
   }
 
   public static func spotSecret(_ arena: Arena) -> Secret {
-    named("\(arena.rawValue)-" + ["classic": "star", "neon": "cruise", "forest": "howl", "space": "saucer", "frost": "tracks", "reef": "treasure", "magma": "lair", "candy": "house", "dunes": "lamp", "storm": "cape", "crystal": "sword", "haunted": "portrait", "circuit": "arcade", "jungle": "idol", "clouds": "goose", "clockwork": "flux"][arena.rawValue, default: ""])!
+    named("\(arena.rawValue)-" + ["classic": "star", "neon": "cruise", "forest": "howl", "space": "saucer", "frost": "tracks", "reef": "treasure", "magma": "lair", "candy": "house", "dunes": "lamp", "storm": "cape", "crystal": "sword", "haunted": "portrait", "circuit": "arcade", "jungle": "idol", "clouds": "goose", "clockwork": "flux"][arena.rawValue, default: ""])
+      // A biome without its secret yet (SecretsTests catches it) gets a quiet placeholder, never a crash.
+      ?? Secret(id: "\(arena.rawValue)-spot", emoji: "✨", title: "A hidden spot", line: "Something was here.", hint: "Tap the landmark three times.")
   }
 
   /// A date or hour that hides something.
   public static func calendar(month: Int, day: Int, hour: Int) -> [Secret] {
     var out: [Secret] = []
-    if hour == 3 { out.append(named("witching")!) }
-    if month == 10 && day == 31 { out.append(named("spooky")!) }
-    if month == 1 && day == 1 { out.append(named("new-year")!) }
-    if month == 3 && day == 14 { out.append(named("pi-day")!) }
+    if hour == 3, let s = named("witching") { out.append(s) }
+    if month == 10 && day == 31, let s = named("spooky") { out.append(s) }
+    if month == 1 && day == 1, let s = named("new-year") { out.append(s) }
+    if month == 3 && day == 14, let s = named("pi-day") { out.append(s) }
     return out
   }
 

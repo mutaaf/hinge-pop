@@ -2,6 +2,26 @@ import XCTest
 @testable import HingePopCore
 
 final class SecretsTests: XCTestCase {
+  /// The app reveals these by name with a force unwrap (Session.swift); a renamed or removed one must fail here, not
+  /// crash a player's run.
+  func testEverySecretTheAppNamesExists() throws {
+    let url = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
+      .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent().appendingPathComponent("HingePop")
+    let files = (try? FileManager.default.contentsOfDirectory(at: url, includingPropertiesForKeys: nil)) ?? []
+    let swift = files.filter { $0.pathExtension == "swift" }
+    guard !swift.isEmpty else { throw XCTSkip("the app's sources aren't beside the package") }
+    let call = try NSRegularExpression(pattern: #"Secrets\.named\("([a-z0-9-]+)"\)"#)
+    var ids = Set<String>()
+    for f in swift {
+      let text = (try? String(contentsOf: f, encoding: .utf8)) ?? ""
+      for m in call.matches(in: text, range: NSRange(text.startIndex..., in: text)) {
+        if let r = Range(m.range(at: 1), in: text) { ids.insert(String(text[r])) }
+      }
+    }
+    XCTAssertFalse(ids.isEmpty)
+    for id in ids { XCTAssertNotNil(Secrets.named(id), id) }
+  }
+
   func testEveryWorldHidesANamedSecretAndIdsAreUnique() {
     XCTAssertEqual(Set(Secrets.named.map(\.id)).count, Secrets.named.count)
     for a in Arena.allCases {

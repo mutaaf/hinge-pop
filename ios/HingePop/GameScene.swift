@@ -415,6 +415,7 @@ final class GameScene: SKScene {
       applyFrameRate(view)
     }
     debris.density = budget.debris
+    FrameMeter.shared.frame(currentTime, self)
     #if DEBUG
     perfSample(dt)
     let workStart = CACurrentMediaTime()

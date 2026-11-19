@@ -2,6 +2,8 @@
 // the gates and the bytes). Events are added at a level's start and end and at the tour's end, never from the frame
 // loop's steps; they are sent in one batch at launch, at the end card, when a level is left and when the app goes to
 // the background, over an ephemeral session with no cookies, to Box Office's first-party relay on mutaafaziz.com.
+// From the hardening pass it also carries the health events (`perf_level` from FrameMeter.swift, `app_metrics`,
+// `app_diagnostic` and `save_recovered` from Diagnostics.swift) under the same switch and the same never-in-play rule.
 // A failed send keeps its events for next time. Settings > Privacy > Share usage stats turns it off: nothing is kept or
 // sent, and the queue and the install id are cleared.
 import Foundation
@@ -50,15 +52,22 @@ final class Usage {
 
   /// A level starts: game_start, then play holds everything until it's over.
   func gameStarted(_ props: [String: Insights.Value]) {
+    // A level that ends without an end card (a restart from pause) still files its frames.
+    if FrameMeter.shared.running { perf("left") }
     moment = .menu
     queue.release()
     track("game_start", props)
+    level = props.filter { ["mode", "level", "difficulty"].contains($0.key) }
     moment = .play
+    FrameMeter.shared.begin()
   }
-  /// The end card is up: game_over joins the queue with what the level held, and the batch goes.
+  /// The end card is up: perf_level and game_over join the queue with what the level held, and the batch goes.
   func gameOver(_ props: [String: Insights.Value]) {
     moment = .result
     queue.release()
+    let outcome: String
+    if case .bool(let won)? = props["won"] { outcome = won ? "won" : "lost" } else { outcome = "ended" }
+    perf(outcome)
     track("game_over", props)
     save()
     flush()
@@ -67,8 +76,16 @@ final class Usage {
   func left() {
     moment = .menu
     queue.release()
+    if FrameMeter.shared.running { perf("left") }
     save()
     flush()
+  }
+  /// The playing level's mode, level and difficulty, for its perf_level.
+  private var level: [String: Insights.Value] = [:]
+  /// The frame meter's numbers for the level that just ended (nothing if it saw too little to say).
+  private func perf(_ outcome: String) {
+    guard let p = FrameMeter.shared.finish(outcome: outcome) else { return }
+    track("perf_level", p.merging(level) { a, _ in a })
   }
 
   /// A session: at launch, and on coming back after half an hour away.
