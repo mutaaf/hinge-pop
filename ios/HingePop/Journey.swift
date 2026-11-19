@@ -97,6 +97,13 @@ enum Backdrop {
     let s = CGSize(width: size.width.rounded(), height: size.height.rounded())
     return Art.arena(kind, variant: variant, size: s, scale: scale)
   }
+  /// The backdrop only if it's already drawn. Rows ask this, so scrolling to a world whose art isn't ready
+  /// shows its gradient for a moment instead of stalling the scroll for the 30-60 ms a draw takes.
+  static func ready(_ biome: Arena, variant: Int, size: CGSize, scale: CGFloat = 1) -> CGImage? {
+    guard let kind = ArenaKind(rawValue: biome.rawValue), size.width >= 1, size.height >= 1 else { return nil }
+    let s = CGSize(width: size.width.rounded(), height: size.height.rounded())
+    return Art.arenaIfDrawn(kind, variant: variant, size: s, scale: scale)
+  }
   /// Renders the backdrops off the main thread, nearest first, so scrolling never waits on art.
   static func prewarm(_ biomes: [(Arena, Int)], size: CGSize) async {
     await Task.detached(priority: .utility) {
@@ -115,9 +122,13 @@ struct BackdropFill: View {
   /// How tall a window onto it to show; the whole image when nil.
   var visible: CGFloat? = nil
   var scale: CGFloat = 1
+  /// Bumped when art drawn off the main thread lands, so the row looks again.
+  @State private var drawn = 0
   var body: some View {
+    let _ = drawn
+    let img = Backdrop.ready(biome, variant: variant, size: size, scale: scale)
     ZStack(alignment: .top) {
-      if let img = Backdrop.image(biome, variant: variant, size: size, scale: scale) {
+      if let img {
         Image(decorative: img, scale: scale).resizable().frame(width: size.width, height: size.height)
           .offset(y: -band)
       } else {
@@ -139,6 +150,12 @@ struct BackdropFill: View {
     .frame(width: size.width, height: visible ?? size.height, alignment: .top)
     .clipped()
     .accessibilityHidden(true)
+    .task(id: "\(biome.rawValue)-\(variant)-\(Int(size.width))x\(Int(size.height))@\(scale)") {
+      guard img == nil else { return }
+      let (b, v, s, k) = (biome, variant, size, scale)
+      _ = await Task.detached(priority: .userInitiated) { Backdrop.image(b, variant: v, size: s, scale: k) }.value
+      if !Task.isCancelled { drawn += 1 }
+    }
   }
 }
 

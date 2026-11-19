@@ -31,6 +31,7 @@ final class GameScene: SKScene {
   private let calmNode = SKSpriteNode(color: .white, size: CGSize(width: 10, height: 10))
   private let calmLine = SKUniform(name: "u_line", float: 0.5)
   private let calmAxis = SKUniform(name: "u_axis", float: 0)
+  private var arenaCalm: SKShader?
   /// The biome bubbles are dressed for (`Art.bubble(..., biome:)`).
   private var skin: ArenaKind?
   private var energy = 0.0
@@ -132,6 +133,9 @@ final class GameScene: SKScene {
   private var streakFrom: [Int: CGPoint] = [:]
   /// Fever's beat: the screen breathes on it while fever runs.
   private var feverBeat = 0.0
+  /// Scratch space reused every frame, so drawing allocates nothing: which ids are still on the field, the bosses.
+  private var seen = Set<Int>()
+  private var bosses: [BubbleNode] = []
   /// Stars flying to the top when a level is cleared, and how many have landed.
   private var starsLanded = 0
 
@@ -201,6 +205,20 @@ final class GameScene: SKScene {
     calm.uniforms = [calmLine, calmAxis]
     calmNode.shader = calm
     calmNode.zPosition = -15
+    // Once the art is in, the same calm is applied while the art itself is drawn, which saves a full-screen
+    // blended pass every frame (the separate calm sprite then hides).
+    let calmArt = SKShader(source: """
+    void main() {
+      vec4 c = texture2D(u_texture, v_tex_coord);
+      vec2 uv = vec2(v_tex_coord.x, 1.0 - v_tex_coord.y);
+      float d = u_axis > 0.5 ? abs(uv.x - u_line) : abs(uv.y - u_line);
+      float near = 1.0 - smoothstep(0.0, 0.45, d);
+      float a = 0.2 + 0.32 * near * near;
+      gl_FragColor = vec4(c.rgb * (1.0 - a) + vec3(0.02, 0.01, 0.06) * a, 1.0);
+    }
+    """)
+    calmArt.uniforms = [calmLine, calmAxis]
+    arenaCalm = calmArt
     let shader = SKShader(source: """
     void main() {
       vec2 uv = v_tex_coord;
@@ -324,7 +342,27 @@ final class GameScene: SKScene {
     view.allowsTransparency = false
     view.isOpaque = true
     view.shouldCullNonVisibleNodes = false
-    view.preferredFramesPerSecond = ProcessInfo.processInfo.isLowPowerModeEnabled ? 60 : (view.window?.screen.maximumFramesPerSecond ?? 60)
+    applyFrameRate(view)
+    #if DEBUG
+    // -stats: SpriteKit's own counters in the corner (frame rate, nodes, draw calls), for -snap captures.
+    if Debug.has("-stats") { view.showsFPS = true; view.showsNodeCount = true; view.showsDrawCount = true }
+    #endif
+  }
+
+  /// ProMotion screens run at 120 Hz while the effects budget is healthy; Low Power Mode, a hot device or a
+  /// struggling budget drop to 60. Checked every frame, since SwiftUI's SpriteView can reapply its own rate.
+  private func applyFrameRate(_ view: SKView) {
+    var want = FXBudget.shared.frameRate(max: view.window?.screen.maximumFramesPerSecond ?? 60)
+    // Under a card the scene is held or only settling, so it needn't redraw at full rate: 60 behind the end
+    // card (its stars and confetti still fly), 30 behind pause, tips and the teaching cards.
+    if let session {
+      switch session.overlay {
+      case .none, .tour: if session.tip != nil { want = min(want, 30) }
+      case .result: want = min(want, 60)
+      default: want = min(want, 30)
+      }
+    }
+    if view.preferredFramesPerSecond != want { view.preferredFramesPerSecond = want }
   }
 
   /// The scene fills the whole screen so the art and sky reach every edge. Play stays inside the safe area,
@@ -370,6 +408,14 @@ final class GameScene: SKScene {
   override func update(_ currentTime: TimeInterval) {
     let dt = lastTime == 0 ? 1.0 / 60 : currentTime - lastTime
     lastTime = currentTime
+    // The effects budget watches real frame times and sets the rate and how much debris flies.
+    let budget = FXBudget.shared
+    if let view {
+      budget.frame(dt: dt, target: 1.0 / Double(max(1, view.preferredFramesPerSecond)))
+      applyFrameRate(view)
+    }
+    debris.density = budget.debris
+    FrameMeter.shared.frame(currentTime, self)
     #if DEBUG
     perfSample(dt)
     let workStart = CACurrentMediaTime()
@@ -481,6 +527,7 @@ final class GameScene: SKScene {
     streakUntil = -1; streakFrom.removeAll(); readyFlare = 0; hurtAge = 1; starsLanded = 0; feverBeat = 0
     world.setScale(1); world.speed = 1
     twists.reset(game, arena: session?.arena ?? game.spec.arena)
+    FXBudget.shared.levelStarted()
     prewarm(game)
     placeBackdrop()
   }
@@ -553,6 +600,9 @@ final class GameScene: SKScene {
         self.arenaNode.texture = SKTexture(cgImage: image)
         self.arenaNode.size = box
         self.arenaNode.color = .white
+        self.arenaNode.shader = self.arenaCalm
+        self.arenaNode.blendMode = .replace
+        self.calmNode.isHidden = true
       }
     }
   }
@@ -755,15 +805,45 @@ final class GameScene: SKScene {
   private func texture(_ kind: BubbleKind, size px: CGFloat) -> SKTexture {
     let key = "\(kind.rawValue)-\(skin?.rawValue ?? "")-\(Int(px))"
     if let t = textures[key] { return t }
-    let t = SKTexture(cgImage: Art.bubble(kind, size: px, scale: displayScale, biome: skin))
-    textures[key] = t
+    // A size the prewarm didn't cover (a splitter boss shrinking, twins): drawing it here would stall the frame
+    // for tens of milliseconds, so the nearest size already made stands in while it's drawn off the main thread.
+    let biome = skin
+    if let ready = Art.bubbleIfDrawn(kind, size: px, scale: displayScale, biome: biome) {
+      let t = SKTexture(cgImage: ready)
+      store(t, key: key, kind: kind, size: px, biome: biome)
+      return t
+    }
+    if let near = sized[biome?.rawValue ?? "", default: [:]][kind]?.min(by: { abs($0.0 - px) < abs($1.0 - px) }) {
+      if pendingArt.insert(key).inserted {
+        let scale = displayScale
+        Task.detached(priority: .userInitiated) {
+          let image = Art.bubble(kind, size: px, scale: scale, biome: biome)
+          await MainActor.run { [weak self] in
+            guard let self else { return }
+            self.pendingArt.remove(key)
+            self.store(SKTexture(cgImage: image), key: key, kind: kind, size: px, biome: biome)
+            // Nodes wearing the stand-in pick up the real art next frame.
+            for n in self.bubbleNodes.values where n.kind == kind { n.drawSize = -1 }
+          }
+        }
+      }
+      return near.1
+    }
+    let t = SKTexture(cgImage: Art.bubble(kind, size: px, scale: displayScale, biome: biome))
+    store(t, key: key, kind: kind, size: px, biome: biome)
     return t
+  }
+  private var sized: [String: [BubbleKind: [(CGFloat, SKTexture)]]] = [:]
+  private var pendingArt = Set<String>()
+  private func store(_ t: SKTexture, key: String, kind: BubbleKind, size px: CGFloat, biome: ArenaKind?) {
+    textures[key] = t
+    sized[biome?.rawValue ?? "", default: [:]][kind, default: []].append((px, t))
   }
 
   private func drawBubbles(_ game: Game, alpha: Double) {
-    var seen = Set<Int>(minimumCapacity: game.bubbles.count)
+    seen.removeAll(keepingCapacity: true)
     var winding: (Bubble, CGPoint)?
-    var bosses: [BubbleNode] = []
+    bosses.removeAll(keepingCapacity: true)
     for b in game.bubbles {
       seen.insert(b.id)
       let kind = artKind(b)
@@ -902,7 +982,7 @@ final class GameScene: SKScene {
   }
 
   private func drawVisitors(_ game: Game, alpha: Double) {
-    var seen = Set<Int>()
+    seen.removeAll(keepingCapacity: true)
     for v in game.visitors {
       seen.insert(v.id)
       let node: SKSpriteNode
@@ -944,7 +1024,7 @@ final class GameScene: SKScene {
   /// while one materialises (it can't bite yet), then breathes while it can. Under Reduce Motion the ring holds
   /// still and the sprite doesn't pulse; the spiked rim in the art is the tell either way.
   private func drawVillains(_ game: Game, alpha: Double) {
-    var seen = Set<Int>()
+    seen.removeAll(keepingCapacity: true)
     for v in game.villains {
       seen.insert(v.id)
       let node: VillainPuppet
@@ -1003,7 +1083,7 @@ final class GameScene: SKScene {
   }
 
   private func drawPickups(_ game: Game) {
-    var seen = Set<Int>()
+    seen.removeAll(keepingCapacity: true)
     for p in game.pickups {
       seen.insert(p.id)
       let node: SKSpriteNode
@@ -1080,7 +1160,7 @@ final class GameScene: SKScene {
     e.particleSpeedRange = r * (fast ? 2.4 : 2)
     e.particleScale = fast ? 0.32 : 0.55
     e.particleLifetime = fast ? 0.38 : 0.6
-    e.numParticlesToEmit = min(40, count)
+    e.numParticlesToEmit = max(1, Int((Double(min(40, count)) * FXBudget.shared.sparks).rounded()))
   }
 
   private func burst(at p: CGPoint, r: CGFloat, particles: Int) {
@@ -1360,7 +1440,7 @@ final class GameScene: SKScene {
     let long = perfTimes.filter { $0 > 25 }.count
     let work = perfWorks.sorted()
     let w = { (q: Double) in work.isEmpty ? 0 : work[min(work.count - 1, Int(Double(work.count) * q))] }
-    Debug.ready(String(format: "perf frames=900 p50=%.1f p95=%.1f p99=%.1f max=%.1f over25ms=%d nodes=%d update_p50=%.2fms update_p95=%.2fms update_max=%.2fms slowest[tick,fx,sky..,bubbles,..,feel]=%@", at(0.5), at(0.95), at(0.99), sorted.last ?? 0, long, world.children.count, w(0.5), w(0.95), work.last ?? 0, slowestLaps.map { String(format: "%.2f", $0) }.joined(separator: ",")))
+    Debug.ready(String(format: "perf frames=900 p50=%.1f p95=%.1f p99=%.1f max=%.1f over25ms=%d nodes=%d update_p50=%.2fms update_p95=%.2fms update_max=%.2fms fx=%d fps=%d slowest[tick,fx,sky..,bubbles,..,feel]=%@", at(0.5), at(0.95), at(0.99), sorted.last ?? 0, long, world.children.count, w(0.5), w(0.95), work.last ?? 0, FXBudget.shared.level, view?.preferredFramesPerSecond ?? 0, slowestLaps.map { String(format: "%.2f", $0) }.joined(separator: ",")))
   }
 
   /// Store captures: real snaps going off often enough for a screenshot to catch one. Nothing is drawn specially.

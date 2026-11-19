@@ -7,10 +7,17 @@ import Foundation
 
 final class InsightsTests: XCTestCase {
   func testVocabularyIsTheWebsAndPropsAreNumbersFlagsOrEnums() {
-    XCTAssertEqual(Set(Insights.EVENTS.keys), ["session_start", "game_start", "game_over", "tour_end"])
+    XCTAssertEqual(Set(Insights.EVENTS.keys), ["session_start", "game_start", "game_over", "tour_end",
+                                               "perf_level", "app_metrics", "app_diagnostic", "save_recovered"])
     // Nothing that could carry a person: no names, ids or free text among the props.
     for (_, props) in Insights.EVENTS {
-      for (k, _) in props { XCTAssertFalse(["initials", "name", "id", "text", "url", "log", "seed"].contains(k), k) }
+      for (k, _) in props {
+        XCTAssertFalse(["initials", "name", "id", "text", "url", "log", "seed"].contains(k), k)
+        // Diagnostics carry no stacks, paths, reasons, messages or device names.
+        for bad in ["stack", "path", "file", "reason", "message", "symbol", "binary", "device", "model", "thread", "region"] {
+          XCTAssertFalse(k.contains(bad), k)
+        }
+      }
     }
     XCTAssertNil(Insights.clean("page_view", [:]))
     let c = Insights.clean("game_over", ["mode": .text("solo"), "level": .num(12), "score": .num(4210), "duration_s": .num(61.3),
@@ -43,8 +50,10 @@ final class InsightsTests: XCTestCase {
       web[name, default: []].formUnion(keys)
     }
     XCTAssertEqual(Set(web.keys), ["game_start", "game_over", "tour_end"], "the web's events changed: update Insights.EVENTS")
-    // Native-only: session_start (Cold Gas's) and `difficulty` (the web has no Overdrive).
-    for (name, spec) in Insights.EVENTS where name != "session_start" {
+    XCTAssertTrue(Insights.NATIVE_ONLY.isSubset(of: Insights.EVENTS.keys), "a native-only event that isn't in the vocabulary")
+    XCTAssertTrue(Insights.NATIVE_ONLY.isDisjoint(with: web.keys), "the web sends it now: hold it to the web's props")
+    // Native-only: Insights.NATIVE_ONLY (session_start, the health events) and `difficulty` (the web has no Overdrive).
+    for (name, spec) in Insights.EVENTS where !Insights.NATIVE_ONLY.contains(name) {
       let w = web[name] ?? []
       for p in spec.keys where p != "difficulty" { XCTAssertTrue(w.contains(p), "\(name).\(p) isn't a web prop") }
       for p in w { XCTAssertNotNil(spec[p], "\(name).\(p) is a web prop the app drops") }

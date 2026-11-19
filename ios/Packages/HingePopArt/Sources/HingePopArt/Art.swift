@@ -37,6 +37,14 @@ public enum Art {
         }
     }
 
+    /// The bubble if it's already drawn, without drawing it: lets a frame on the main thread skip art that
+    /// isn't ready rather than stall on it.
+    public static func bubbleIfDrawn(_ kind: BubbleKind, size: CGFloat, scale: CGFloat, biome: ArenaKind?) -> CGImage? {
+        let skin = biome.flatMap { $0 == .classic ? nil : $0 }
+        lock.lock(); defer { lock.unlock() }
+        return images[Key(item: .bubble(kind, skin), w: size, h: size, scale: scale)]
+    }
+
     public static func cameo(_ kind: CameoKind, size: CGFloat, scale: CGFloat) -> CGImage {
         cached(.cameo(kind), size, size, scale) {
             let small = size < smallBelow
@@ -84,6 +92,14 @@ public enum Art {
         }
     }
 
+    /// The arena if it's already drawn at this size, without drawing it (a full screen takes ~100 ms at 3x, so
+    /// screens show it when it's ready instead of waiting on the main thread).
+    public static func arenaIfDrawn(_ kind: ArenaKind, variant: Int = 0, size: CGSize, scale: CGFloat) -> CGImage? {
+        let v = ((variant % arenaVariants) + arenaVariants) % arenaVariants
+        lock.lock(); defer { lock.unlock() }
+        return images[Key(item: .arena(kind, v), w: size.width, h: size.height, scale: scale)]
+    }
+
     /// Where a biome's landmark sits (the thing its hidden secret wakes from), in points, y down, with a
     /// tap radius. `Secrets.spot` in the core mirrors these numbers, and they hold for every variant.
     public static func landmark(_ kind: ArenaKind, size: CGSize) -> (x: CGFloat, y: CGFloat, r: CGFloat) {
@@ -127,6 +143,18 @@ public enum Art {
     private static var bytes = 0
     /// Enough for every arena and sprite the app can hold at once. Oldest goes first past this.
     private static let byteLimit = 384 * 1024 * 1024
+
+    /// Memory warning: drops the cached arena backdrops (the big full-screen images; textures already made keep
+    /// their own copy, and a backdrop is redrawn off the main thread when next needed). Sprites stay, so play never
+    /// has to render one mid-level.
+    public static func purgeArenas() {
+        lock.lock(); defer { lock.unlock() }
+        order.removeAll { key in
+            guard case .arena = key.item, let gone = images.removeValue(forKey: key) else { return false }
+            bytes -= gone.bytesPerRow * gone.height
+            return true
+        }
+    }
 
     private static func px(_ v: CGFloat, _ scale: CGFloat) -> Int { max(Int((v * scale).rounded()), 1) }
 

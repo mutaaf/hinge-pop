@@ -295,7 +295,8 @@ public enum Campaign {
   /// its hardest.
   public static func worldLevel(_ n: Int, chapter ch: Chapter, step k: Int) -> LevelSpec {
     var rng = SplitMix(seed: UInt64(n) &* 0x9E37)
-    let world = Worlds.world(ch.number)!
+    // Chapters 9–80 always have a world; anything else (a bad chapter) plays a generated level rather than crashing.
+    guard let world = Worlds.world(ch.number) else { return generated(n, chapter: ch) }
     let slot = (world.number - 1) % 8                       // 0...7 inside its realm
     let tier = Double(world.realm - 2) / 8                  // 0 in Sugar Rush, 1 in Clockwork Sky
     let finale = slot == 7
