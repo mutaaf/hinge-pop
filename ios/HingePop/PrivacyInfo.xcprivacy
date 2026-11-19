@@ -3,7 +3,7 @@
 <plist version="1.0"><dict>
   <key>NSPrivacyTracking</key><false/>
   <key>NSPrivacyTrackingDomains</key><array/>
-  <!-- From 0.4.1: the usage events (HingePopCore/Insights.swift). Matches store/app-privacy.md's label. -->
+  <!-- From 0.4.1: the usage events (HingePopCore/Insights.swift); from the version that ships the health events, Crash and Performance Data too. Matches store/app-privacy.md. -->
   <key>NSPrivacyCollectedDataTypes</key><array>
     <dict>
       <key>NSPrivacyCollectedDataType</key><string>NSPrivacyCollectedDataTypeProductInteraction</string>
@@ -13,6 +13,20 @@
     </dict>
     <dict>
       <key>NSPrivacyCollectedDataType</key><string>NSPrivacyCollectedDataTypeDeviceID</string>
+      <key>NSPrivacyCollectedDataTypeLinked</key><true/>
+      <key>NSPrivacyCollectedDataTypeTracking</key><false/>
+      <key>NSPrivacyCollectedDataTypePurposes</key><array><string>NSPrivacyCollectedDataTypePurposeAnalytics</string></array>
+    </dict>
+    <!-- The health events (hardening pass): MetricKit crash diagnostics as numbers (app_diagnostic), and launch,
+         hang, memory and frame-time numbers (app_metrics, perf_level). Same install id, so linked; never tracking. -->
+    <dict>
+      <key>NSPrivacyCollectedDataType</key><string>NSPrivacyCollectedDataTypeCrashData</string>
+      <key>NSPrivacyCollectedDataTypeLinked</key><true/>
+      <key>NSPrivacyCollectedDataTypeTracking</key><false/>
+      <key>NSPrivacyCollectedDataTypePurposes</key><array><string>NSPrivacyCollectedDataTypePurposeAnalytics</string></array>
+    </dict>
+    <dict>
+      <key>NSPrivacyCollectedDataType</key><string>NSPrivacyCollectedDataTypePerformanceData</string>
       <key>NSPrivacyCollectedDataTypeLinked</key><true/>
       <key>NSPrivacyCollectedDataTypeTracking</key><false/>
       <key>NSPrivacyCollectedDataTypePurposes</key><array><string>NSPrivacyCollectedDataTypePurposeAnalytics</string></array>
