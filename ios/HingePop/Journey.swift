@@ -149,6 +149,10 @@ struct BackdropFill: View {
     }
     .frame(width: size.width, height: visible ?? size.height, alignment: .top)
     .clipped()
+    // Clipping hides the rest of the tall image but doesn't stop it taking touches: without this, each journey
+    // row's backdrop (its world's whole 10-row image, slid up to its band) lay over the rows above it and swallowed
+    // taps meant for their stops, so only a world's boss stop could be tapped.
+    .contentShape(Rectangle())
     .accessibilityHidden(true)
     .task(id: "\(biome.rawValue)-\(variant)-\(Int(size.width))x\(Int(size.height))@\(scale)") {
       guard img == nil else { return }
@@ -222,14 +226,38 @@ struct JourneyView: View {
       }
     }
     #if DEBUG
+    .overlay(alignment: .topLeading) {
+      if let hitReport {
+        Color.clear.frame(width: 1, height: 1).allowsHitTesting(false)
+          .accessibilityElement().accessibilityIdentifier("hitCheck").accessibilityLabel(hitReport)
+      }
+    }
     .task {
       if Debug.has("-realms") { showRealms = true }
       if let r = Debug.int("-realm") { go(to: r) }
       try? await Task.sleep(for: .milliseconds(300))
+      // -journeyAt N lands on level N's stop (UI tests, and a Mac, which can't drag-scroll the path).
+      if let n = Debug.int("-journeyAt") {
+        for _ in 0..<3 {
+          jump = (JourneyRow.level(n).id, false); jumpCount += 1
+          try? await Task.sleep(for: .milliseconds(120))
+        }
+      }
+      if HitCheck.on {
+        // Let the rows and their art settle, then ask the hit test which stops would take a tap.
+        try? await Task.sleep(for: .milliseconds(1500))
+        let report = HitCheck.report()
+        hitReport = report
+        Debug.ready("hits \(report)")
+      }
       Debug.ready("root")
     }
     #endif
   }
+
+  #if DEBUG
+  @State private var hitReport: String?
+  #endif
 
   private var rowHeight: CGFloat { min(150, max(84, rowScaled)) }
 
@@ -636,6 +664,9 @@ struct LevelStop: View {
       }
       .frame(minWidth: Theme.target, minHeight: Theme.target)
       .contentShape(Rectangle())
+      #if DEBUG
+      .overlay { if HitCheck.on { HitProbe(level: level).frame(width: 8, height: 8) } }
+      #endif
     }
     .buttonStyle(StopStyle())
     .disabled(!open && !gated)
