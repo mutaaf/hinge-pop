@@ -134,6 +134,19 @@ h1 { margin: 0; font: 400 clamp(28px, 9vw, 36px)/1.05 var(--display); letter-spa
 .actions .primary { order: -1; flex-basis: 100%; min-height: 54px; background: var(--hinge); color: var(--ink); border: 0; }
 .actions .secondary { background: transparent; color: var(--fg); border: 1px solid var(--line); }
 @media (hover: hover) { .actions .secondary:hover { background: rgba(255, 255, 255, .05); } }
+/* Levels: a grid of bubbles, one per level reached. Cleared ones keep their best; the furthest glows; the next few wait, locked. */
+.levels { position: relative; display: grid; grid-template-columns: repeat(auto-fill, minmax(54px, 1fr)); gap: 8px; max-height: min(46vh, 330px); overflow-y: auto; padding: 4px; margin: -4px; overscroll-behavior: contain; }
+.lv { position: relative; display: grid; place-content: center; justify-items: center; gap: 1px; aspect-ratio: 1; min-height: var(--target); min-width: var(--target); padding: 0; border-radius: 50%; border: 2px solid var(--line); background: #2d1b5e; color: var(--fg); font: 600 11px var(--body); font-variant-numeric: tabular-nums; cursor: pointer; transition: transform .12s var(--ease); }
+.lv b { font: 400 19px/1 var(--display); letter-spacing: 0; }
+.lv small { font: inherit; line-height: 1.1; color: var(--hinge); }
+.lv.done { border-color: var(--hinge); box-shadow: inset 0 0 12px rgba(79, 216, 255, .35); }
+.lv.now { background: var(--hinge); border-color: #fff; color: var(--ink); box-shadow: 0 0 0 3px rgba(79, 216, 255, .35), 0 0 18px rgba(79, 216, 255, .7); }
+.lv.now small { color: var(--ink); }
+.lv.locked { background: transparent; border-style: dashed; color: var(--muted); opacity: .45; cursor: default; }
+.lv:not(:disabled):active { transform: scale(.94); }
+@media (hover: hover) { .lv:not(:disabled):not(.now):hover { background: #3a2475; } }
+@media (prefers-reduced-motion: no-preference) { .lv.now { animation: beckon 1.8s ease-in-out infinite alternate; } }
+@keyframes beckon { to { box-shadow: 0 0 0 5px rgba(79, 216, 255, .25), 0 0 26px rgba(79, 216, 255, .85); } }
 #sky { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
 .more { display: flex; flex-direction: column; }
 /* Bright aurora behind what matters. Three drifting curtains, painted once and moved, so it costs almost nothing. */
@@ -247,6 +260,7 @@ details[open] > summary::after { content: "\2212"; }
   .sheet { margin-block: auto; max-width: 660px; gap: 10px; padding: 14px 18px; border: 1px solid var(--line); border-radius: 16px; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); align-items: center; }
   .sheet > * { grid-column: 1; }
   .sheet > .actions { grid-column: 2; grid-row: 1 / span 3; align-self: start; }
+  .levels { max-height: calc(100vh - 150px); grid-template-columns: repeat(auto-fill, minmax(50px, 1fr)); }
   .sheet > .stats { grid-column: 1 / -1; grid-row: 4; grid-template-columns: repeat(6, 1fr); padding-block: 8px; }
   .sub { font-size: 12px; margin-top: 4px; }
   #finalScore { margin-top: 4px; }
@@ -364,6 +378,7 @@ details[open] > summary::after { content: "\2212"; }
         <p id="finalScore" hidden></p>
       </div>
       <div class="actions" id="actions"></div>
+      <div class="levels" id="levels" role="group" aria-label="Levels reached" hidden></div>
       <details class="fold" id="statsBox" hidden><summary>Details</summary><dl class="stats" id="stats"></dl></details>
       <div class="more">
         <details id="howto">
@@ -494,6 +509,29 @@ function levelConfig(n) {
   // Every tenth level is a breather: fewer bubbles, and a chance to reset.
   if (k === 10) return { sizes: sizesForWork(20 + chapter * 2), speed };
   return { sizes: sizesForWork(Math.min(CFG.maxWork, 24 + chapter * 7 + (k - 1) * 3)), speed };
+}
+
+// Progress, as the save keeps it: `reached` is the furthest level opened, `level` the next one to play (lower after
+// replaying an old level) and `scores` each level's best clear. Older saves only had `level`, which was the furthest.
+// Plain data in and out, so tests check the migration beside the rules.
+function readProgress(saved) {
+  const s = saved && typeof saved === 'object' ? saved : {};
+  const whole = (n) => (Number.isInteger(n) && n > 0 ? n : 1);
+  const level = whole(s.level), reached = Math.max(whole(s.reached), level);
+  const scores = {};
+  if (s.scores && typeof s.scores === 'object') {
+    for (const k of Object.keys(s.scores)) {
+      const n = Number(k), v = s.scores[k];
+      if (Number.isInteger(n) && n > 0 && n < reached && Number.isFinite(v) && v > 0) scores[n] = Math.round(v);
+    }
+  }
+  return { level, reached, scores };
+}
+// A clear of level n worth `points`: next up is n + 1, and replaying an old level never lowers `reached`.
+function recordWin(progress, n, points) {
+  const scores = Object.assign({}, progress.scores);
+  if (points > (scores[n] || 0)) scores[n] = Math.round(points);
+  return { level: n + 1, reached: Math.max(progress.reached, n + 1), scores };
 }
 
 function createSim(opts) {
@@ -1073,7 +1111,8 @@ function createSim(opts) {
   const sendGeometry = () => { if (sim) toPage({ type: 'geometry', vertical: sim.vertical, pos: sim.line(), top: sim.top, w: W, h: H }); };
 
   let W = 0, H = 0, sim = null, mode = 'menu';
-  let level = 1, runScore = 0;
+  // `level` is the one about to be played; `progress` is what the save keeps (readProgress, in the rules).
+  let level = 1, runScore = 0, levelStart = 0, progress = readProgress({});
   let lastBump = 0;
   let fx = [], shake = 0, hingePulse = 0, endTimer = 0, held = false;
   const active = new Map();
@@ -1094,7 +1133,8 @@ function createSim(opts) {
     if (typeof p.grace === 'boolean') $('optGrace').checked = p.grace;
     // Silent until someone turns it on. The old `sound` key was stored automatically, so it doesn't count as a choice.
     if (typeof p.soundOn === 'boolean') $('optSound').checked = p.soundOn;
-    if (Number.isInteger(p.level) && p.level > 0) level = p.level;
+    progress = readProgress(p);
+    level = progress.reached;
   }
 
   let logoReady = false;
@@ -1258,6 +1298,7 @@ function createSim(opts) {
 
   function play(o) {
     track('game_start', { mode: o.versus ? 'versus' : 'solo', level: o.versus ? 0 : level });
+    levelStart = o.score || 0;
     initAudio();
     writeStore();
     newSim(o);
@@ -1313,6 +1354,8 @@ function createSim(opts) {
     document.querySelector('.sheet').classList.toggle('result', !!o.total || o.total === 0);
     $('stats').classList.toggle('two', !!o.twoColumn);
     $('stats').innerHTML = (o.stats || []).map(([k, v]) => '<div data-tip="stat:' + k + '" role="button" tabindex="0" aria-label="' + k + ': ' + v + '. Show details."><dt>' + k + '</dt><dd>' + v + '</dd></div>').join('');
+    $('levels').hidden = !o.levels;
+    if (o.levels) levelTiles();
     $('howto').hidden = !o.rules;
     if (o.rules) {
       const met = new Set(readStore().cameos || []);
@@ -1350,12 +1393,68 @@ function createSim(opts) {
   function menu() {
     mode = 'menu';
     runScore = 0;
+    // Play always carries on from the furthest level; older ones are a tap away in Levels.
+    level = progress.reached;
     newSim({ level });
     const actions = [{ id: 'two', label: '2 Players', run: playVersus }];
-    if (level > 1) actions.push({ id: 'levelOne', label: 'Back to level 1', run: () => { level = 1; writeStore({ level: 1 }); playLevel(); } });
+    if (progress.reached > 1) actions.push({ id: 'levels', label: 'Levels', run: levels });
     actions.push({ id: 'play', label: level > 1 ? 'Play level ' + level : 'Play', primary: true, run: playLevel });
     showPanel({ heading: 'Hinge Pop', sub: 'Split the bubbles. Snap the hinge. Save your shields.', rules: true, toggles: true, actions, logo: true });
   }
+
+  // The level picker: every level reached, the furthest lit up, the next few shown locked.
+  const LOCKED_SHOWN = 4;
+  const compact = (n) => (n < 1000 ? String(n) : n < 1e6 ? (n / 1000).toFixed(n < 1e4 ? 1 : 0).replace(/\.0$/, '') + 'k' : (n / 1e6).toFixed(1).replace(/\.0$/, '') + 'M');
+  function startAt(n) {
+    level = n;
+    runScore = 0;
+    playLevel();
+  }
+  function levels() {
+    level = progress.reached;
+    showPanel({
+      heading: 'Levels',
+      sub: 'Replay any level you have reached.',
+      levels: true,
+      actions: [{ id: 'levelsBack', label: 'Back', run: menu }, { id: 'play', label: 'Play level ' + level, primary: true, run: () => startAt(progress.reached) }],
+    });
+    const now = $('levels').querySelector('.now');
+    if (now) {
+      const box = $('levels');
+      box.scrollTop = Math.max(0, now.offsetTop - (box.clientHeight - now.offsetHeight) / 2);
+      now.focus({ preventScroll: true });
+    }
+  }
+  function levelTiles() {
+    const box = $('levels'), top = progress.reached;
+    box.textContent = '';
+    for (let n = 1; n <= top + LOCKED_SHOWN; n++) {
+      const b = document.createElement('button'), best = progress.scores[n];
+      b.type = 'button';
+      b.className = 'lv' + (n > top ? ' locked' : '') + (n === level ? ' now' : '') + (best ? ' done' : '');
+      b.dataset.level = n;
+      b.innerHTML = '<b>' + n + '</b>' + (best ? '<small>' + compact(best) + '</small>' : '');
+      if (n > top) {
+        b.disabled = true;
+        b.setAttribute('aria-label', 'Level ' + n + ', locked');
+      } else {
+        b.setAttribute('aria-label', 'Level ' + n + (best ? ', best ' + best.toLocaleString() : n === top ? ', next up' : ''));
+        if (n === level) b.setAttribute('aria-current', 'true');
+        b.addEventListener('click', () => startAt(n));
+      }
+      box.appendChild(b);
+    }
+  }
+  // Arrow keys move across the grid, a row at a time up and down.
+  $('levels').addEventListener('keydown', (e) => {
+    const step = { ArrowLeft: -1, ArrowRight: 1, ArrowUp: 'up', ArrowDown: 'down' }[e.key];
+    if (!step || !e.target.matches('.lv')) return;
+    const tiles = [...$('levels').querySelectorAll('.lv:not(:disabled)')];
+    const cols = getComputedStyle($('levels')).gridTemplateColumns.split(' ').length || 1;
+    const i = tiles.indexOf(e.target), to = tiles[i + (step === 'up' ? -cols : step === 'down' ? cols : step)];
+    e.preventDefault();
+    if (to) to.focus();
+  });
 
   function pause() {
     closeTip();
@@ -1414,9 +1513,10 @@ function createSim(opts) {
     const total = p.score;
     if (won) {
       const done = level;
-      level = done + 1;
+      progress = recordWin(progress, done, p.score - levelStart);
+      level = progress.level;
       runScore = p.score;
-      writeStore({ level, best });
+      writeStore({ level, reached: progress.reached, scores: progress.scores, best });
       showPanel({
         heading: 'Level ' + done + ' cleared',
         sub: 'Next: ' + describeLevel(level) + '.',

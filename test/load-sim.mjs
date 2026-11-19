@@ -7,7 +7,7 @@ export function loadSim(overrides = {}) {
   const src = html.split('// SIM START')[1].split('// SIM END')[0];
   const ctx = {};
   vm.createContext(ctx);
-  vm.runInContext(`${src};this.createSim=createSim;this.CFG=CFG;this.levelConfig=levelConfig;`, ctx);
+  vm.runInContext(`${src};this.createSim=createSim;this.CFG=CFG;this.levelConfig=levelConfig;this.readProgress=readProgress;this.recordWin=recordWin;`, ctx);
   Object.assign(ctx.CFG, overrides);
   return ctx;
 }
