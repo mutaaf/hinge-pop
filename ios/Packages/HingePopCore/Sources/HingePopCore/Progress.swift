@@ -2,6 +2,9 @@ import Foundation
 
 /// Everything the game remembers, kept on the device.
 public struct GameProgress: Codable, Equatable, Sendable {
+  /// The save format that wrote this (`SaveVault.schema`), stamped by the vault on every write. Nil in saves from
+  /// before the vault. A number above this build's means a newer app wrote it: see `SaveVault.load()`.
+  public internal(set) var saveSchema: Int? = nil
   public var unlocked = 1
   public var stars: [Int: Int] = [:]
   public var bestScores: [Int: Int] = [:]
