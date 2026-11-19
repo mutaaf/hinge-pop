@@ -324,7 +324,14 @@ final class GameScene: SKScene {
     view.allowsTransparency = false
     view.isOpaque = true
     view.shouldCullNonVisibleNodes = false
-    view.preferredFramesPerSecond = ProcessInfo.processInfo.isLowPowerModeEnabled ? 60 : (view.window?.screen.maximumFramesPerSecond ?? 60)
+    applyFrameRate(view)
+  }
+
+  /// ProMotion screens run at 120 Hz while the effects budget is healthy; Low Power Mode, a hot device or a
+  /// struggling budget drop to 60. Checked every frame, since SwiftUI's SpriteView can reapply its own rate.
+  private func applyFrameRate(_ view: SKView) {
+    let want = FXBudget.shared.frameRate(max: view.window?.screen.maximumFramesPerSecond ?? 60)
+    if view.preferredFramesPerSecond != want { view.preferredFramesPerSecond = want }
   }
 
   /// The scene fills the whole screen so the art and sky reach every edge. Play stays inside the safe area,
@@ -370,6 +377,13 @@ final class GameScene: SKScene {
   override func update(_ currentTime: TimeInterval) {
     let dt = lastTime == 0 ? 1.0 / 60 : currentTime - lastTime
     lastTime = currentTime
+    // The effects budget watches real frame times and sets the rate and how much debris flies.
+    let budget = FXBudget.shared
+    if let view {
+      budget.frame(dt: dt, target: 1.0 / Double(max(1, view.preferredFramesPerSecond)))
+      applyFrameRate(view)
+    }
+    debris.density = budget.debris
     #if DEBUG
     perfSample(dt)
     let workStart = CACurrentMediaTime()
@@ -481,6 +495,7 @@ final class GameScene: SKScene {
     streakUntil = -1; streakFrom.removeAll(); readyFlare = 0; hurtAge = 1; starsLanded = 0; feverBeat = 0
     world.setScale(1); world.speed = 1
     twists.reset(game, arena: session?.arena ?? game.spec.arena)
+    FXBudget.shared.levelStarted()
     prewarm(game)
     placeBackdrop()
   }
@@ -1080,7 +1095,7 @@ final class GameScene: SKScene {
     e.particleSpeedRange = r * (fast ? 2.4 : 2)
     e.particleScale = fast ? 0.32 : 0.55
     e.particleLifetime = fast ? 0.38 : 0.6
-    e.numParticlesToEmit = min(40, count)
+    e.numParticlesToEmit = max(1, Int((Double(min(40, count)) * FXBudget.shared.sparks).rounded()))
   }
 
   private func burst(at p: CGPoint, r: CGFloat, particles: Int) {
@@ -1360,7 +1375,7 @@ final class GameScene: SKScene {
     let long = perfTimes.filter { $0 > 25 }.count
     let work = perfWorks.sorted()
     let w = { (q: Double) in work.isEmpty ? 0 : work[min(work.count - 1, Int(Double(work.count) * q))] }
-    Debug.ready(String(format: "perf frames=900 p50=%.1f p95=%.1f p99=%.1f max=%.1f over25ms=%d nodes=%d update_p50=%.2fms update_p95=%.2fms update_max=%.2fms slowest[tick,fx,sky..,bubbles,..,feel]=%@", at(0.5), at(0.95), at(0.99), sorted.last ?? 0, long, world.children.count, w(0.5), w(0.95), work.last ?? 0, slowestLaps.map { String(format: "%.2f", $0) }.joined(separator: ",")))
+    Debug.ready(String(format: "perf frames=900 p50=%.1f p95=%.1f p99=%.1f max=%.1f over25ms=%d nodes=%d update_p50=%.2fms update_p95=%.2fms update_max=%.2fms fx=%d fps=%d slowest[tick,fx,sky..,bubbles,..,feel]=%@", at(0.5), at(0.95), at(0.99), sorted.last ?? 0, long, world.children.count, w(0.5), w(0.95), work.last ?? 0, FXBudget.shared.level, view?.preferredFramesPerSecond ?? 0, slowestLaps.map { String(format: "%.2f", $0) }.joined(separator: ",")))
   }
 
   /// Store captures: real snaps going off often enough for a screenshot to catch one. Nothing is drawn specially.

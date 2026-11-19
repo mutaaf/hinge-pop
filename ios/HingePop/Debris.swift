@@ -27,6 +27,10 @@ final class Debris {
   private var bits: [Bit] = []
   private var next = 0
   private var live = 0
+  /// Share of free-flying bits actually thrown (the effects budget, `FXBudget.debris`). Thinned evenly, and
+  /// homing bits (stars on their way to the score) always fly, since something waits for them to land.
+  var density = 1.0
+  private var owed = 0.0
   /// Called when a homing bit arrives, with its tag and where it landed.
   var onLand: (Int, CGPoint) -> Void = { _, _ in }
 
@@ -48,6 +52,11 @@ final class Debris {
             gravity: CGFloat = 0, drag: CGFloat = 0, size: CGSize, scale: (CGFloat, CGFloat) = (1, 1), alpha: CGFloat = 1,
             color: UIColor = .white, add: Bool = false, home: CGPoint? = nil, homeAt: Double = 0, tag: Int = 0) -> Bool {
     guard let texture, life > 0 else { return false }
+    if home == nil, density < 1 {
+      owed += density
+      guard owed >= 1 else { return true }
+      owed -= 1
+    }
     // Take a free slot; if all are flying, reuse the oldest-started one.
     var i = next
     for k in 0..<bits.count {
