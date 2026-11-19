@@ -295,7 +295,7 @@ struct ResultOverlay: View {
       .accessibilityLabel("Level \(n + 1)")
       .accessibilityHint(nextHint(n + 1) ?? "")
     } else {
-      Button("Find stars to win") { app.go(.play(.campaign(app.progress.nextUp))) }
+      Button("Find stars to win") { session.play(level: app.progress.nextUp) }
         .buttonStyle(ChunkyStyle())
     }
   }

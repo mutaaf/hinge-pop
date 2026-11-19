@@ -61,6 +61,12 @@ struct PlayView: View {
             .accessibilityIdentifier("probe").accessibilityLabel(session.probe)
             .frame(width: 2, height: 2).position(x: 1, y: 1)
         }
+        // Which level is in play, for UI tests (the HUD's label sits inside the meter's button).
+        if case .campaign = session.mode {
+          Color.clear.frame(width: 1, height: 1).allowsHitTesting(false)
+            .accessibilityElement().accessibilityIdentifier("playLevel").accessibilityLabel("LEVEL \(session.levelNumber)")
+            .position(x: 0, y: 0)
+        }
         #endif
       }
       .coordinateSpace(name: "play")

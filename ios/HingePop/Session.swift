@@ -307,6 +307,16 @@ final class Session {
     startGame()
   }
 
+  /// Another campaign level on this same screen, from a fresh score (the end card's "Find stars to win"). Going
+  /// through the route instead does nothing when the screen was opened on that very level, since the route
+  /// doesn't change.
+  func play(level n: Int) {
+    guard isCampaign else { return }
+    mode = .campaign(n)
+    runScore = 0
+    startGame()
+  }
+
   func pause() { if overlay == .none, game?.status == .playing { tip = nil; overlay = .paused } }
   func resume() {
     game.flick = app.progress.flick
