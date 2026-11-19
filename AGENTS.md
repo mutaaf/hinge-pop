@@ -105,7 +105,7 @@ The first Play and the first two-player match open a guided tour using real bubb
 - `npm run up` is the one command for local work. It serves on port 8796.
 - Tests that drive the page seed `toured` and `touredTwo` in `localStorage`, otherwise the first Play opens the tour.
 - `npm run test:e2e` needs Playwright's Chromium. Run `npx playwright install chromium` if it is missing.
-- Progress and settings are in `localStorage` under `hinge-pop-prefs`. There is no server state.
+- Progress and settings are in `localStorage` under `hinge-pop-prefs`. There is no server state. Progress is `reached` (furthest level opened), `level` (next to play, lower after a replay) and `scores` (each cleared level's best own points); `readProgress`/`recordWin` in the SIM block migrate old `level`-only saves and are unit tested. The menu's Play always continues from `reached`; Levels (`#pickLevel`) opens the picker (`#levels`) to replay any level reached. The web has no stars, so the picker shows best scores.
 
 ## Native app and App Store
 

@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { loadSim } from './load-sim.mjs';
 
-const { createSim, levelConfig, CFG } = loadSim();
+const { createSim, levelConfig, CFG, readProgress, recordWin } = loadSim();
 const solo = (level = 1) => { const s = createSim({ w: 390, h: 760, top: 70, level }); s.ready = 0; return s; };
 const versus = () => { const s = createSim({ w: 844, h: 390, top: 65, versus: true }); s.ready = 0; return s; };
 
@@ -535,3 +535,29 @@ test('in two players a snap only moves your own side', () => {
   assert.ok(s.bubbles.filter((b) => b.side > 0).every((b) => b.vx === 0));
 });
 
+
+test('progress: old saves migrate to the furthest level, and junk reads as a fresh start', () => {
+  const plain = (o) => JSON.parse(JSON.stringify(o));
+  assert.deepEqual(plain(readProgress({})), { level: 1, reached: 1, scores: {} });
+  assert.deepEqual(plain(readProgress(null)), { level: 1, reached: 1, scores: {} });
+  assert.deepEqual(plain(readProgress({ level: 7, best: 900, toured: true })), { level: 7, reached: 7, scores: {} });
+  assert.deepEqual(plain(readProgress({ level: 3, reached: 9, scores: { 1: 120, 3: 410.4 } })), { level: 3, reached: 9, scores: { 1: 120, 3: 410 } });
+  // reached is never below level, and scores only belong to levels already cleared.
+  assert.equal(readProgress({ level: 12, reached: 4 }).reached, 12);
+  assert.deepEqual(plain(readProgress({ level: 'x', reached: -2, scores: { 0: 5, 2: -1, 3: 'a', 9: 50, foo: 1 } })), { level: 1, reached: 1, scores: {} });
+  assert.deepEqual(plain(readProgress({ reached: 5, scores: { 2: 10, 5: 99 } }).scores), { 2: 10 });
+});
+
+test('progress: replaying an old level keeps the furthest, and Next goes to the one after it', () => {
+  let p = readProgress({ level: 9, reached: 9, scores: { 3: 500 } });
+  p = recordWin(p, 3, 420);
+  assert.equal(p.level, 4);
+  assert.equal(p.reached, 9);
+  assert.equal(p.scores[3], 500, 'a lower replay keeps the best');
+  p = recordWin(p, 3, 640);
+  assert.equal(p.scores[3], 640);
+  p = recordWin(p, 9, 300);
+  assert.deepEqual([p.level, p.reached, p.scores[9]], [10, 10, 300]);
+  // What the page saves reads back the same.
+  assert.deepEqual(JSON.parse(JSON.stringify(readProgress(JSON.parse(JSON.stringify(p))))), JSON.parse(JSON.stringify(p)));
+});
