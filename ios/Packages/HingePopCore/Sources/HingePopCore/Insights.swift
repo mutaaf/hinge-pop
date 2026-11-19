@@ -25,6 +25,11 @@ public enum Insights {
     case oneOf([String])
     /// true/false, as the web sends `won`, `draw` and `completed`.
     case flag
+    /// A version number and nothing else: up to four dot-separated groups of digits ("0.5.0"). Native only.
+    case version
+  }
+  static func isVersion(_ s: String) -> Bool {
+    s.range(of: #"^[0-9]{1,4}(\.[0-9]{1,4}){0,3}$"#, options: .regularExpression) != nil
   }
   /// The web's modes are solo and versus; the app adds its own two (Arcade and the Daily) to the same prop.
   public static let MODES = ["solo", "versus", "arcade", "daily"]
@@ -40,7 +45,38 @@ public enum Insights {
     "game_over": ["mode": .oneOf(MODES), "level": level, "difficulty": .oneOf(DIFFICULTIES), "score": .number(0...1_000_000_000),
                   "duration_s": .number(0...86_400), "won": .flag, "crossings": .number(0...100_000), "draw": .flag],
     "tour_end": ["tour": .oneOf(TOURS), "completed": .flag],
+    // --- native only: health and performance (Diagnostics → Performance Data / Crash Data on the label) ---
+    /// One level's frames, at its end card (or when it's left): `FrameMeter.swift`.
+    "perf_level": ["mode": .oneOf(MODES), "level": level, "difficulty": .oneOf(DIFFICULTIES),
+                   "outcome": .oneOf(Telemetry.OUTCOMES), "frames": .number(0...10_000_000),
+                   "p50_ms": ms, "p95_ms": ms, "max_ms": .number(0...60_000), "dropped_pct": .number(0...100),
+                   "target_fps": .number(1...240), "load_ms": .number(0...120_000), "peak_nodes": .number(0...100_000),
+                   "thermal": .oneOf(Telemetry.THERMAL), "low_power": .flag, "fx_level": .number(0...10),
+                   "memory_warnings": .number(0...1000)],
+    /// MetricKit's daily metrics, a day or so after it measured them: `Diagnostics.swift`.
+    "app_metrics": ["app_version": .version, "os_major": .number(1...99), "period_h": .number(0...720),
+                    "launches": count, "launch_p50_ms": ms, "launch_p90_ms": ms,
+                    "launch_under_1s": count, "launch_1_2s": count, "launch_2_4s": count, "launch_over_4s": count,
+                    "resumes": count, "resume_p50_ms": ms,
+                    "hangs": count, "hang_p50_ms": ms, "hang_max_ms": ms,
+                    "peak_mem_mb": .number(0...100_000), "cpu_s": .number(0...10_000_000), "gpu_s": .number(0...10_000_000),
+                    "fg_min": .number(0...100_000), "bg_min": .number(0...100_000), "writes_mb": .number(0...10_000_000),
+                    "exit_normal": count, "exit_crash": count, "exit_watchdog": count, "exit_memory": count,
+                    "exit_bg_memory": count, "exit_bg_cpu": count, "exit_bg_other": count],
+    /// One MetricKit diagnostic (a crash, hang, CPU or disk-write exception, a slow launch): numbers only, never its
+    /// call stack, file paths, or any text it carries. `Diagnostics.swift`.
+    "app_diagnostic": ["kind": .oneOf(Telemetry.DIAGNOSTICS), "app_version": .version, "os_major": .number(1...99),
+                       "exception_type": .number(0...64), "exception_code": .number(0...0xFFFF), "signal": .number(0...64),
+                       "hang_ms": ms, "cpu_s": .number(0...1_000_000), "sampled_s": .number(0...1_000_000),
+                       "writes_mb": .number(0...10_000_000), "launch_ms": ms],
+    /// The save couldn't load as it was and was recovered (`SaveVault`): how, and whether a newer build wrote it.
+    "save_recovered": ["source": .oneOf(Telemetry.SAVE_SOURCES), "future": .flag],
   ]
+  static let ms = Prop.number(0...600_000)
+  static let count = Prop.number(0...1_000_000)
+  /// Events only the app sends (the web game has no MetricKit, no save to recover and no session counter), so the
+  /// parity check with index.html's track() calls skips them.
+  public static let NATIVE_ONLY: Set<String> = ["session_start", "perf_level", "app_metrics", "app_diagnostic", "save_recovered"]
   /// The props every event carries, as the web's loader registers them (Box Office: app, surface, platform).
   public static func base(release: String) -> [String: Value] {
     ["app": .text("hinge-pop"), "surface": .text("app"), "platform": .text("ios"), "audience": .text("general"),
@@ -77,6 +113,7 @@ public enum Insights {
       case let (.number(r), .num(x)) where x.isFinite && r.contains(x): out[k] = .num(x)
       case let (.oneOf(vals), .text(s)) where vals.contains(s): out[k] = .text(s)
       case let (.flag, .bool(b)): out[k] = .bool(b)
+      case let (.version, .text(s)) where isVersion(s): out[k] = .text(s)
       default: continue
       }
     }
