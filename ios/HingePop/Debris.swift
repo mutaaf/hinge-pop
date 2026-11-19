@@ -22,6 +22,8 @@ final class Debris {
     var homeAt = 0.0
     var from = CGPoint.zero
     var tag = 0
+    /// Where it is and how it's turned, kept here so a frame only writes to the node, never reads it back.
+    var rot: CGFloat = 0
   }
   private var nodes: [SKSpriteNode] = []
   private var bits: [Bit] = []
@@ -67,7 +69,7 @@ final class Debris {
     let n = nodes[i]
     if bits[i].life <= 0 { live += 1 }
     bits[i] = Bit(v: v, spin: spin, life: life, total: life, gravity: gravity, drag: drag, size: size, scale0: scale.0, scale1: scale.1,
-                  alpha0: alpha, home: home, homeAt: homeAt, from: p, tag: tag)
+                  alpha0: alpha, home: home, homeAt: homeAt, from: p, tag: tag, rot: rotation)
     n.texture = texture
     n.size = size
     n.position = p
@@ -83,6 +85,8 @@ final class Debris {
   func update(_ dt: Double) {
     guard live > 0, dt > 0 else { return }
     let fdt = CGFloat(dt)
+    // Each node gets each property set once a frame and nothing read back: these are Objective-C calls, and
+    // with a couple of hundred bits in flight they were the busiest loop in the scene.
     for i in bits.indices where bits[i].life > 0 {
       var b = bits[i]
       let n = nodes[i]
@@ -94,21 +98,21 @@ final class Debris {
         let k = CGFloat(min(1, (age - b.homeAt) / span)), e = k * k * k
         n.position = CGPoint(x: b.from.x + (home.x - b.from.x) * e, y: b.from.y + (home.y - b.from.y) * e + sin(k * .pi) * 40)
         n.setScale(b.scale0 + (b.scale1 - b.scale0) * e)
-        n.zRotation += b.spin * fdt * (1 - k)
+        b.rot += b.spin * fdt * (1 - k)
+        n.zRotation = b.rot
         if b.life <= 0 { onLand(b.tag, home) }
       } else {
         b.v.dy += b.gravity * fdt
-        let keep = exp(-b.drag * fdt)
+        let keep = b.drag == 0 ? 1 : exp(-b.drag * fdt)
         b.v = CGVector(dx: b.v.dx * keep, dy: b.v.dy * keep)
-        n.position.x += b.v.dx * fdt
-        n.position.y += b.v.dy * fdt
-        n.zRotation += b.spin * fdt
-        b.from = n.position
+        b.from = CGPoint(x: b.from.x + b.v.dx * fdt, y: b.from.y + b.v.dy * fdt)
+        n.position = b.from
+        if b.spin != 0 { b.rot += b.spin * fdt; n.zRotation = b.rot }
         if b.home == nil {
           let k = CGFloat(age / b.total)
-          n.setScale(b.scale0 + (b.scale1 - b.scale0) * k)
+          if b.scale0 != b.scale1 { n.setScale(b.scale0 + (b.scale1 - b.scale0) * k) }
           // Full for the first half, then out.
-          n.alpha = b.alpha0 * min(1, CGFloat(b.life / (b.total * 0.5)))
+          if b.life < b.total * 0.5 { n.alpha = b.alpha0 * CGFloat(b.life / (b.total * 0.5)) }
         }
       }
       if b.life <= 0 { n.isHidden = true; live -= 1 }

@@ -132,6 +132,9 @@ final class GameScene: SKScene {
   private var streakFrom: [Int: CGPoint] = [:]
   /// Fever's beat: the screen breathes on it while fever runs.
   private var feverBeat = 0.0
+  /// Scratch space reused every frame, so drawing allocates nothing: which ids are still on the field, the bosses.
+  private var seen = Set<Int>()
+  private var bosses: [BubbleNode] = []
   /// Stars flying to the top when a level is cleared, and how many have landed.
   private var starsLanded = 0
 
@@ -325,12 +328,25 @@ final class GameScene: SKScene {
     view.isOpaque = true
     view.shouldCullNonVisibleNodes = false
     applyFrameRate(view)
+    #if DEBUG
+    // -stats: SpriteKit's own counters in the corner (frame rate, nodes, draw calls), for -snap captures.
+    if Debug.has("-stats") { view.showsFPS = true; view.showsNodeCount = true; view.showsDrawCount = true }
+    #endif
   }
 
   /// ProMotion screens run at 120 Hz while the effects budget is healthy; Low Power Mode, a hot device or a
   /// struggling budget drop to 60. Checked every frame, since SwiftUI's SpriteView can reapply its own rate.
   private func applyFrameRate(_ view: SKView) {
-    let want = FXBudget.shared.frameRate(max: view.window?.screen.maximumFramesPerSecond ?? 60)
+    var want = FXBudget.shared.frameRate(max: view.window?.screen.maximumFramesPerSecond ?? 60)
+    // Under a card the scene is held or only settling, so it needn't redraw at full rate: 60 behind the end
+    // card (its stars and confetti still fly), 30 behind pause, tips and the teaching cards.
+    if let session {
+      switch session.overlay {
+      case .none, .tour: if session.tip != nil { want = min(want, 30) }
+      case .result: want = min(want, 60)
+      default: want = min(want, 30)
+      }
+    }
     if view.preferredFramesPerSecond != want { view.preferredFramesPerSecond = want }
   }
 
@@ -770,15 +786,45 @@ final class GameScene: SKScene {
   private func texture(_ kind: BubbleKind, size px: CGFloat) -> SKTexture {
     let key = "\(kind.rawValue)-\(skin?.rawValue ?? "")-\(Int(px))"
     if let t = textures[key] { return t }
-    let t = SKTexture(cgImage: Art.bubble(kind, size: px, scale: displayScale, biome: skin))
-    textures[key] = t
+    // A size the prewarm didn't cover (a splitter boss shrinking, twins): drawing it here would stall the frame
+    // for tens of milliseconds, so the nearest size already made stands in while it's drawn off the main thread.
+    let biome = skin
+    if let ready = Art.bubbleIfDrawn(kind, size: px, scale: displayScale, biome: biome) {
+      let t = SKTexture(cgImage: ready)
+      store(t, key: key, kind: kind, size: px, biome: biome)
+      return t
+    }
+    if let near = sized[biome?.rawValue ?? "", default: [:]][kind]?.min(by: { abs($0.0 - px) < abs($1.0 - px) }) {
+      if pendingArt.insert(key).inserted {
+        let scale = displayScale
+        Task.detached(priority: .userInitiated) {
+          let image = Art.bubble(kind, size: px, scale: scale, biome: biome)
+          await MainActor.run { [weak self] in
+            guard let self else { return }
+            self.pendingArt.remove(key)
+            self.store(SKTexture(cgImage: image), key: key, kind: kind, size: px, biome: biome)
+            // Nodes wearing the stand-in pick up the real art next frame.
+            for n in self.bubbleNodes.values where n.kind == kind { n.drawSize = -1 }
+          }
+        }
+      }
+      return near.1
+    }
+    let t = SKTexture(cgImage: Art.bubble(kind, size: px, scale: displayScale, biome: biome))
+    store(t, key: key, kind: kind, size: px, biome: biome)
     return t
+  }
+  private var sized: [String: [BubbleKind: [(CGFloat, SKTexture)]]] = [:]
+  private var pendingArt = Set<String>()
+  private func store(_ t: SKTexture, key: String, kind: BubbleKind, size px: CGFloat, biome: ArenaKind?) {
+    textures[key] = t
+    sized[biome?.rawValue ?? "", default: [:]][kind, default: []].append((px, t))
   }
 
   private func drawBubbles(_ game: Game, alpha: Double) {
-    var seen = Set<Int>(minimumCapacity: game.bubbles.count)
+    seen.removeAll(keepingCapacity: true)
     var winding: (Bubble, CGPoint)?
-    var bosses: [BubbleNode] = []
+    bosses.removeAll(keepingCapacity: true)
     for b in game.bubbles {
       seen.insert(b.id)
       let kind = artKind(b)
@@ -917,7 +963,7 @@ final class GameScene: SKScene {
   }
 
   private func drawVisitors(_ game: Game, alpha: Double) {
-    var seen = Set<Int>()
+    seen.removeAll(keepingCapacity: true)
     for v in game.visitors {
       seen.insert(v.id)
       let node: SKSpriteNode
@@ -959,7 +1005,7 @@ final class GameScene: SKScene {
   /// while one materialises (it can't bite yet), then breathes while it can. Under Reduce Motion the ring holds
   /// still and the sprite doesn't pulse; the spiked rim in the art is the tell either way.
   private func drawVillains(_ game: Game, alpha: Double) {
-    var seen = Set<Int>()
+    seen.removeAll(keepingCapacity: true)
     for v in game.villains {
       seen.insert(v.id)
       let node: VillainPuppet
@@ -1018,7 +1064,7 @@ final class GameScene: SKScene {
   }
 
   private func drawPickups(_ game: Game) {
-    var seen = Set<Int>()
+    seen.removeAll(keepingCapacity: true)
     for p in game.pickups {
       seen.insert(p.id)
       let node: SKSpriteNode

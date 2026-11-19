@@ -37,6 +37,14 @@ public enum Art {
         }
     }
 
+    /// The bubble if it's already drawn, without drawing it: lets a frame on the main thread skip art that
+    /// isn't ready rather than stall on it.
+    public static func bubbleIfDrawn(_ kind: BubbleKind, size: CGFloat, scale: CGFloat, biome: ArenaKind?) -> CGImage? {
+        let skin = biome.flatMap { $0 == .classic ? nil : $0 }
+        lock.lock(); defer { lock.unlock() }
+        return images[Key(item: .bubble(kind, skin), w: size, h: size, scale: scale)]
+    }
+
     public static func cameo(_ kind: CameoKind, size: CGFloat, scale: CGFloat) -> CGImage {
         cached(.cameo(kind), size, size, scale) {
             let small = size < smallBelow
@@ -82,6 +90,14 @@ public enum Art {
             makeImage(pxW: px(size.width, scale), pxH: px(size.height, scale), opaque: true,
                       unitsX: size.width, unitsY: size.height) { drawArena(kind, v, $0, size: size) }
         }
+    }
+
+    /// The arena if it's already drawn at this size, without drawing it (a full screen takes ~100 ms at 3x, so
+    /// screens show it when it's ready instead of waiting on the main thread).
+    public static func arenaIfDrawn(_ kind: ArenaKind, variant: Int = 0, size: CGSize, scale: CGFloat) -> CGImage? {
+        let v = ((variant % arenaVariants) + arenaVariants) % arenaVariants
+        lock.lock(); defer { lock.unlock() }
+        return images[Key(item: .arena(kind, v), w: size.width, h: size.height, scale: scale)]
     }
 
     /// Where a biome's landmark sits (the thing its hidden secret wakes from), in points, y down, with a

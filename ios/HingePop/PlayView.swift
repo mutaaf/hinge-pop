@@ -135,13 +135,45 @@ struct ArenaBackground: View {
     ZStack {
       GeometryReader { p in
         if let art = ArenaKind(rawValue: arena.rawValue), p.size.width > 1, p.size.height > 1 {
-          Image(decorative: Art.arena(art, variant: variant, size: p.size, scale: scale), scale: scale)
+          ArenaArt(kind: art, variant: variant, size: p.size, scale: scale)
         }
       }
       .ignoresSafeArea()
       if !still { AuroraField(arena: arena, variant: variant, heat: heat, strength: strength, alwaysOn: alwaysOn) }
     }
     .background(Theme.night.ignoresSafeArea())
+  }
+}
+
+/// The arena's art, drawn off the main thread the first time a screen needs it at this size (about 100 ms at
+/// 3x, which used to hold up launch and every first visit), then faded in over the night sky. Cached art shows
+/// at once.
+private struct ArenaArt: View {
+  let kind: ArenaKind
+  let variant: Int
+  let size: CGSize
+  let scale: CGFloat
+  @Environment(\.accessibilityReduceMotion) private var reduceMotion
+  @State private var drawn: CGImage?
+  private var key: String { "\(kind.rawValue)-\(variant)-\(size.width)x\(size.height)@\(scale)" }
+  var body: some View {
+    // While a new size is drawn (the device turned), the last art stretches to cover rather than going dark.
+    let image = Art.arenaIfDrawn(kind, variant: variant, size: size, scale: scale) ?? drawn
+    ZStack {
+      if let image {
+        Image(decorative: image, scale: scale).resizable().aspectRatio(contentMode: .fill)
+          .frame(width: size.width, height: size.height).clipped()
+          .transition(.opacity)
+      }
+    }
+    .frame(width: size.width, height: size.height)
+    .task(id: key) {
+      guard Art.arenaIfDrawn(kind, variant: variant, size: size, scale: scale) == nil else { return }
+      let (k, v, s, sc) = (kind, variant, size, scale)
+      let made = await Task.detached(priority: .userInitiated) { Art.arena(k, variant: v, size: s, scale: sc) }.value
+      guard !Task.isCancelled else { return }
+      withAnimation(reduceMotion ? nil : .easeOut(duration: 0.25)) { drawn = made }
+    }
   }
 }
 
