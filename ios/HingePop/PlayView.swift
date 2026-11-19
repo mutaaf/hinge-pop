@@ -293,7 +293,7 @@ struct PlayerCluster: View {
           }
         }
         // One crossing from losing a shield: the filled segments glow red, so the danger reads at a glance.
-        .shadow(color: hud.meter >= max - 1 && hud.meter > 0 ? Theme.red.opacity(0.85) : .clear, radius: 5)
+        .glow(Theme.red.opacity(0.85), radius: 5, if: hud.meter >= max - 1 && hud.meter > 0)
         .animation(.easeOut(duration: 0.2), value: hud.meter)
       }
       .frame(minHeight: compact ? 22 : Theme.target)
@@ -316,7 +316,7 @@ struct PlayerCluster: View {
   private var score: some View {
     Button { session.openTip(session.tipScore(index)) } label: {
       VStack(alignment: mirrored ? .leading : .trailing, spacing: 0) {
-        RollingScore(value: hud.score, big: !compact)
+        RollingScore(value: hud.score, big: !compact, trailing: !mirrored)
         ComboBadge(combo: hud.combo, mirrored: peach)
       }
       .environment(\.layoutDirection, .leftToRight)
@@ -341,8 +341,8 @@ struct ComboBadge: View {
       .font(.system(size: 12 + CGFloat(min(tier, 6)) * 1.2, weight: .black, design: .rounded))
       .monospacedDigit()
       .foregroundStyle(color)
-      .shadow(color: tier > 0 ? color.opacity(0.9) : .clear, radius: CGFloat(tier) * 1.6)
-      .shadow(color: tier >= 4 ? color.opacity(0.6) : .clear, radius: CGFloat(tier) * 3)
+      .glow(color.opacity(0.9), radius: CGFloat(tier) * 1.6, if: tier > 0)
+      .glow(color.opacity(0.6), radius: CGFloat(tier) * 3, if: tier >= 4)
       .scaleEffect(reduceMotion ? 1 : 1 + CGFloat(tier) * 0.02)
       .animation(.spring(duration: 0.2, bounce: 0.5), value: tier)
   }
@@ -355,22 +355,93 @@ struct ShieldIcon: View {
   let danger: Bool
   let size: CGFloat
   @Environment(\.accessibilityReduceMotion) private var reduceMotion
-  @State private var throb = false
+  @Environment(\.displayScale) private var scale
   var body: some View {
-    ArtImage(item: .glyph(on ? .shieldOn : .shieldOff), size: size)
-      .overlay {
-        if cracked {
-          Crack().trim(from: 0, to: cracked ? 1 : 0)
-            .stroke(Theme.red, style: StrokeStyle(lineWidth: max(1.5, size / 11), lineCap: .round, lineJoin: .round))
-            .shadow(color: Theme.red, radius: 3)
-            .transition(.opacity)
+    // The last shield's throb runs in Core Animation: a repeating SwiftUI animation redrew the whole HUD at
+    // the display's rate for as long as you were in danger.
+    if danger {
+      ThrobbingShield(image: Art.glyph(on ? .shieldOn : .shieldOff, size: size, scale: scale), scale: scale, reduceMotion: reduceMotion)
+        .frame(width: size, height: size)
+    } else {
+      ArtImage(item: .glyph(on ? .shieldOn : .shieldOff), size: size)
+        .overlay {
+          if cracked {
+            Crack().trim(from: 0, to: cracked ? 1 : 0)
+              .stroke(Theme.red, style: StrokeStyle(lineWidth: max(1.5, size / 11), lineCap: .round, lineJoin: .round))
+              .shadow(color: Theme.red, radius: 3)
+              .transition(.opacity)
+          }
         }
-      }
-      .colorMultiply(danger && throb ? Color(red: 1, green: 0.55, blue: 0.58) : .white)
-      .scaleEffect(danger && throb && !reduceMotion ? 1.14 : 1)
-      .shadow(color: danger ? Theme.red.opacity(throb ? 0.9 : 0.3) : .clear, radius: 5)
-      .animation(danger ? .easeInOut(duration: 0.42).repeatForever(autoreverses: true) : .default, value: throb)
-      .onChange(of: danger, initial: true) { _, d in throb = d }
+    }
+  }
+}
+
+/// The danger throb: the shield swells, flushes red and glows, 0.42 s each way, forever. Under Reduce Motion it
+/// only flushes. Everything repeats in the render server, so it costs the main thread nothing per frame.
+private struct ThrobbingShield: UIViewRepresentable {
+  let image: CGImage
+  let scale: CGFloat
+  let reduceMotion: Bool
+  final class Box: UIView {
+    let plain = UIImageView(), flushed = UIImageView()
+    var key: (CGImage, Bool)?
+    override init(frame: CGRect) {
+      super.init(frame: frame)
+      isUserInteractionEnabled = false
+      for v in [plain, flushed] { v.contentMode = .scaleAspectFit; addSubview(v) }
+      layer.shadowColor = UIColor(Theme.red).cgColor
+      layer.shadowOffset = .zero
+      layer.shadowRadius = 5
+    }
+    required init?(coder: NSCoder) { fatalError() }
+    override func layoutSubviews() { super.layoutSubviews(); plain.frame = bounds; flushed.frame = bounds }
+    override func didMoveToWindow() { super.didMoveToWindow(); if window != nil { key = nil; setNeedsLayout() } }
+  }
+  func makeUIView(context: Context) -> Box { Box() }
+  func updateUIView(_ box: Box, context: Context) {
+    if let k = box.key, k.0 === image, k.1 == reduceMotion, box.layer.animation(forKey: "glow") != nil { return }
+    box.key = (image, reduceMotion)
+    box.plain.image = UIImage(cgImage: image, scale: scale, orientation: .up)
+    box.flushed.image = Self.flush(image).map { UIImage(cgImage: $0, scale: scale, orientation: .up) }
+    func pulse(_ path: String, _ from: Double, _ to: Double) -> CABasicAnimation {
+      let a = CABasicAnimation(keyPath: path)
+      a.fromValue = from; a.toValue = to
+      a.duration = 0.42; a.autoreverses = true; a.repeatCount = .infinity
+      a.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+      a.isRemovedOnCompletion = false
+      return a
+    }
+    box.flushed.layer.removeAllAnimations(); box.layer.removeAllAnimations()
+    box.flushed.layer.add(pulse("opacity", 0, 1), forKey: "flush")
+    box.layer.add(pulse("shadowOpacity", 0.3, 0.9), forKey: "glow")
+    if !reduceMotion { box.layer.add(pulse("transform.scale", 1, 1.14), forKey: "swell") }
+  }
+
+  /// The shield multiplied by the throb's red, made once per image.
+  private static var flushed: [ObjectIdentifier: CGImage] = [:]
+  static func flush(_ image: CGImage) -> CGImage? {
+    if let f = flushed[ObjectIdentifier(image)] { return f }
+    let w = image.width, h = image.height
+    guard let ctx = CGContext(data: nil, width: w, height: h, bitsPerComponent: 8, bytesPerRow: 0, space: CGColorSpace(name: CGColorSpace.sRGB)!,
+                              bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else { return nil }
+    let r = CGRect(x: 0, y: 0, width: w, height: h)
+    ctx.draw(image, in: r)
+    ctx.setBlendMode(.multiply)
+    ctx.setFillColor(CGColor(srgbRed: 1, green: 0.55, blue: 0.58, alpha: 1))
+    ctx.fill(r)
+    // Back to the shield's own shape.
+    ctx.setBlendMode(.destinationIn)
+    ctx.draw(image, in: r)
+    let out = ctx.makeImage()
+    flushed[ObjectIdentifier(image)] = out
+    return out
+  }
+}
+
+extension View {
+  /// A glow only while it shows: a `.shadow` with a clear colour still costs a blur on every HUD redraw.
+  @ViewBuilder func glow(_ color: Color, radius: CGFloat, if on: Bool) -> some View {
+    if on { shadow(color: color, radius: radius) } else { self }
   }
 }
 
@@ -398,47 +469,137 @@ struct Jolt: GeometryEffect {
 }
 
 /// The score counts up to its new value, ticking through the numbers, and pops on each gain: harder, and
-/// flushed gold, for a big one.
+/// flushed gold, for a big one. It's a UIKit label rather than SwiftUI text: an animated `Text` re-laid out the
+/// whole HUD and redrew its shadows on every frame of every count (the biggest main-thread cost in play). This
+/// redraws only itself, at 30 Hz, and leaves the pop and the glow to Core Animation.
 struct RollingScore: View {
   let value: Int
   var big = true
+  var trailing = true
   @Environment(\.accessibilityReduceMotion) private var reduceMotion
-  @State private var bump: CGFloat = 0
-  @State private var hot = false
-  var body: some View {
-    CountUp(value: Double(value), font: .system(big ? .title2 : .headline, design: .rounded, weight: .black), hot: hot)
-      .scaleEffect(reduceMotion ? 1 : 1 + bump)
-      .shadow(color: hot ? Theme.sun.opacity(0.9) : .clear, radius: 8)
-      .animation(reduceMotion ? nil : .easeOut(duration: 0.42), value: value)
-      .animation(.spring(duration: 0.2, bounce: 0.55), value: bump)
-      .lineLimit(1)
-      .minimumScaleFactor(0.6)
-      .onChange(of: value) { old, new in
-        guard new > old else { return }
-        let gain = new - old
-        bump = 0.12 + min(0.22, CGFloat(gain) / 4000)
-        hot = gain >= 600
-        Task {
-          try? await Task.sleep(for: .milliseconds(130))
-          bump = 0
-          try? await Task.sleep(for: .milliseconds(260))
-          hot = false
-        }
-      }
+  var body: some View { ScoreCounter(value: value, big: big, trailing: trailing, reduceMotion: reduceMotion) }
+}
+
+private struct ScoreCounter: UIViewRepresentable {
+  let value: Int
+  let big: Bool
+  let trailing: Bool
+  let reduceMotion: Bool
+  func makeUIView(context: Context) -> CountingLabel { CountingLabel() }
+  func updateUIView(_ label: CountingLabel, context: Context) {
+    label.configure(big: big, trailing: trailing, reduceMotion: reduceMotion)
+    label.show(value)
+  }
+  func sizeThatFits(_ proposal: ProposedViewSize, uiView: CountingLabel, context: Context) -> CGSize? {
+    uiView.fitting(value, width: proposal.width)
   }
 }
 
-/// Draws a number that SwiftUI can animate through, so a jump in score reads as a quick count-up.
-private struct CountUp: View, Animatable {
-  var value: Double
-  let font: Font
-  let hot: Bool
-  var animatableData: Double { get { value } set { value = newValue } }
-  var body: some View {
-    Text(Int(value.rounded()).formatted())
-      .font(font)
-      .monospacedDigit()
-      .foregroundStyle(hot ? Theme.sun : Theme.ink)
+final class CountingLabel: UILabel {
+  private var big: Bool?
+  private var reduceMotion = false
+  private var shown = 0
+  private var from = 0
+  private var target = 0
+  private var started = 0.0
+  private var link: CADisplayLink?
+  private var hotUntil = 0.0
+  private static let count = 0.42
+  private static let numbers: NumberFormatter = { let f = NumberFormatter(); f.numberStyle = .decimal; return f }()
+  static func text(_ v: Int) -> String { numbers.string(from: NSNumber(value: v)) ?? String(v) }
+
+  override init(frame: CGRect) {
+    super.init(frame: frame)
+    numberOfLines = 1
+    adjustsFontSizeToFitWidth = true
+    minimumScaleFactor = 0.6
+    adjustsFontForContentSizeCategory = true
+    textColor = UIColor(Theme.ink)
+    layer.shadowColor = UIColor(Theme.sun).cgColor
+    layer.shadowOffset = .zero
+    layer.shadowRadius = 8
+    layer.shadowOpacity = 0
+    text = "0"
+    isAccessibilityElement = false
+    setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+  }
+  required init?(coder: NSCoder) { fatalError() }
+
+  func configure(big: Bool, trailing: Bool, reduceMotion: Bool) {
+    self.reduceMotion = reduceMotion
+    textAlignment = trailing ? .right : .left
+    guard big != self.big else { return }
+    self.big = big
+    // .title2 / .headline in the rounded black face with even-width digits, scaled with Dynamic Type.
+    let style: UIFont.TextStyle = big ? .title2 : .headline
+    let base = UIFont.systemFont(ofSize: big ? 22 : 17, weight: .black)
+    let rounded = base.fontDescriptor.withDesign(.rounded) ?? base.fontDescriptor
+    let digits = rounded.addingAttributes([.featureSettings: [[UIFontDescriptor.FeatureKey.type: kNumberSpacingType,
+                                                               UIFontDescriptor.FeatureKey.selector: kMonospacedNumbersSelector]]])
+    font = UIFontMetrics(forTextStyle: style).scaledFont(for: UIFont(descriptor: digits, size: base.pointSize))
+  }
+
+  /// The slot is sized for the value it's counting to, so the HUD's layout only changes when the score does.
+  func fitting(_ value: Int, width: CGFloat?) -> CGSize {
+    let s = (Self.text(value) as NSString).size(withAttributes: [.font: font as Any])
+    let w = ceil(s.width) + 1
+    return CGSize(width: min(w, width ?? w), height: ceil(font.lineHeight))
+  }
+
+  func show(_ value: Int) {
+    guard value != target else { return }
+    let gain = value - target
+    target = value
+    guard gain > 0, !reduceMotion, window != nil else { stop(); shown = value; text = Self.text(value); return }
+    from = shown
+    started = CACurrentMediaTime()
+    if link == nil {
+      let l = CADisplayLink(target: self, selector: #selector(step))
+      l.preferredFrameRateRange = CAFrameRateRange(minimum: 20, maximum: 30, preferred: 30)
+      l.add(to: .main, forMode: .common)
+      link = l
+    }
+    pop(gain)
+  }
+
+  /// The pop runs in Core Animation, so it costs the main thread nothing per frame.
+  private func pop(_ gain: Int) {
+    let b = 0.12 + min(0.22, Double(gain) / 4000)
+    let a = CAKeyframeAnimation(keyPath: "transform.scale")
+    a.values = [1, 1 + b, 1 + b * 0.92, 1 - b * 0.12, 1 + b * 0.03, 1]
+    a.keyTimes = [0, 0.2, 0.36, 0.62, 0.84, 1]
+    a.duration = 0.42
+    layer.add(a, forKey: "pop")
+    guard gain >= 600 else { return }
+    hotUntil = CACurrentMediaTime() + 0.39
+    textColor = UIColor(Theme.sun)
+    layer.shadowOpacity = 0.9
+  }
+
+  @objc private func step() {
+    let now = CACurrentMediaTime()
+    let k = min(1, (now - started) / Self.count)
+    let e = 1 - (1 - k) * (1 - k) * (1 - k)
+    let v = from + Int((Double(target - from) * e).rounded())
+    if v != shown { shown = v; text = Self.text(v) }
+    if hotUntil > 0, now >= hotUntil { cool() }
+    if k >= 1, hotUntil == 0 { stop() }
+  }
+
+  private func cool() {
+    hotUntil = 0
+    textColor = UIColor(Theme.ink)
+    layer.shadowOpacity = 0
+  }
+
+  private func stop() {
+    link?.invalidate(); link = nil
+    if hotUntil > 0 { cool() }
+  }
+
+  override func didMoveToWindow() {
+    super.didMoveToWindow()
+    if window == nil { stop(); shown = target; text = Self.text(target) }
   }
 }
 

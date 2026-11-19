@@ -493,40 +493,82 @@ struct Bob: ViewModifier {
 }
 
 /// Bubbles drifting up behind the home screen in three depths: far ones small, soft and slow, near ones big
-/// and quicker, so the screen has parallax. One timeline at 30 fps, and nothing moves under Reduce Motion.
+/// and quicker, so the screen has parallax. Nothing moves under Reduce Motion. The drift is Core Animation, set
+/// up once per size and run by the render server, so Home costs the main thread nothing per frame (a SwiftUI
+/// timeline here rebuilt the layer 30 times a second).
 struct Floaters: View {
   let size: CGSize
   @Environment(\.accessibilityReduceMotion) private var reduceMotion
-  @Environment(\.scenePhase) private var phase
-  private struct Item { let kind: BubbleKind; let x: Double; let start: Double; let depth: Int }
-  private let items: [Item] = [
+  @Environment(\.displayScale) private var scale
+  fileprivate struct Item { let kind: BubbleKind; let x: Double; let start: Double; let depth: Int }
+  fileprivate static let items: [Item] = [
     Item(kind: .basic, x: 0.12, start: 0.15, depth: 2), Item(kind: .golden, x: 0.88, start: 0.05, depth: 2),
     Item(kind: .fast, x: 0.08, start: 0.7, depth: 1), Item(kind: .magnetic, x: 0.92, start: 0.55, depth: 2),
     Item(kind: .frozen, x: 0.55, start: 0.9, depth: 1), Item(kind: .basic, x: 0.3, start: 0.45, depth: 0),
     Item(kind: .repel, x: 0.72, start: 0.3, depth: 0), Item(kind: .basic, x: 0.45, start: 0.1, depth: 0),
     Item(kind: .armored, x: 0.2, start: 0.92, depth: 1),
   ]
-  private static let sizes: [CGFloat] = [26, 42, 64]
-  private static let speeds: [Double] = [0.006, 0.011, 0.018]
+  fileprivate static let sizes: [CGFloat] = [26, 42, 64]
+  fileprivate static let speeds: [Double] = [0.006, 0.011, 0.018]
+  fileprivate static let opacities: [Float] = [0.45, 0.7, 0.9]
   var body: some View {
-    TimelineView(.animation(minimumInterval: 1.0 / 30, paused: reduceMotion || phase != .active)) { ctx in
-      let t = reduceMotion ? 0 : ctx.date.timeIntervalSinceReferenceDate.truncatingRemainder(dividingBy: 100_000)
-      ZStack {
-        ForEach(items.indices, id: \.self) { i in
-          let it = items[i]
-          let s = Self.sizes[it.depth]
-          let span = size.height + s * 2
-          let y = (it.start - t * Self.speeds[it.depth]).truncatingRemainder(dividingBy: 1)
-          let yy = (y < 0 ? y + 1 : y) * span - s
-          let sway = sin(t * (0.4 + Double(it.depth) * 0.15) + Double(i) * 1.7) * (8 + Double(it.depth) * 6)
-          ArtImage(item: .bubble(it.kind), size: s)
-            .opacity([0.45, 0.7, 0.9][it.depth])
-            .position(x: size.width * it.x + sway, y: yy)
-        }
-      }
+    FloaterLayers(size: size, scale: scale, still: reduceMotion)
+      .frame(width: size.width, height: size.height)
+      .allowsHitTesting(false)
+      .accessibilityHidden(true)
+  }
+}
+
+private struct FloaterLayers: UIViewRepresentable {
+  let size: CGSize
+  let scale: CGFloat
+  let still: Bool
+  final class Box: UIView {
+    var built: (CGSize, Bool)?
+  }
+  func makeUIView(context: Context) -> Box {
+    let b = Box()
+    b.isUserInteractionEnabled = false
+    b.backgroundColor = .clear
+    return b
+  }
+  func updateUIView(_ box: Box, context: Context) {
+    if let b = box.built, b.0 == size, b.1 == still { return }
+    box.built = (size, still)
+    box.layer.sublayers?.forEach { $0.removeFromSuperlayer() }
+    guard size.width > 1, size.height > 1 else { return }
+    for (i, it) in Floaters.items.enumerated() {
+      let s = Floaters.sizes[it.depth]
+      let image = Art.bubble(it.kind, size: s, scale: scale)
+      let l = CALayer()
+      l.contents = image
+      l.contentsScale = scale
+      l.bounds = CGRect(x: 0, y: 0, width: CGFloat(image.width) / scale, height: CGFloat(image.height) / scale)
+      l.opacity = Floaters.opacities[it.depth]
+      let span = size.height + s * 2
+      let w = 0.4 + Double(it.depth) * 0.15, amp = 8 + Double(it.depth) * 6, phase = Double(i) * 1.7
+      // At rest (Reduce Motion) it sits where the drift would start.
+      l.position = CGPoint(x: size.width * it.x + sin(phase) * amp, y: it.start * span - s)
+      box.layer.addSublayer(l)
+      guard !still else { continue }
+      // Up the screen once per 1/speed seconds, wrapping round, starting from `start`.
+      let rise = CABasicAnimation(keyPath: "position.y")
+      rise.fromValue = span - s
+      rise.toValue = -s
+      rise.duration = 1 / Floaters.speeds[it.depth]
+      rise.timeOffset = (1 - it.start) * rise.duration
+      rise.repeatCount = .infinity
+      // The sway: a sine sampled finely enough that the cubic keyframes read as smooth.
+      let sway = CAKeyframeAnimation(keyPath: "position.x")
+      let steps = 24
+      sway.values = (0...steps).map { size.width * it.x + sin(Double($0) / Double(steps) * 2 * .pi + phase) * amp }
+      sway.calculationMode = .cubic
+      sway.duration = 2 * .pi / w
+      sway.repeatCount = .infinity
+      for a in [rise, sway] as [CAAnimation] { a.isRemovedOnCompletion = false }
+      l.add(rise, forKey: "rise")
+      l.add(sway, forKey: "sway")
     }
-    .allowsHitTesting(false)
-    .accessibilityHidden(true)
   }
 }
 

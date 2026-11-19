@@ -165,8 +165,16 @@ struct AuroraAssemble: View {
   var delay = 0.0
   @Environment(\.displayScale) private var scale
   @Environment(\.accessibilityReduceMotion) private var reduceMotion
+  @Environment(\.scenePhase) private var phase
   @State private var cloud: ParticleCloud?
   @State private var start = Date()
+  /// The swirl runs at the display's rate; once the art is up the halo only breathes, so it drops to 30 fps,
+  /// then rests (holds still) after a few seconds, the way the aurora does. Every frame redraws every particle
+  /// on the CPU, so an endless 120 Hz breath was most of Home's cost.
+  @State private var stage = 0
+  private var schedule: AnimationTimelineSchedule {
+    .animation(minimumInterval: stage == 0 ? nil : 1.0 / 30, paused: stage >= 2 || phase != .active)
+  }
 
   var body: some View {
     let box = artSize
@@ -174,7 +182,7 @@ struct AuroraAssemble: View {
       if reduceMotion {
         ArtImage(item: item, size: size)
       } else {
-        TimelineView(.animation) { ctx in
+        TimelineView(schedule) { ctx in
           let t = ctx.date.timeIntervalSince(start) - delay
           ZStack {
             Canvas { g, canvas in cloud?.draw(in: &g, canvas: canvas, time: max(0, t)) }
@@ -190,10 +198,18 @@ struct AuroraAssemble: View {
     .frame(width: box.width, height: box.height)
     .task {
       start = Date()
-      guard !reduceMotion, cloud == nil else { return }
-      let source = cgImage
-      let want = count
-      cloud = await Task.detached(priority: .userInitiated) { ParticleCloud(image: source, count: want) }.value
+      stage = 0
+      guard !reduceMotion else { return }
+      if cloud == nil {
+        let source = cgImage
+        let want = count
+        cloud = await Task.detached(priority: .userInitiated) { ParticleCloud(image: source, count: want) }.value
+      }
+      try? await Task.sleep(for: .seconds(delay + 1.8))
+      if Task.isCancelled { return }
+      stage = 1
+      try? await Task.sleep(for: .seconds(8))
+      if !Task.isCancelled { stage = 2 }
     }
   }
 
