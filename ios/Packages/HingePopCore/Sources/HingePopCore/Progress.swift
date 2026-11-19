@@ -98,17 +98,18 @@ public struct GameProgress: Codable, Equatable, Sendable {
   /// Days in a row with a daily played, counting back from today, or from yesterday while today's is still open.
   public func dailyStreak(year: Int, month: Int, day: Int) -> Int {
     var cal = Calendar(identifier: .gregorian)
-    cal.timeZone = TimeZone(identifier: "UTC")!
+    cal.timeZone = TimeZone(identifier: "UTC") ?? TimeZone(secondsFromGMT: 0) ?? cal.timeZone
     guard var date = cal.date(from: DateComponents(year: year, month: month, day: day)) else { return 0 }
     func key(_ d: Date) -> String {
       let c = cal.dateComponents([.year, .month, .day], from: d)
       return Self.dailyKey(year: c.year ?? 0, month: c.month ?? 0, day: c.day ?? 0)
     }
-    if dailyBest[key(date)] == nil { date = cal.date(byAdding: .day, value: -1, to: date)! }
+    if dailyBest[key(date)] == nil { guard let d = cal.date(byAdding: .day, value: -1, to: date) else { return 0 }; date = d }
     var n = 0
     while dailyBest[key(date)] != nil, n < 10_000 {
       n += 1
-      date = cal.date(byAdding: .day, value: -1, to: date)!
+      guard let d = cal.date(byAdding: .day, value: -1, to: date) else { break }
+      date = d
     }
     return n
   }
@@ -175,7 +176,7 @@ public struct GameProgress: Codable, Equatable, Sendable {
     record(level: level, stars: newStars, score: score)
     if let grade {
       let old = self.grade(level)
-      if old == nil || grade > old! {
+      if old.map({ grade > $0 }) ?? true {
         var log = gradeLog ?? [:]
         log[level] = grade.rawValue
         gradeLog = log

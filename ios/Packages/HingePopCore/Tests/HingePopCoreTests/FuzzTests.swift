@@ -187,6 +187,15 @@ final class FuzzTests: XCTestCase {
     }
   }
 
+  /// Level numbers the app should never ask for (a bad deep link or debug flag) still make a playable game.
+  func testOddLevelNumbers() {
+    for n in [0, -5, 100_000, 1_000_000] {
+      for d in [Difficulty.normal, .overdrive] { fuzz(.campaign(n), FuzzTests.phone, seed: 3, rate: 6, difficulty: d) }
+    }
+    fuzz(.daily(year: 0, month: 13, day: 40), FuzzTests.phone, seed: 1, rate: 6)
+    fuzz(.arcade(seed: 1), FuzzTests.phone, seed: 1, rate: 6, arcadeFrom: 10_000)
+  }
+
   /// Degenerate arenas the scene can briefly hand the sim while a window resizes: tiny and very thin.
   func testOddShapesDontBreakTheSim() {
     for shape in [Shape(w: 120, h: 200, top: 20), Shape(w: 2000, h: 300, top: 40), Shape(w: 320, h: 1800, top: 0)] {
