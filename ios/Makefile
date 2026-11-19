@@ -3,7 +3,7 @@ SIM_PHONE ?= iPhone 17
 SIM_PAD ?= iPad Pro 11-inch (M5)
 DD := build/dd
 export DEVELOPER_DIR ?= /Applications/Xcode.app/Contents/Developer
-.PHONY: up gen icon rules core build test sim shots device balance clean
+.PHONY: up gen icon rules core fuzz build test sim shots device balance clean
 up: gen core sim
 gen:
 	@command -v xcodegen >/dev/null || brew install xcodegen
@@ -18,6 +18,9 @@ rules:
 core: rules
 	cd Packages/HingePopCore && swift test
 	cd Packages/HingePopArt && swift test
+# The sim fuzz test, heavy: many more levels, seeds, waves and days than `make core` samples (about 30 s).
+fuzz:
+	cd Packages/HingePopCore && HP_FUZZ=heavy swift test --filter FuzzTests
 balance:
 	cd Packages/HingePopCore && swift run -c release hp-balance
 build: gen
