@@ -370,6 +370,7 @@ final class GameScene: SKScene {
   override func update(_ currentTime: TimeInterval) {
     let dt = lastTime == 0 ? 1.0 / 60 : currentTime - lastTime
     lastTime = currentTime
+    FrameMeter.shared.frame(currentTime, self)
     #if DEBUG
     perfSample(dt)
     let workStart = CACurrentMediaTime()

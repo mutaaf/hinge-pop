@@ -32,16 +32,22 @@ final class AppModel {
   /// A How to play section to open on arrival, set when an update callout sends you there.
   var guideSection: String?
   var progress: GameProgress { didSet { save() } }
-  @ObservationIgnored private let key = "hinge-pop-progress"
+  /// The save (`SaveVault`): checked writes, a backup, and nothing lost to a save this build can't read.
+  @ObservationIgnored private let vault: SaveVault
+  /// How the save loaded this launch (reported in `app_health` as an enum, never shown).
+  @ObservationIgnored private(set) var saveSource = SaveVault.Source.none
+  @ObservationIgnored private var saveFromTheFuture = false
+  @ObservationIgnored private var observers: [NSObjectProtocol] = []
 
   init() {
-    if let data = UserDefaults.standard.data(forKey: key), let p = try? JSONDecoder().decode(GameProgress.self, from: data) {
-      progress = p
-      // Saves from before realm gates keep every level they reached.
-      progress.adoptGates()
-    } else {
-      progress = GameProgress()
-    }
+    let vault = SaveVault(medium: DefaultsSaveMedium(), key: "hinge-pop-progress")
+    self.vault = vault
+    let loaded = Signposts.interval("save_load") { vault.load() }
+    progress = loaded.progress
+    saveSource = loaded.source
+    saveFromTheFuture = loaded.fromTheFuture
+    // Saves from before realm gates keep every level they reached.
+    progress.adoptGates()
     #if DEBUG
     let args = ProcessInfo.processInfo.arguments
     if args.contains("-fresh") { progress = GameProgress() }
@@ -103,6 +109,18 @@ final class AppModel {
     applySettings()
     checkUpdateNotes()
     Usage.shared.sessionStart()
+    Diagnostics.shared.start(saveSource: saveSource.rawValue, saveFromTheFuture: saveFromTheFuture)
+    // On the way to the background the save is written and copied to the backup (a level in play has already paused
+    // itself in PlayView). A notification rather than scene phase, so it holds from any screen.
+    observers.append(NotificationCenter.default.addObserver(forName: UIApplication.didEnterBackgroundNotification,
+                                                            object: nil, queue: .main) { [weak self] _ in
+      MainActor.assumeIsolated { self?.wentToBackground() }
+    })
+  }
+
+  private func wentToBackground() {
+    save()
+    vault.backupNow()
   }
 
   /// Shows the update card once per version. A fresh install marks the version seen without showing it.
@@ -152,9 +170,7 @@ final class AppModel {
     Usage.shared.enabled = progress.usage
   }
 
-  private func save() {
-    if let data = try? JSONEncoder().encode(progress) { UserDefaults.standard.set(data, forKey: key) }
-  }
+  private func save() { vault.save(progress) }
 
   func today() -> GameMode {
     let c = Calendar.current.dateComponents([.year, .month, .day], from: Date())
@@ -165,6 +181,15 @@ final class AppModel {
     let c = Calendar.current.dateComponents([.year, .month, .day], from: Date())
     return "\(c.year ?? 0)-\(c.month ?? 0)-\(c.day ?? 0)"
   }
+}
+
+/// The app's save medium: UserDefaults (each value is replaced whole, and the defaults store writes its file
+/// atomically). The save keeps its old key, with `.backup` and `.kept` beside it (`SaveVault`).
+final class DefaultsSaveMedium: SaveMedium {
+  private let defaults = UserDefaults.standard
+  func read(_ slot: String) -> Data? { defaults.data(forKey: slot) }
+  func write(_ data: Data, to slot: String) -> Bool { defaults.set(data, forKey: slot); return true }
+  func remove(_ slot: String) { defaults.removeObject(forKey: slot) }
 }
 
 #if DEBUG
