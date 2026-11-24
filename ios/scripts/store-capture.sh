@@ -26,6 +26,8 @@ capture() { # folder simulator [--display=N]
     xcrun simctl launch "$id" "$BID" "$@" >/dev/null
     for _ in $(seq 1 60); do [ -s "$ready" ] && break; sleep 0.25; done
     sleep "$settle"
+    # simctl may not overwrite a file git checked out (NSCocoaErrorDomain 513), but it can make a new one.
+    rm -f "$dir/$name.png"
     xcrun simctl io "$id" screenshot $display "$dir/$name.png" >/dev/null 2>&1 && echo "$folder $name"; }
   shot snap 4 -fresh -toured -level 29 -demo -demoSnap
   shot guest 4 -fresh -toured -level 29 -demo -cameo discoDot
